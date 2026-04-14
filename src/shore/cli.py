@@ -1,0 +1,383 @@
+"""SHORE command-line interface."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated
+
+import numpy as np
+import typer
+from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
+
+from shore.io.geo import read_geo, write_geo
+from shore.surface.io import load_stl
+from shore.surface.remesh import project_sphere_to_surface
+from shore.volume.hyperbolic import march
+from shore.volume.jacobian import jacobian_per_layer
+
+app = typer.Typer(
+    name="shore",
+    help="SHORE — Structured Hyperbolic Overlapping Remeshing Engine.",
+    add_completion=False,
+    no_args_is_help=True,
+)
+
+_console = Console()
+_err = Console(stderr=True)
+
+
+# ---------------------------------------------------------------------------
+# Shared option aliases
+# ---------------------------------------------------------------------------
+
+_NI       = Annotated[int,   typer.Option(help="Latitude resolution of the O-grid surface.")]
+_NJ       = Annotated[int,   typer.Option(help="Longitude resolution of the O-grid surface.")]
+_NK       = Annotated[int,   typer.Option(help="Number of wall-normal layers (includes k=0).")]
+_DS       = Annotated[float, typer.Option(help="First-layer thickness (same units as the STL).")]
+_GROWTH   = Annotated[float, typer.Option(help="Geometric growth ratio between successive layers.")]
+_SMOOTH   = Annotated[float, typer.Option(help="Laplacian smooth strength per layer [0–1].")]
+_SITERS   = Annotated[int,   typer.Option(help="Laplacian sweeps per layer.")]
+_VERBOSE  = Annotated[bool,  typer.Option("--verbose", "-v", help="Show rich progress bar.")]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _progress() -> Progress:
+    """Build the standard SHORE progress bar."""
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]{task.description}"),
+        BarColumn(bar_width=32),
+        MofNCompleteColumn(),
+        TextColumn("[dim]{task.fields[info]}"),
+        TimeElapsedColumn(),
+        console=_console,
+        transient=False,
+    )
+
+
+def _make_march_callback(progress: Progress, task_id: int):
+    """Return a layer_callback that updates *progress*."""
+    def callback(k: int, jmin: float, step: float) -> None:
+        progress.update(
+            task_id,
+            advance=1,
+            info=f"jmin={jmin:.2e}  Δs={step:.2e}",
+        )
+    return callback
+
+
+def _default_output(input_path: Path, suffix: str) -> Path:
+    return input_path.parent / (input_path.stem + suffix)
+
+
+# ---------------------------------------------------------------------------
+# shore mesh
+# ---------------------------------------------------------------------------
+
+@app.command()
+def mesh(
+    input: Annotated[Path, typer.Argument(help="Input STL file.")],
+    output:       Annotated[Path | None, typer.Option("-o", "--output", help="Output .geo file.")] = None,
+    ni:           _NI      = 40,
+    nj:           _NJ      = 60,
+    nk:           _NK      = 30,
+    ds:           _DS      = 1e-3,
+    growth:       _GROWTH  = 1.15,
+    smooth:       _SMOOTH  = 0.2,
+    smooth_iters: _SITERS  = 2,
+    verbose:      _VERBOSE = False,
+) -> None:
+    """Full pipeline: STL → structured O-grid volume → geo."""
+    if not input.exists():
+        _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    out = output or _default_output(input, ".geo")
+
+    # --- stage 1: load & project ---
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Loading STL   ", total=1, info="")
+            mesh_obj = load_stl(input)
+            prog.update(t, advance=1, info=f"{len(mesh_obj.faces)} triangles")
+
+        with _progress() as prog:
+            t = prog.add_task("Projecting    ", total=1, info="")
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj)
+            prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
+    else:
+        mesh_obj = load_stl(input)
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj)
+
+    # --- stage 2: march ---
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Marching      ", total=nk - 1, info="")
+            grid = march(
+                k0, nk, ds, growth, smooth, smooth_iters,
+                layer_callback=_make_march_callback(prog, t),
+            )
+    else:
+        grid = march(k0, nk, ds, growth, smooth, smooth_iters)
+
+    # --- stage 3: write ---
+    write_geo(out, grid)
+
+    if verbose:
+        _console.print(f"[green]✓[/green] Wrote {out}  ({ni}×{nj}×{nk})")
+
+
+# ---------------------------------------------------------------------------
+# shore project
+# ---------------------------------------------------------------------------
+
+@app.command()
+def project(
+    input: Annotated[Path, typer.Argument(help="Input STL file.")],
+    output:  Annotated[Path | None, typer.Option("-o", "--output", help="Output .npz file.")] = None,
+    ni:      _NI      = 40,
+    nj:      _NJ      = 60,
+    verbose: _VERBOSE = False,
+) -> None:
+    """Project a structured sphere grid onto an STL surface (k=0 layer only)."""
+    if not input.exists():
+        _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    out = output or _default_output(input, "_k0.npz")
+
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Loading STL   ", total=1, info="")
+            mesh_obj = load_stl(input)
+            prog.update(t, advance=1, info=f"{len(mesh_obj.faces)} triangles")
+
+        with _progress() as prog:
+            t = prog.add_task("Projecting    ", total=1, info="")
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj)
+            prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
+    else:
+        mesh_obj = load_stl(input)
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj)
+
+    np.savez_compressed(out, k0=k0)
+
+    if verbose:
+        _console.print(f"[green]✓[/green] Wrote {out}  ({ni}×{nj}×3)")
+
+
+# ---------------------------------------------------------------------------
+# shore march
+# ---------------------------------------------------------------------------
+
+@app.command(name="march")
+def march_cmd(
+    input: Annotated[Path, typer.Argument(help="Input .npz file (k=0 layer from `shore project`).")],
+    output:       Annotated[Path | None, typer.Option("-o", "--output", help="Output .geo file.")] = None,
+    nk:           _NK      = 30,
+    ds:           _DS      = 1e-3,
+    growth:       _GROWTH  = 1.15,
+    smooth:       _SMOOTH  = 0.2,
+    smooth_iters: _SITERS  = 2,
+    verbose:      _VERBOSE = False,
+) -> None:
+    """Extrude a structured surface layer (.npz) into a volume (.geo)."""
+    if not input.exists():
+        _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    out = output or _default_output(input, ".geo")
+
+    data = np.load(input)
+    if "k0" not in data:
+        _err.print("[red]Error:[/red] .npz file has no 'k0' array. Was it created by `shore project`?")
+        raise typer.Exit(1) from None
+
+    k0 = data["k0"]
+
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Marching      ", total=nk - 1, info="")
+            grid = march(
+                k0, nk, ds, growth, smooth, smooth_iters,
+                layer_callback=_make_march_callback(prog, t),
+            )
+    else:
+        grid = march(k0, nk, ds, growth, smooth, smooth_iters)
+
+    ni, nj, *_ = grid.shape
+    write_geo(out, grid)
+
+    if verbose:
+        _console.print(f"[green]✓[/green] Wrote {out}  ({ni}×{nj}×{nk})")
+
+
+
+# ---------------------------------------------------------------------------
+# shore info
+# ---------------------------------------------------------------------------
+
+@app.command()
+def info(
+    input: Annotated[Path, typer.Argument(help="Input .geo file.")],
+) -> None:
+    """Print metadata of a structured .geo file."""
+    if not input.exists():
+        _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    grid = read_geo(input)
+    ni, nj, nk, _ = grid.shape
+
+    xyz_min = grid.reshape(-1, 3).min(axis=0)
+    xyz_max = grid.reshape(-1, 3).max(axis=0)
+
+    table = Table(title=str(input), show_header=True, header_style="bold cyan")
+    table.add_column("Property", style="dim")
+    table.add_column("Value")
+
+    table.add_row("Dimensions", f"ni={ni}  nj={nj}  nk={nk}")
+    table.add_row("Points", f"{ni * nj * nk:,}")
+    table.add_row("Cells", f"{(ni-1) * (nj-1) * (nk-1):,}")
+    table.add_row("x bounds", f"[{xyz_min[0]:.6g},  {xyz_max[0]:.6g}]")
+    table.add_row("y bounds", f"[{xyz_min[1]:.6g},  {xyz_max[1]:.6g}]")
+    table.add_row("z bounds", f"[{xyz_min[2]:.6g},  {xyz_max[2]:.6g}]")
+
+    _console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# shore check
+# ---------------------------------------------------------------------------
+
+@app.command()
+def check(
+    input: Annotated[Path, typer.Argument(help="Input .geo file.")],
+    warn_threshold: Annotated[float, typer.Option(help="Warn if jmin drops below this value.")] = 1e-6,
+) -> None:
+    """Validate cell Jacobians layer-by-layer in a .geo file.
+
+    Exits with code 1 if any layer has a negative Jacobian.
+    """
+    if not input.exists():
+        _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    grid = read_geo(input)
+    ni, nj, nk, _ = grid.shape
+
+    table = Table(title=f"Jacobian check — {input}", show_header=True, header_style="bold cyan")
+    table.add_column("Layer", justify="right", style="dim")
+    table.add_column("jmin", justify="right")
+    table.add_column("Status")
+
+    any_bad = False
+    jmins = jacobian_per_layer(grid)   # (nk-1,)
+
+    for k, jmin in enumerate(jmins):
+        if jmin <= 0.0:
+            status = "[bold red]INVERTED[/bold red]"
+            any_bad = True
+        elif jmin < warn_threshold:
+            status = "[yellow]warn[/yellow]"
+        else:
+            status = "[green]ok[/green]"
+        table.add_row(str(k + 1), f"{jmin:.4e}", status)
+
+    _console.print(table)
+
+    if any_bad:
+        _err.print("[red]✗[/red] Inverted cells detected.")
+        raise typer.Exit(1) from None
+
+    _console.print("[green]✓[/green] All Jacobians positive.")
+
+
+# ---------------------------------------------------------------------------
+# shore export
+# ---------------------------------------------------------------------------
+
+@app.command()
+def export(
+    input: Annotated[Path, typer.Argument(help="Input .geo or .npz file.")],
+    output: Annotated[Path | None, typer.Option("-o", "--output", help="Output .vts file.")] = None,
+    no_jacobian: Annotated[bool, typer.Option("--no-jacobian", help="Skip Jacobian cell data (geo only).")] = False,
+) -> None:
+    """Export a .geo volume or .npz surface layer to VTK XML (.vts) for ParaView."""
+    if not input.exists():
+        _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    try:
+        from shore.io.vtk import write_surface_vts, write_vts  # noqa: PLC0415
+    except ImportError as exc:
+        _err.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    suffix = input.suffix.lower()
+
+    if suffix == ".geo":
+        out = output or _default_output(input, ".vts")
+        grid = read_geo(input)
+        write_vts(out, grid, with_jacobian=not no_jacobian)
+        _console.print(f"[green]✓[/green] Wrote {out}")
+
+    elif suffix == ".npz":
+        out = output or _default_output(input, ".vts")
+        data = np.load(input)
+        if "k0" not in data:
+            _err.print("[red]Error:[/red] .npz has no 'k0' array.")
+            raise typer.Exit(1) from None
+        write_surface_vts(out, data["k0"])
+        _console.print(f"[green]✓[/green] Wrote {out}")
+
+    else:
+        _err.print(f"[red]Error:[/red] unsupported extension '{suffix}'. Expected .geo or .npz.")
+        raise typer.Exit(1) from None
+
+
+# ---------------------------------------------------------------------------
+# shore view
+# ---------------------------------------------------------------------------
+
+@app.command()
+def view(
+    input: Annotated[Path, typer.Argument(help="Input .geo or .npz file.")],
+    colorby: Annotated[str, typer.Option(help="Colour field: 'Jacobian' (geo) or 'radius' (npz) or 'none'.")] = "",
+    no_edges: Annotated[bool, typer.Option("--no-edges", help="Hide cell edges.")] = False,
+    opacity: Annotated[float, typer.Option(help="Grid opacity [0–1] (geo only).")] = 0.6,
+) -> None:
+    """Open an interactive PyVista window to inspect a .geo or .npz file."""
+    if not input.exists():
+        _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    try:
+        from shore.vis import view_geo, view_surface  # noqa: PLC0415
+    except ImportError as exc:
+        _err.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    suffix = input.suffix.lower()
+
+    if suffix == ".geo":
+        grid = read_geo(input)
+        cb = colorby if colorby else "Jacobian"
+        view_geo(grid, colorby=cb, show_edges=not no_edges, opacity=opacity)
+
+    elif suffix == ".npz":
+        data = np.load(input)
+        if "k0" not in data:
+            _err.print("[red]Error:[/red] .npz has no 'k0' array.")
+            raise typer.Exit(1) from None
+        cb = colorby if colorby else "radius"
+        view_surface(data["k0"], colorby=cb, show_edges=not no_edges)
+
+    else:
+        _err.print(f"[red]Error:[/red] unsupported extension '{suffix}'. Expected .geo or .npz.")
+        raise typer.Exit(1) from None

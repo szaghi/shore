@@ -1,0 +1,83 @@
+# shore project
+
+Project a structured sphere grid onto an STL surface, producing the k=0 layer only.
+
+Use this command to inspect the surface projection before committing to a full march, or when you want to cache stage 1 and experiment with different marching parameters without repeating the ray casting.
+
+## Synopsis
+
+```
+shore project [OPTIONS] INPUT
+```
+
+## Arguments
+
+| Argument | Description |
+|---|---|
+| `INPUT` | Path to the input `.stl` file |
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--ni INTEGER` | 40 | Latitude resolution |
+| `--nj INTEGER` | 60 | Longitude resolution |
+| `-o` / `--output PATH` | `<INPUT stem>_k0.npz` | Output `.npz` file |
+| `-v` / `--verbose` | off | Show Rich progress |
+| `--help` | — | Show this help and exit |
+
+## Output format
+
+The output is a compressed NumPy archive (`.npz`) with a single array `k0` of shape `(ni, nj, 3)`:
+
+```python
+import numpy as np
+data = np.load("sphere_k0.npz")
+k0 = data["k0"]          # shape (ni, nj, 3)
+print(k0.shape)           # (40, 60, 3)
+```
+
+The array holds the `(x, y, z)` coordinates of each structured surface node. Row `i` spans the latitude direction, column `j` spans the longitude direction (periodic).
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Input file not found or projection failed (rays missed body) |
+
+## Examples
+
+Project a sphere and inspect in Python:
+
+```bash
+shore project sphere.stl --ni 40 --nj 60 -o sphere_k0.npz -v
+```
+
+```python
+import numpy as np
+k0 = np.load("sphere_k0.npz")["k0"]
+radii = np.linalg.norm(k0, axis=-1)
+print(f"mean radius = {radii.mean():.4f}")   # ≈ 1.0
+print(f"std  radius = {radii.std():.4f}")    # ≈ 0.0 for a perfect sphere
+```
+
+Verify the projected layer looks correct before marching:
+
+```bash
+shore project fuselage.stl --ni 60 --nj 90 -o fuselage_k0.npz
+# Then inspect fuselage_k0.npz in pyvista or matplotlib before marching
+shore march fuselage_k0.npz --nk 40 --ds 1e-4 -o fuselage.geo -v
+```
+
+## Algorithm
+
+See [Pipeline overview — Stage 1](/concepts/pipeline) for a full description of the sphere projection algorithm.
+
+The projection uses trimesh's `RayMeshIntersector` with `multiple_hits=False` — only the first intersection along each ray (closest to the centroid) is recorded. Ray origins are all placed at the body centroid; directions are the unit vectors of a lat-lon sphere grid.
+
+## See also
+
+- [`shore march`](march) — extrude the saved k=0 layer
+- [`shore mesh`](mesh) — run the full pipeline
+- [Pipeline overview](/concepts/pipeline)
