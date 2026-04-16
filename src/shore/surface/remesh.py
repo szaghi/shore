@@ -20,7 +20,11 @@ import numpy as np
 import trimesh
 
 
-def sphere_latlon_directions(ni: int, nj: int) -> np.ndarray:
+def sphere_latlon_directions(
+    ni: int,
+    nj: int,
+    theta_margin: float | None = None,
+) -> np.ndarray:
     """Build (ni, nj) unit direction vectors on a lat-lon sphere.
 
     The poles are excluded so the grid is open (no singular points).
@@ -32,14 +36,32 @@ def sphere_latlon_directions(ni: int, nj: int) -> np.ndarray:
         Number of points in the latitude direction (pole-to-pole, exclusive).
     nj :
         Number of points in the longitude direction (full circle, periodic).
+    theta_margin :
+        Polar-cap exclusion angle in radians. If None (default), uses the
+        legacy formula which excludes only the infinitesimal poles. If set,
+        must be less than pi/4 for Yin-Yang full-coverage guarantee.
 
     Returns
     -------
     numpy.ndarray, shape (ni, nj, 3)
         Unit direction vectors.
+
+    Raises
+    ------
+    ValueError
+        If theta_margin >= pi/4.
     """
-    # latitude: (0, pi) exclusive — avoids poles
-    lats = np.linspace(0.0, np.pi, ni + 2)[1:-1]
+    if theta_margin is None:
+        # Legacy single O-grid: infinitesimal margin, preserves existing behaviour
+        lats = np.linspace(0.0, np.pi, ni + 2)[1:-1]
+    else:
+        if theta_margin >= np.pi / 4:
+            raise ValueError(
+                f"theta_margin={theta_margin:.4f} >= pi/4 ({np.pi/4:.4f}): "
+                "Yin-Yang full-coverage guarantee breaks down. "
+                "Use theta_margin < pi/4 (e.g. the default pi/6)."
+            )
+        lats = np.linspace(theta_margin, np.pi - theta_margin, ni)
     # longitude: [0, 2*pi) — nj points, periodic
     lons = np.linspace(0.0, 2.0 * np.pi, nj, endpoint=False)
 
@@ -56,6 +78,7 @@ def project_sphere_to_surface(
     mesh: trimesh.Trimesh,
     ni: int,
     nj: int,
+    theta_margin: float | None = None,
 ) -> np.ndarray:
     """Project a structured sphere grid onto a triangulated surface.
 
@@ -67,6 +90,9 @@ def project_sphere_to_surface(
         Latitude resolution of the structured grid.
     nj :
         Longitude resolution of the structured grid.
+    theta_margin :
+        Polar-cap exclusion angle in radians. Passed through to
+        sphere_latlon_directions. None uses the legacy formula.
 
     Returns
     -------
@@ -80,7 +106,7 @@ def project_sphere_to_surface(
         star-shaped).
     """
     centroid = mesh.centroid  # (3,)
-    directions = sphere_latlon_directions(ni, nj)  # (ni, nj, 3)
+    directions = sphere_latlon_directions(ni, nj, theta_margin=theta_margin)  # (ni, nj, 3)
 
     flat_dirs = directions.reshape(-1, 3)  # (ni*nj, 3)
     origins = np.tile(centroid, (flat_dirs.shape[0], 1))  # (ni*nj, 3)

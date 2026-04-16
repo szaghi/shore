@@ -16,6 +16,7 @@ export default defineConfig({
           { text: 'About',        link: '/guide/' },
           { text: 'Installation', link: '/guide/installation' },
           { text: 'Quick Start',  link: '/guide/quickstart' },
+          { text: 'Running',      link: '/guide/running' },
           { text: 'Changelog',    link: '/guide/changelog' },
           { text: 'Contributing', link: '/guide/contributing' },
         ],
@@ -40,6 +41,7 @@ export default defineConfig({
           items: [
             { text: 'Changelog',    link: '/guide/changelog' },
             { text: 'Contributing', link: '/guide/contributing' },
+            { text: 'Running',      link: '/guide/running' },
           ],
         },
       ],

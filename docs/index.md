@@ -73,6 +73,65 @@ STL (raw triangles)
   fuselage.geo               ← Xall_GPU structured grid
 ```
 
+
+## Topology
+
+SHORE supports two O-grid topologies for closing polar singularities and handling body-surface topology:
+
+### Single O-grid
+
+The default topology projects a single lat-lon sphere grid onto the body surface. The poles are excluded to avoid singular convergence points:
+
+```bash
+# Single O-grid (default)
+shore mesh sphere.stl --ni 40 --nj 60 --nk 30
+```
+
+The single O-grid leaves two polar caps uncovered. For most aerodynamic bodies (wing tips, nacelle ends) this is acceptable since poles are handled separately. For closed bodies (spheres, fuselages), use the double O-grid.
+
+### Double O-grid (Yin-Yang)
+
+The **Yin-Yang double O-grid** resolves polar singularities without placing any grid node at a singular pole. Two standard O-grid blocks are rotated 90° relative to each other; each block's excluded caps fall inside the other block's coverage zone.
+
+```bash
+# Double O-grid (Yin-Yang) with default theta_m = pi/6
+shore mesh sphere.stl --ni 40 --nj 60 --nk 30 --topology double
+
+# Double O-grid with custom theta_m
+shore mesh sphere.stl --ni 40 --nj 60 --nk 30 --topology double --theta-margin 0.6
+
+# Validate both blocks
+shore check sphere_yin.geo
+shore check sphere_yang.geo
+
+# Export to VTK for ParaView
+shore export sphere_yin.geo
+shore export sphere_yang.geo
+```
+
+The overlap band (default ~73% at theta_m = pi/6) is the natural chimera interpolation zone for SHORE's overset context.
+
+#### Mathematical foundation
+
+- **Yin piece**: standard lat-lon directions with colatitude theta in (theta_m, pi - theta_m)
+- **Yang piece**: same grid rotated by R_y(+pi/2); its pseudo-poles land on the equatorial x-axis
+- **Full coverage** is guaranteed if and only if theta_m < pi/4
+
+Reference: Kageyama & Sato (2004), *Geochem. Geophys. Geosyst.* 5(9).
+
+### Choosing theta_m
+
+| theta_m (rad) | Approx. degrees | Overlap fraction | Notes |
+|---|---|---|---|
+| pi/6 | 30° | ~73% | Default. Wide overlap, comfortable margin. |
+| pi/5 | 36° | ~62% | Good balance. |
+| 0.65 | ~37° | ~59% | Minimum tested in examples. |
+| pi/4 - epsilon | →45° | →41% | Minimum for full coverage; narrow margin. |
+
+### Limitations
+
+The two blocks are currently independent grids (no automatic stitching of the overlap). The overlap zone must be handled by the downstream chimera solver.
+
 ## Author
 
 **Stefano Zaghi** — [GitHub](https://github.com/szaghi)

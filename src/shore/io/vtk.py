@@ -165,3 +165,29 @@ def write_surface_vts(path: str | Path, k0: np.ndarray) -> None:
         path = path.with_suffix(".vts")
     sg = surface_to_pyvista(k0)
     sg.save(str(path))
+
+
+def write_double_vtm(
+    path: str | Path,
+    yin: np.ndarray,
+    yang: np.ndarray,
+    with_jacobian: bool = True,
+) -> None:
+    """Export a Yin-Yang double O-grid as a PyVista MultiBlock (.vtm).
+
+    Parameters
+    ----------
+    path :
+        Output path. The ``.vtm`` extension is used if no extension given.
+    yin, yang :
+        Yin and Yang volume grids, each shape (ni, nj, nk, 3).
+    with_jacobian :
+        Attach per-cell Jacobian as CellData on each block.
+    """
+    path = Path(path)
+    if path.suffix not in {".vtm", ".vtmb"}:
+        path = path.with_suffix(".vtm")
+    mb = pv.MultiBlock()
+    mb["yin"] = geo_to_pyvista(yin, with_jacobian=with_jacobian)
+    mb["yang"] = geo_to_pyvista(yang, with_jacobian=with_jacobian)
+    mb.save(str(path))

@@ -40,6 +40,8 @@ _GROWTH   = Annotated[float, typer.Option(help="Geometric growth ratio between s
 _SMOOTH   = Annotated[float, typer.Option(help="Laplacian smooth strength per layer [0–1].")]
 _SITERS   = Annotated[int,   typer.Option(help="Laplacian sweeps per layer.")]
 _VERBOSE  = Annotated[bool,  typer.Option("--verbose", "-v", help="Show rich progress bar.")]
+_TOPOLOGY = Annotated[str,   typer.Option("--topology", help="'single' (default) or 'double' (Yin-Yang).")]
+_THETA_MARGIN = Annotated[float | None, typer.Option("--theta-margin", help="Polar-cap exclusion angle in radians. Applies to both single and double topology; default pi/6 for double, ignored (legacy formula) for single unless explicitly set.")]
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +92,8 @@ def mesh(
     growth:       _GROWTH  = 1.15,
     smooth:       _SMOOTH  = 0.2,
     smooth_iters: _SITERS  = 2,
+    topology:     _TOPOLOGY = "single",
+    theta_margin: _THETA_MARGIN = None,
     verbose:      _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL → structured O-grid volume → geo."""
@@ -97,22 +101,52 @@ def mesh(
         _err.print(f"[red]Error:[/red] file not found: {input}")
         raise typer.Exit(1) from None
 
+    if topology not in {"single", "double"}:
+        _err.print(f"[red]Error:[/red] unknown topology '{topology}'. Choose 'single' or 'double'.")
+        raise typer.Exit(1) from None
+
+    if topology == "double" and theta_margin is None:
+        theta_margin = np.pi / 6  # default for Yin-Yang
+
     out = output or _default_output(input, ".geo")
 
-    # --- stage 1: load & project ---
+    # --- stage 1: load ---
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Loading STL   ", total=1, info="")
             mesh_obj = load_stl(input)
             prog.update(t, advance=1, info=f"{len(mesh_obj.faces)} triangles")
-
-        with _progress() as prog:
-            t = prog.add_task("Projecting    ", total=1, info="")
-            k0 = project_sphere_to_surface(mesh_obj, ni, nj)
-            prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
         mesh_obj = load_stl(input)
-        k0 = project_sphere_to_surface(mesh_obj, ni, nj)
+
+    if topology == "single":
+        _run_single_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_margin, verbose)
+    else:
+        _run_double_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_margin, verbose)
+
+
+def _run_single_topology(
+    mesh_obj,
+    out: Path,
+    ni: int,
+    nj: int,
+    nk: int,
+    ds: float,
+    growth: float,
+    smooth: float,
+    smooth_iters: int,
+    theta_margin: float | None,
+    verbose: bool,
+) -> None:
+    """Run the single O-grid topology pipeline."""
+    # --- stage 1: project ---
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Projecting    ", total=1, info="")
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+            prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
+    else:
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
 
     # --- stage 2: march ---
     if verbose:
@@ -130,6 +164,67 @@ def mesh(
 
     if verbose:
         _console.print(f"[green]✓[/green] Wrote {out}  ({ni}×{nj}×{nk})")
+
+
+def _run_double_topology(
+    mesh_obj,
+    out: Path,
+    ni: int,
+    nj: int,
+    nk: int,
+    ds: float,
+    growth: float,
+    smooth: float,
+    smooth_iters: int,
+    theta_margin: float,
+    verbose: bool,
+) -> None:
+    """Run the double O-grid (Yin-Yang) topology pipeline."""
+    from shore.surface.yinyang import project_yang_to_surface
+
+    # --- stage 1: project both ---
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Projecting Yin ", total=1, info="")
+            k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+            prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
+
+        with _progress() as prog:
+            t = prog.add_task("Projecting Yang", total=1, info="")
+            k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+            prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
+    else:
+        k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+        k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+
+    # --- stage 2: march both ---
+    stem = out.stem.removesuffix("_yin").removesuffix("_yang")
+    yin_out = out.parent / f"{stem}_yin.geo"
+    yang_out = out.parent / f"{stem}_yang.geo"
+
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Marching Yin  ", total=nk - 1, info="")
+            yin_grid = march(
+                k0_yin, nk, ds, growth, smooth, smooth_iters,
+                layer_callback=_make_march_callback(prog, t),
+            )
+        with _progress() as prog:
+            t = prog.add_task("Marching Yang ", total=nk - 1, info="")
+            yang_grid = march(
+                k0_yang, nk, ds, growth, smooth, smooth_iters,
+                layer_callback=_make_march_callback(prog, t),
+            )
+    else:
+        yin_grid = march(k0_yin, nk, ds, growth, smooth, smooth_iters)
+        yang_grid = march(k0_yang, nk, ds, growth, smooth, smooth_iters)
+
+    # --- stage 3: write ---
+    write_geo(yin_out, yin_grid)
+    write_geo(yang_out, yang_grid)
+
+    if verbose:
+        _console.print(f"[green]✓[/green] Wrote {yin_out} and {yang_out}  ({ni}×{nj}×{nk})")
 
 
 # ---------------------------------------------------------------------------
