@@ -31,7 +31,7 @@ except ImportError as e:
         "Install it with: pip install shore[vis]  or  pip install pyvista"
     ) from e
 
-from shore.volume.jacobian import jacobian_field
+from shore.volume.jacobian import jacobian_field, _jacobian_field_open
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +165,65 @@ def write_surface_vts(path: str | Path, k0: np.ndarray) -> None:
         path = path.with_suffix(".vts")
     sg = surface_to_pyvista(k0)
     sg.save(str(path))
+
+
+def open_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> "pv.StructuredGrid":
+    """Convert a non-periodic (open) structured block to a PyVista StructuredGrid.
+
+    Unlike ``geo_to_pyvista``, no j-direction closing is performed.  Used for
+    polar cap blocks and the equatorial sub-blocks of the sphere-cap topology.
+
+    Parameters
+    ----------
+    grid :
+        Volume grid, shape (ni, nj, nk, 3).
+    with_jacobian :
+        If True (default), attach the per-cell Jacobian field as
+        ``CellData["Jacobian"]`` using the open (non-periodic) Jacobian.
+
+    Returns
+    -------
+    pyvista.StructuredGrid
+    """
+    ni, nj, nk, _ = grid.shape
+    sg = pv.StructuredGrid()
+    sg.dimensions = (ni, nj, nk)
+    sg.points = _grid_points(grid)
+
+    if with_jacobian:
+        jac = _jacobian_field_open(grid).ravel(order="F")
+        sg.cell_data["Jacobian"] = jac
+
+    return sg
+
+
+def write_caps_vtm(
+    path: str | Path,
+    blocks: list[np.ndarray],
+    with_jacobian: bool = True,
+) -> None:
+    """Export a 6-block sphere-cap topology as a PyVista MultiBlock (.vtm).
+
+    The 6 blocks are: sub0, sub1, sub2, sub3 (equatorial), cap_north, cap_south.
+    All are open (non-periodic) structured grids.
+
+    Parameters
+    ----------
+    path :
+        Output path. The ``.vtm`` extension is used if no extension given.
+    blocks :
+        List of 6 volume grids, each shape (ni, nj, nk, 3).
+    with_jacobian :
+        Attach per-cell Jacobian as CellData on each block.
+    """
+    path = Path(path)
+    if path.suffix not in {".vtm", ".vtmb"}:
+        path = path.with_suffix(".vtm")
+    labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
+    mb = pv.MultiBlock()
+    for label, block in zip(labels, blocks, strict=True):
+        mb[label] = open_to_pyvista(block, with_jacobian=with_jacobian)
+    mb.save(str(path))
 
 
 def write_double_vtm(

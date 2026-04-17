@@ -23,6 +23,8 @@ import trimesh
 def sphere_latlon_directions(
     ni: int,
     nj: int,
+    theta_cap: float | None = None,
+    theta_cap_deg: float | None = None,
     theta_margin: float | None = None,
 ) -> np.ndarray:
     """Build (ni, nj) unit direction vectors on a lat-lon sphere.
@@ -36,10 +38,16 @@ def sphere_latlon_directions(
         Number of points in the latitude direction (pole-to-pole, exclusive).
     nj :
         Number of points in the longitude direction (full circle, periodic).
+    theta_cap :
+        Polar exclusion angle in radians: the equatorial band covers
+        ``[theta_cap, pi - theta_cap]``.  The cap boundary parallel has
+        radius ``sin(theta_cap)`` on the unit sphere.  Must be in
+        ``(0, pi/2)``.  Default ``0.05*pi`` (~9°).
+    theta_cap_deg :
+        Convenience alias for ``theta_cap`` in degrees.  Mutually exclusive
+        with ``theta_cap`` and ``theta_margin``.
     theta_margin :
-        Polar-cap exclusion angle in radians. If None (default), uses the
-        legacy formula which excludes only the infinitesimal poles. If set,
-        must be less than pi/4 for Yin-Yang full-coverage guarantee.
+        Deprecated alias for ``theta_cap`` (radians).
 
     Returns
     -------
@@ -49,19 +57,33 @@ def sphere_latlon_directions(
     Raises
     ------
     ValueError
-        If theta_margin >= pi/4.
+        If more than one of ``theta_cap``, ``theta_cap_deg``, ``theta_margin``
+        are supplied, or if the resolved angle is outside ``(0, pi/2)``.
     """
-    if theta_margin is None:
-        # Legacy single O-grid: infinitesimal margin, preserves existing behaviour
-        lats = np.linspace(0.0, np.pi, ni + 2)[1:-1]
-    else:
-        if theta_margin >= np.pi / 4:
-            raise ValueError(
-                f"theta_margin={theta_margin:.4f} >= pi/4 ({np.pi/4:.4f}): "
-                "Yin-Yang full-coverage guarantee breaks down. "
-                "Use theta_margin < pi/4 (e.g. the default pi/6)."
-            )
-        lats = np.linspace(theta_margin, np.pi - theta_margin, ni)
+    # --- resolve theta_cap ---
+    n_supplied = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
+    if n_supplied > 1:
+        raise ValueError(
+            "Supply at most one of theta_cap, theta_cap_deg, theta_margin."
+        )
+    if theta_cap_deg is not None:
+        theta_cap = np.deg2rad(theta_cap_deg)
+    elif theta_margin is not None:
+        theta_cap = theta_margin
+
+    if theta_cap is None:
+        # Default: 0.05*pi (~9°)
+        theta_cap = 0.05 * np.pi
+
+    if not (0.0 < theta_cap < np.pi / 2):
+        raise ValueError(
+            f"theta_cap={theta_cap:.6f} must be in (0, pi/2). "
+            "0 would collapse the cap to a point; pi/2 would put the "
+            "cap edge at the equator."
+        )
+
+    lats = np.linspace(theta_cap, np.pi - theta_cap, ni)
+
     # longitude: [0, 2*pi) — nj points, periodic
     lons = np.linspace(0.0, 2.0 * np.pi, nj, endpoint=False)
 
@@ -78,6 +100,8 @@ def project_sphere_to_surface(
     mesh: trimesh.Trimesh,
     ni: int,
     nj: int,
+    theta_cap: float | None = None,
+    theta_cap_deg: float | None = None,
     theta_margin: float | None = None,
 ) -> np.ndarray:
     """Project a structured sphere grid onto a triangulated surface.
@@ -90,9 +114,17 @@ def project_sphere_to_surface(
         Latitude resolution of the structured grid.
     nj :
         Longitude resolution of the structured grid.
+    theta_cap :
+        Polar exclusion angle in radians: the equatorial band covers
+        ``[theta_cap, pi - theta_cap]``.  The cap boundary parallel has
+        radius ``sin(theta_cap)`` on a unit sphere.  Must be in
+        ``(0, pi/2)``.  Default ``0.05*pi`` (~9°).
+    theta_cap_deg :
+        Convenience alias for ``theta_cap`` in degrees.  Exactly one of
+        ``theta_cap`` and ``theta_cap_deg`` may be supplied.
     theta_margin :
-        Polar-cap exclusion angle in radians. Passed through to
-        sphere_latlon_directions. None uses the legacy formula.
+        Deprecated alias for ``theta_cap`` (radians).  Will be removed in a
+        future release.
 
     Returns
     -------
@@ -102,11 +134,23 @@ def project_sphere_to_surface(
     Raises
     ------
     ValueError
-        If any ray misses the body (centroid is outside or body is not
-        star-shaped).
+        If more than one of ``theta_cap``, ``theta_cap_deg``, and
+        ``theta_margin`` are supplied, if ``theta_cap`` is outside
+        ``(0, pi/2)``, or if any ray misses the body.
     """
+    # --- resolve theta_cap ---
+    n_supplied = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
+    if n_supplied > 1:
+        raise ValueError(
+            "Supply at most one of theta_cap, theta_cap_deg, theta_margin."
+        )
+    if theta_cap_deg is not None:
+        theta_cap = np.deg2rad(theta_cap_deg)
+    elif theta_margin is not None:
+        theta_cap = theta_margin
+
     centroid = mesh.centroid  # (3,)
-    directions = sphere_latlon_directions(ni, nj, theta_margin=theta_margin)  # (ni, nj, 3)
+    directions = sphere_latlon_directions(ni, nj, theta_cap=theta_cap)  # (ni, nj, 3)
 
     flat_dirs = directions.reshape(-1, 3)  # (ni*nj, 3)
     origins = np.tile(centroid, (flat_dirs.shape[0], 1))  # (ni*nj, 3)

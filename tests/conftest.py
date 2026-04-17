@@ -10,11 +10,16 @@ import trimesh
 
 
 def sphere_layer(
-    ni: int, nj: int, radius: float = 1.0, theta_margin: float | None = None
+    ni: int,
+    nj: int,
+    radius: float = 1.0,
+    theta_cap: float | None = None,
+    theta_cap_deg: float | None = None,
+    theta_margin: float | None = None,
 ) -> np.ndarray:
     """Structured lat-lon sphere layer, shape (ni, nj, 3).
 
-    Shared by test_hyperbolic.py and test_cli.py.
+    Shared by test_hyperbolic.py, test_sphere_cap.py, and test_cli.py.
 
     Parameters
     ----------
@@ -24,13 +29,32 @@ def sphere_layer(
         Number of longitude points.
     radius :
         Sphere radius.
+    theta_cap :
+        Polar exclusion angle in radians: the band covers
+        ``[theta_cap, pi - theta_cap]``.  Default ``0.05*pi`` (~9°).
+    theta_cap_deg :
+        Convenience alias for ``theta_cap`` in degrees.
     theta_margin :
-        Polar-cap exclusion angle. If None, uses legacy formula.
+        Deprecated alias for ``theta_cap`` (radians).
     """
-    if theta_margin is None:
-        lats = np.linspace(0.05 * np.pi, 0.95 * np.pi, ni)
-    else:
-        lats = np.linspace(theta_margin, np.pi - theta_margin, ni)
+    n_supplied = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
+    if n_supplied > 1:
+        raise ValueError("Supply at most one of theta_cap, theta_cap_deg, theta_margin.")
+    if theta_cap_deg is not None:
+        theta_cap = np.deg2rad(theta_cap_deg)
+    elif theta_margin is not None:
+        theta_cap = theta_margin
+    if theta_cap is None:
+        theta_cap = 0.05 * np.pi
+
+    if not (0.0 < theta_cap < np.pi / 2):
+        raise ValueError(
+            f"theta_cap={theta_cap:.6f} must be in (0, pi/2). "
+            "0 would collapse the cap to a point; pi/2 would put the "
+            "cap edge at the equator."
+        )
+
+    lats = np.linspace(theta_cap, np.pi - theta_cap, ni)
     lons = np.linspace(0.0, 2.0 * np.pi, nj, endpoint=False)
     la, lo = np.meshgrid(lats, lons, indexing="ij")
     x = radius * np.sin(la) * np.cos(lo)

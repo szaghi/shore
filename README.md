@@ -19,7 +19,7 @@
 </tr>
 <tr>
 <td><b>🔍 Pipeline-aware CLI</b><br><sub>Seven focused commands — <code>mesh</code>, <code>project</code>, <code>march</code>, <code>info</code>, <code>check</code>, <code>export</code>, <code>view</code> — let you inspect and re-run any individual stage. A Rich progress bar shows layer count, minimum Jacobian, and step thickness in real time. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
-<td><b>🏗️ Chimera-ready output</b><br><sub>Writes single-block structured grids in the Xall_GPU geo format (ni, nj, nk header + Fortran-ordered coordinates). Multi-block output and block decomposition are on the roadmap. <a href="https://szaghi.github.io/shore/concepts/o-grid">O-grid topology</a></sub></td>
+<td><b>🏗️ Multi-block topologies</b><br><sub>Single O-grid, Yin-Yang double O-grid, and 6-block sphere polar cap topology (4 equatorial sub-blocks + 2 hexahedral cap blocks). All share conforming node-for-node faces and are exported as ParaView MultiBlock (.vtm). <a href="https://szaghi.github.io/shore/concepts/sphere-cap">Polar cap topology</a></sub></td>
 </tr>
 <tr>
 <td><b>🎨 ParaView and Jupyter visualization</b><br><sub>Export to VTK StructuredGrid (<code>shore export</code>) for ParaView with per-cell Jacobian colour maps. Or use <code>shore view</code> for an immediate PyVista window, or <code>shore.vis</code> directly in Jupyter notebooks with the HTML backend. <a href="https://szaghi.github.io/shore/reference/api-vis">API reference</a></sub></td>
@@ -181,6 +181,8 @@ where $\Delta s$ is the first-layer thickness, $r$ is the growth ratio, and $\ha
 - [ ] Steger–Sorenson orthogonality source term for high-curvature bodies
 - [ ] STEP and parametric surface input (via pythonOCC or cadquery)
 - [x] PyVista visualization (`shore view`, `shore export`, `shore.vis`)
+- [x] Yin-Yang double O-grid topology (`--topology double`)
+- [x] Sphere polar cap 6-block topology (`--topology caps`)
 - [ ] GitHub Actions CI
 
 ## Author

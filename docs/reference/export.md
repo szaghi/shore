@@ -81,8 +81,30 @@ After loading a `.vts` file in ParaView:
 2. Color by **Jacobian** to identify low-quality cells (blue = low, red = high with the default `RdYlGn` palette).
 3. Use **Clip** or **Slice** to inspect interior layers.
 
+## Multi-block export (sphere-cap topology)
+
+The `shore export` command handles single-block `.geo` files. For the 6-block
+sphere-cap topology, use the Python API directly:
+
+```python
+from shore.io.vtk import write_caps_vtm
+
+# blocks is the list[np.ndarray] returned by split_ogrid_with_polar_caps
+write_caps_vtm("sphere_caps.vtm", blocks, with_jacobian=True)
+```
+
+Or use the example script:
+
+```bash
+.venv/bin/python examples/visualize_geo.py \
+    --generate --topology caps --vtk --no-view --nk 10
+# writes sphere_sub0.vts … sphere_cap_south.vts + sphere_caps.vtm
+paraview sphere_caps.vtm
+```
+
 ## See also
 
 - [`shore check`](check) — validate Jacobians without exporting
 - [`shore view`](view) — interactive PyVista viewer (no ParaView required)
 - [`shore.io.vtk`](api-vtk) — Python API for VTK export
+- [`shore.topology.sphere_cap`](api-sphere-cap) — 6-block polar cap topology

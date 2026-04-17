@@ -17,17 +17,19 @@ SHORE generates the near-body grids. Starting from the surface of a body (e.g. a
 
 **Failures are loud.** Every layer is checked for cell inversion before the grid advances. A negative Jacobian aborts marching immediately with a precise error message. There are no silent bad meshes.
 
-**No topology guessing.** SHORE does not attempt to decompose arbitrary surfaces into structured patches automatically. The current O-grid approach assumes the body is star-shaped with respect to its centroid. Complex multi-block topologies are a future extension.
+**No topology guessing.** SHORE does not attempt to decompose arbitrary surfaces into structured patches automatically. The O-grid approach assumes the body is star-shaped with respect to its centroid. Structured polar-cap and Yin-Yang topologies are available for spherical bodies; arbitrary multi-block decomposition is a future extension.
 
 ## Scope
 
 | In scope | Out of scope (roadmap) |
 |---|---|
 | Raw triangulated STL input | STEP / parametric input |
-| Single O-grid block | Multi-block structured decomposition |
-| Xall_GPU geo output | Other CFD formats (Plot3D, CGNS) |
+| Single O-grid block | Multi-block arbitrary surface decomposition |
+| Sphere polar cap 6-block topology | Elliptic volume smoothing |
+| Yin-Yang double O-grid topology | Other CFD formats (Plot3D, CGNS) |
+| Xall_GPU geo output | Box-shaped outer boundary morphing |
 | Sphere-projected surface | Advanced surface remeshing |
-| Hyperbolic normal extrusion | Elliptic volume smoothing |
+| Hyperbolic normal extrusion | — |
 
 ## Related tools
 

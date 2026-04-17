@@ -144,10 +144,12 @@ def test_no_coverage_above_pi4():
     assert gap_count > 0, "No gap found even at theta_m > pi/4"
 
 
-def test_theta_margin_ge_pi4_raises():
-    """sphere_latlon_directions(8, 12, theta_margin=pi/4) raises ValueError."""
-    with pytest.raises(ValueError, match="theta_margin.*>=.*pi/4"):
-        sphere_latlon_directions(8, 12, theta_margin=np.pi / 4)
+def test_theta_cap_out_of_range_raises():
+    """sphere_latlon_directions raises ValueError for theta_cap outside (0, pi/2)."""
+    with pytest.raises(ValueError, match="theta_cap"):
+        sphere_latlon_directions(8, 12, theta_cap=0.0)
+    with pytest.raises(ValueError, match="theta_cap"):
+        sphere_latlon_directions(8, 12, theta_cap=np.pi / 2)
 
 
 # ---------------------------------------------------------------------------

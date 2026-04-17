@@ -42,6 +42,9 @@ def generate_sphere(
     ds: float,
     growth: float,
     topology: str = "single",
+    theta_cap: float | None = None,
+    cap_pull: float = 0.0,
+    cap_squareness: float = 0.0,
 ) -> tuple[Path, ...]:
     """Create sphere.stl, sphere_k0.npz, and sphere.geo using the SHORE API.
 
@@ -70,14 +73,14 @@ def generate_sphere(
         # 2a — surface projection (k=0) for single O-grid
         if npz_path and not npz_path.exists():
             print(f"Projecting {ni}×{nj} surface layer → {npz_path} …")
-            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj)
+            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
             np.savez_compressed(str(npz_path), k0=k0)
             print(f"  Surface layer shape: {k0.shape}.")
         elif npz_path:
             print(f"  {npz_path} already exists, skipping projection.")
             k0 = np.load(str(npz_path))["k0"]
         else:
-            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj)
+            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
 
         # 3a — hyperbolic marching for single O-grid
         if not geo_path.exists():
@@ -95,14 +98,45 @@ def generate_sphere(
 
         return (geo_path,)
 
+    elif topology == "caps":
+        from shore.topology.sphere_cap import split_ogrid_with_polar_caps
+
+        # 2c — surface projection (k=0) for caps topology
+        k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
+
+        # 3c — split O-grid with polar caps
+        stem = geo_path.stem
+        labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
+        cap_geo_paths = [geo_path.parent / f"{stem}_{lbl}.geo" for lbl in labels]
+
+        if not cap_geo_paths[0].exists():
+            print(f"Generating 6-block sphere-cap topology ({nk} layers) …")
+
+            def _cb(k: int, jmin: float) -> None:
+                print(f"  layer {k:3d}  jmin={jmin:.3e}", end="\r")
+
+            blocks = split_ogrid_with_polar_caps(
+                k0, nk=nk, ds=ds, growth=growth,
+                cap_pull=cap_pull, cap_squareness=cap_squareness,
+                layer_callback=_cb,
+            )
+            print()
+            for lbl, p, blk in zip(labels, cap_geo_paths, blocks, strict=True):
+                write_geo(str(p), blk)
+                print(f"  {p} written — shape {blk.shape[:3]}.")
+        else:
+            print(f"  {cap_geo_paths[0]} already exists, skipping generation.")
+
+        return tuple(cap_geo_paths)
+
     else:  # double topology (Yin-Yang)
         from shore.surface.yinyang import project_yang_to_surface
 
         theta_margin = np.pi / 6
 
         # 2b — project both Yin and Yang
-        k0_yin = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_margin=theta_margin)
-        k0_yang = project_yang_to_surface(mesh, ni=ni, nj=nj, theta_margin=theta_margin)
+        k0_yin = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
+        k0_yang = project_yang_to_surface(mesh, ni=ni, nj=nj, theta_margin=theta_cap)
 
         stem = geo_path.stem.removesuffix("_yin").removesuffix("_yang")
         yin_geo_path = geo_path.parent / f"{stem}_yin.geo"
@@ -154,6 +188,29 @@ def export_to_vtk(
             print(f"  {vts_path} written.")
             vtk_paths.append(vts_path)
 
+    elif topology == "caps":
+        from shore.io.vtk import write_caps_vtm
+
+        # Individual .vts files for each of the 6 blocks
+        blocks = []
+        for geo_path in geo_paths:
+            grid = read_geo(geo_path)
+            blocks.append(grid)
+            vts_path = geo_path.with_suffix(".vts")
+            print(f"Exporting {geo_path} → {vts_path} …")
+            from shore.io.vtk import open_to_pyvista
+            open_to_pyvista(grid, with_jacobian=True).save(str(vts_path))
+            print(f"  {vts_path} written.")
+            vtk_paths.append(vts_path)
+
+        # Combined MultiBlock
+        stem = geo_paths[0].stem.rsplit("_sub0", 1)[0]
+        vtm_path = geo_paths[0].parent / f"{stem}_caps.vtm"
+        print(f"Exporting combined sphere-cap MultiBlock → {vtm_path} …")
+        write_caps_vtm(vtm_path, blocks, with_jacobian=True)
+        print(f"  {vtm_path} written.")
+        vtk_paths.append(vtm_path)
+
     else:  # double topology (Yin-Yang)
         # Write individual .vts files for each block
         for geo_path in geo_paths:
@@ -198,8 +255,8 @@ def main() -> None:
     )
     gen.add_argument(
         "--topology", default="single",
-        choices=["single", "double"],
-        help="'single' (default) for single O-grid, 'double' for Yin-Yang",
+        choices=["single", "double", "caps"],
+        help="'single' (default) for single O-grid, 'double' for Yin-Yang, 'caps' for 6-block sphere-cap",
     )
     gen.add_argument(
         "--vtk", action="store_true",
@@ -211,6 +268,27 @@ def main() -> None:
     gen.add_argument("--nk",     type=int,   default=20,   help="Wall-normal layers")
     gen.add_argument("--ds",     type=float, default=0.02, help="First-layer thickness")
     gen.add_argument("--growth", type=float, default=1.10, help="Layer growth ratio")
+    theta_grp = gen.add_mutually_exclusive_group()
+    theta_grp.add_argument(
+        "--theta-cap", type=float, default=None, metavar="RAD",
+        help="Polar exclusion angle in radians (default 0.05*pi ≈ 9°). "
+             "Cap boundary parallel radius = sin(theta_cap) on a unit sphere.",
+    )
+    theta_grp.add_argument(
+        "--theta-cap-deg", type=float, default=None, metavar="DEG",
+        help="Polar exclusion angle in degrees (alias for --theta-cap).",
+    )
+    gen.add_argument(
+        "--cap-pull", type=float, default=0.0, metavar="PULL",
+        help="[caps topology] Blend factor [0,1) doming the cap interior toward the pole. "
+             "0=off (default). Values 0.3-0.5 improve interior cell quality.",
+    )
+    gen.add_argument(
+        "--cap-squareness", type=float, default=0.0, metavar="SQ",
+        help="[caps topology] Blend factor [0,1] straightening each cap boundary edge "
+             "from circular arc toward geodesic chord (inscribed square). "
+             "0=circular (default), 1=full chord (~90 deg corner angle).",
+    )
 
     # -- visualisation options -----------------------------------------------
     parser.add_argument(
@@ -233,6 +311,13 @@ def main() -> None:
 
     # -- generation ----------------------------------------------------------
     if args.generate:
+        # Resolve theta_cap from mutually-exclusive group
+        theta_cap: float | None = None
+        if args.theta_cap_deg is not None:
+            theta_cap = np.deg2rad(args.theta_cap_deg)
+        elif args.theta_cap is not None:
+            theta_cap = args.theta_cap
+
         stl_path = Path("sphere.stl")
         npz_path = Path("sphere_k0.npz") if args.topology == "single" else None
         geo_path = Path("sphere.geo")
@@ -241,6 +326,9 @@ def main() -> None:
             ni=args.ni, nj=args.nj, nk=args.nk,
             ds=args.ds, growth=args.growth,
             topology=args.topology,
+            theta_cap=theta_cap,
+            cap_pull=args.cap_pull,
+            cap_squareness=args.cap_squareness,
         )
 
         # VTK export after generation

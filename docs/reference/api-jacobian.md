@@ -2,8 +2,12 @@
 
 Per-cell Jacobian computation for structured O-grids.
 
-::: tip O-grid only
-All functions in this module assume an **O-grid topology**: the j-index is periodic (`j=nj-1` and `j=0` are adjacent). Passing a plain Cartesian box grid will produce incorrect results because the periodic j-wrap creates a non-physical backward cell across the box boundary.
+::: tip O-grid vs open topology
+`jacobian_field` and `jacobian_per_layer` assume a **periodic** j-direction
+(O-grid). For open (non-periodic) blocks — such as the equatorial sub-blocks
+and cap blocks of the [sphere-cap topology](/concepts/sphere-cap) — use
+`_jacobian_field_open` instead. `min_jacobian_two_layers` accepts a
+`periodic_j` flag to select the correct behaviour automatically.
 :::
 
 ## Functions
@@ -80,19 +84,22 @@ This is the same quantity that `shore check` displays in its table and that the 
 ### `min_jacobian_two_layers`
 
 ```python
-def min_jacobian_two_layers(layer_k: np.ndarray, layer_k1: np.ndarray) -> float
+def min_jacobian_two_layers(
+    layer_k: np.ndarray,
+    layer_k1: np.ndarray,
+    periodic_j: bool = True,
+) -> float
 ```
 
 Minimum Jacobian over all cells between two consecutive layers.
 
-Equivalent to `jacobian_field(np.stack([layer_k, layer_k1], axis=2)).min()`, but without allocating the full 4-D array when only the scalar result is needed.
-
 **Parameters**
 
-| Name | Type | Description |
-|---|---|---|
-| `layer_k` | `np.ndarray (ni, nj, 3)` | Inner layer (k) |
-| `layer_k1` | `np.ndarray (ni, nj, 3)` | Outer layer (k+1) |
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `layer_k` | `np.ndarray (ni, nj, 3)` | — | Inner layer (k) |
+| `layer_k1` | `np.ndarray (ni, nj, 3)` | — | Outer layer (k+1) |
+| `periodic_j` | `bool` | `True` | When `True` the j-direction wraps (O-grid, `nj` cells). When `False` it is open (`nj-1` cells). |
 
 **Returns**
 
@@ -113,6 +120,31 @@ assert jmin > 0.0   # valid outward extrusion
 ```
 
 Used internally by `march()` to check cell quality before accepting each new layer.
+
+---
+
+### `_jacobian_field_open` *(internal)*
+
+```python
+def _jacobian_field_open(grid: np.ndarray) -> np.ndarray
+```
+
+Jacobian field for a non-periodic (open) structured volume. Identical to
+`jacobian_field` but the j-direction is not wrapped: there are `nj-1` cells
+in j rather than `nj`.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `grid` | `np.ndarray (ni, nj, nk, 3)` | Open structured volume |
+
+**Returns**
+
+`numpy.ndarray` of shape `(ni-1, nj-1, nk-1)`.
+
+Used by the [sphere-cap topology](/concepts/sphere-cap) for equatorial
+sub-blocks and cap blocks, which have open boundaries in both i and j.
 
 ## Notes
 

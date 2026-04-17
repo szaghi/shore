@@ -40,8 +40,12 @@ _GROWTH   = Annotated[float, typer.Option(help="Geometric growth ratio between s
 _SMOOTH   = Annotated[float, typer.Option(help="Laplacian smooth strength per layer [0–1].")]
 _SITERS   = Annotated[int,   typer.Option(help="Laplacian sweeps per layer.")]
 _VERBOSE  = Annotated[bool,  typer.Option("--verbose", "-v", help="Show rich progress bar.")]
-_TOPOLOGY = Annotated[str,   typer.Option("--topology", help="'single' (default) or 'double' (Yin-Yang).")]
-_THETA_MARGIN = Annotated[float | None, typer.Option("--theta-margin", help="Polar-cap exclusion angle in radians. Applies to both single and double topology; default pi/6 for double, ignored (legacy formula) for single unless explicitly set.")]
+_TOPOLOGY = Annotated[str,   typer.Option("--topology", help="'single' (default), 'double' (Yin-Yang), or 'caps' (6-block sphere polar cap).")]
+_THETA_CAP = Annotated[float | None, typer.Option("--theta-cap", help="Polar exclusion angle in radians: the equatorial band covers [theta_cap, pi-theta_cap]. Cap boundary parallel radius = sin(theta_cap). Default 0.05*pi (~9 deg). Applies to 'single' and 'caps' topologies.")]
+_THETA_CAP_DEG = Annotated[float | None, typer.Option("--theta-cap-deg", help="Convenience alias for --theta-cap in degrees. Mutually exclusive with --theta-cap.")]
+_THETA_MARGIN = Annotated[float | None, typer.Option("--theta-margin", help="Deprecated alias for --theta-cap (radians). Use --theta-cap instead.")]
+_CAP_PULL       = Annotated[float, typer.Option("--cap-pull", help="[caps] Blend factor [0,1) doming the cap interior toward the pole. 0=off (default). Values 0.3-0.5 improve interior cell quality.")]
+_CAP_SQUARENESS = Annotated[float, typer.Option("--cap-squareness", help="[caps] Blend factor [0,1] straightening each cap boundary edge from circular arc toward geodesic chord (inscribed square). 0=circular (default), 1=full chord (~90 deg corner angle).")]
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +97,11 @@ def mesh(
     smooth:       _SMOOTH  = 0.2,
     smooth_iters: _SITERS  = 2,
     topology:     _TOPOLOGY = "single",
-    theta_margin: _THETA_MARGIN = None,
+    theta_cap:     _THETA_CAP     = None,
+    theta_cap_deg: _THETA_CAP_DEG = None,
+    theta_margin:  _THETA_MARGIN  = None,
+    cap_pull:        _CAP_PULL        = 0.0,
+    cap_squareness:  _CAP_SQUARENESS  = 0.0,
     verbose:      _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL → structured O-grid volume → geo."""
@@ -101,12 +109,22 @@ def mesh(
         _err.print(f"[red]Error:[/red] file not found: {input}")
         raise typer.Exit(1) from None
 
-    if topology not in {"single", "double"}:
-        _err.print(f"[red]Error:[/red] unknown topology '{topology}'. Choose 'single' or 'double'.")
+    if topology not in {"single", "double", "caps"}:
+        _err.print(f"[red]Error:[/red] unknown topology '{topology}'. Choose 'single', 'double', or 'caps'.")
         raise typer.Exit(1) from None
 
-    if topology == "double" and theta_margin is None:
-        theta_margin = np.pi / 6  # default for Yin-Yang
+    n_theta = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
+    if n_theta > 1:
+        _err.print("[red]Error:[/red] supply at most one of --theta-cap, --theta-cap-deg, --theta-margin.")
+        raise typer.Exit(1) from None
+    if theta_cap_deg is not None:
+        theta_cap = np.deg2rad(theta_cap_deg)
+    elif theta_margin is not None:
+        theta_cap = theta_margin
+
+    # Yin-Yang default: pi/6 if user gave nothing
+    if topology == "double" and theta_cap is None:
+        theta_cap = np.pi / 6
 
     out = output or _default_output(input, ".geo")
 
@@ -120,9 +138,11 @@ def mesh(
         mesh_obj = load_stl(input)
 
     if topology == "single":
-        _run_single_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_margin, verbose)
+        _run_single_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, verbose)
+    elif topology == "caps":
+        _run_caps_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, cap_pull, cap_squareness, verbose)
     else:
-        _run_double_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_margin, verbose)
+        _run_double_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, verbose)
 
 
 def _run_single_topology(
@@ -135,7 +155,7 @@ def _run_single_topology(
     growth: float,
     smooth: float,
     smooth_iters: int,
-    theta_margin: float | None,
+    theta_cap: float | None,
     verbose: bool,
 ) -> None:
     """Run the single O-grid topology pipeline."""
@@ -143,10 +163,10 @@ def _run_single_topology(
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Projecting    ", total=1, info="")
-            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
-        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
 
     # --- stage 2: march ---
     if verbose:
@@ -166,6 +186,67 @@ def _run_single_topology(
         _console.print(f"[green]✓[/green] Wrote {out}  ({ni}×{nj}×{nk})")
 
 
+def _run_caps_topology(
+    mesh_obj,
+    out: Path,
+    ni: int,
+    nj: int,
+    nk: int,
+    ds: float,
+    growth: float,
+    smooth: float,
+    smooth_iters: int,
+    theta_cap: float | None,
+    cap_pull: float,
+    cap_squareness: float,
+    verbose: bool,
+) -> None:
+    """Run the 6-block sphere polar cap topology pipeline."""
+    from shore.topology.sphere_cap import split_ogrid_with_polar_caps
+
+    # --- stage 1: project ---
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Projecting    ", total=1, info="")
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+            prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
+    else:
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+
+    # --- stage 2: march all 6 blocks ---
+    nc = nj // 4 + 1
+    if verbose:
+        with _progress() as prog:
+            t = prog.add_task("Marching caps ", total=nk - 1, info="")
+
+            def _cb(k: int, jmin: float) -> None:
+                prog.update(t, advance=1, info=f"jmin={jmin:.2e}")
+
+            blocks = split_ogrid_with_polar_caps(
+                k0, nk, ds, growth, smooth, smooth_iters,
+                cap_pull=cap_pull, cap_squareness=cap_squareness,
+                layer_callback=_cb,
+            )
+    else:
+        blocks = split_ogrid_with_polar_caps(
+            k0, nk, ds, growth, smooth, smooth_iters,
+            cap_pull=cap_pull, cap_squareness=cap_squareness,
+        )
+
+    # --- stage 3: write ---
+    stem = out.stem
+    labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
+    for label, block in zip(labels, blocks, strict=True):
+        geo_path = out.parent / f"{stem}_{label}.geo"
+        write_geo(geo_path, block)
+
+    if verbose:
+        _console.print(
+            f"[green]✓[/green] Wrote 6 blocks  "
+            f"(sub: {ni}×{nc}×{nk}, caps: {nc}×{nc}×{nk})"
+        )
+
+
 def _run_double_topology(
     mesh_obj,
     out: Path,
@@ -176,7 +257,7 @@ def _run_double_topology(
     growth: float,
     smooth: float,
     smooth_iters: int,
-    theta_margin: float,
+    theta_cap: float,
     verbose: bool,
 ) -> None:
     """Run the double O-grid (Yin-Yang) topology pipeline."""
@@ -186,16 +267,16 @@ def _run_double_topology(
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Projecting Yin ", total=1, info="")
-            k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+            k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
 
         with _progress() as prog:
             t = prog.add_task("Projecting Yang", total=1, info="")
-            k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+            k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_cap)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
-        k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
-        k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_margin)
+        k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+        k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_cap)
 
     # --- stage 2: march both ---
     stem = out.stem.removesuffix("_yin").removesuffix("_yang")
@@ -234,15 +315,27 @@ def _run_double_topology(
 @app.command()
 def project(
     input: Annotated[Path, typer.Argument(help="Input STL file.")],
-    output:  Annotated[Path | None, typer.Option("-o", "--output", help="Output .npz file.")] = None,
-    ni:      _NI      = 40,
-    nj:      _NJ      = 60,
-    verbose: _VERBOSE = False,
+    output:        Annotated[Path | None, typer.Option("-o", "--output", help="Output .npz file.")] = None,
+    ni:            _NI            = 40,
+    nj:            _NJ            = 60,
+    theta_cap:     _THETA_CAP     = None,
+    theta_cap_deg: _THETA_CAP_DEG = None,
+    theta_margin:  _THETA_MARGIN  = None,
+    verbose:       _VERBOSE       = False,
 ) -> None:
     """Project a structured sphere grid onto an STL surface (k=0 layer only)."""
     if not input.exists():
         _err.print(f"[red]Error:[/red] file not found: {input}")
         raise typer.Exit(1) from None
+
+    n_theta = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
+    if n_theta > 1:
+        _err.print("[red]Error:[/red] supply at most one of --theta-cap, --theta-cap-deg, --theta-margin.")
+        raise typer.Exit(1) from None
+    if theta_cap_deg is not None:
+        theta_cap = np.deg2rad(theta_cap_deg)
+    elif theta_margin is not None:
+        theta_cap = theta_margin
 
     out = output or _default_output(input, "_k0.npz")
 
@@ -254,11 +347,11 @@ def project(
 
         with _progress() as prog:
             t = prog.add_task("Projecting    ", total=1, info="")
-            k0 = project_sphere_to_surface(mesh_obj, ni, nj)
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
         mesh_obj = load_stl(input)
-        k0 = project_sphere_to_surface(mesh_obj, ni, nj)
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
 
     np.savez_compressed(out, k0=k0)
 

@@ -23,7 +23,7 @@ where:
 
 $$\mathbf{t}_i = \mathbf{P}_{i+1,j} - \mathbf{P}_{i-1,j} \qquad \mathbf{t}_j = \mathbf{P}_{i,j+1} - \mathbf{P}_{i,j-1}$$
 
-Central differences are used in the interior; one-sided differences at the i-boundaries (i=0 and i=ni-1). The j-direction is treated as **periodic** (O-grid topology), so $j=-1$ wraps to $j=n_j-1$.
+Central differences are used in the interior; one-sided differences at boundaries. By default the j-direction is treated as **periodic** (O-grid topology), so $j=-1$ wraps to $j=n_j-1$. The i-direction is open by default. Both directions can be independently set to periodic or open via the `periodic=(periodic_i, periodic_j)` flag — this is how the polar cap blocks are marched with `periodic=(False, False)`.
 
 ## Laplacian smoothing
 

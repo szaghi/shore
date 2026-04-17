@@ -64,7 +64,11 @@ def jacobian_per_layer(grid: np.ndarray) -> np.ndarray:
     return jacobian_field(grid).min(axis=(0, 1))
 
 
-def min_jacobian_two_layers(layer_k: np.ndarray, layer_k1: np.ndarray) -> float:
+def min_jacobian_two_layers(
+    layer_k: np.ndarray,
+    layer_k1: np.ndarray,
+    periodic_j: bool = True,
+) -> float:
     """Return the minimum Jacobian between two consecutive structured layers.
 
     Convenience wrapper used during hyperbolic marching.
@@ -73,6 +77,10 @@ def min_jacobian_two_layers(layer_k: np.ndarray, layer_k1: np.ndarray) -> float:
     ----------
     layer_k, layer_k1 :
         Consecutive layers, shape (ni, nj, 3).
+    periodic_j :
+        When ``True`` (default) the j-direction wraps around (O-grid).
+        When ``False`` the last j-column does not wrap; the cell count in j
+        is ``nj-1`` instead of ``nj``.
 
     Returns
     -------
@@ -80,4 +88,30 @@ def min_jacobian_two_layers(layer_k: np.ndarray, layer_k1: np.ndarray) -> float:
         Minimum cell Jacobian. Negative → inverted cell.
     """
     two_layer = np.stack([layer_k, layer_k1], axis=2)  # (ni, nj, 2, 3)
-    return float(jacobian_field(two_layer).min())
+    if periodic_j:
+        return float(jacobian_field(two_layer).min())
+    return float(_jacobian_field_open(two_layer).min())
+
+
+def _jacobian_field_open(grid: np.ndarray) -> np.ndarray:
+    """Jacobian field for a non-periodic (open) structured volume.
+
+    Identical to ``jacobian_field`` but the j-direction is not wrapped:
+    there are ``nj-1`` cells in j rather than ``nj``.
+
+    Parameters
+    ----------
+    grid :
+        Structured volume, shape (ni, nj, nk, 3).
+
+    Returns
+    -------
+    numpy.ndarray, shape (ni-1, nj-1, nk-1)
+    """
+    lk  = grid[:-1, :-1, :-1, :]           # (ni-1, nj-1, nk-1, 3)
+    lk1 = grid[:-1, :-1,  1:, :]
+    e1  = grid[:-1, 1:,  :-1, :] - lk      # j-tangent  (no wrap)
+    e2  = grid[1:,  :-1, :-1, :] - lk      # i-tangent
+    e3  = lk1 - lk                          # k-tangent
+
+    return np.einsum("ijkl,ijkl->ijk", np.cross(e2, e1), e3)
