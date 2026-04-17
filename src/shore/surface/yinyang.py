@@ -27,6 +27,7 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
+from shore.exceptions import MeshInputError
 from shore.surface.remesh import sphere_latlon_directions
 
 
@@ -120,7 +121,7 @@ def project_yang_to_surface(
     n_rays = flat_dirs.shape[0]
     if len(hit_rays) != n_rays:
         missing = n_rays - len(hit_rays)
-        raise ValueError(
+        raise MeshInputError(
             f"{missing} of {n_rays} rays missed the body.  "
             "The body may not be star-shaped w.r.t. its centroid, or the STL "
             "has holes.  Try repairing the mesh or shifting the centroid."

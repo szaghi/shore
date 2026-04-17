@@ -25,6 +25,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+from shore.exceptions import MarchingError
 from shore.volume.jacobian import min_jacobian_two_layers
 
 
@@ -223,7 +224,7 @@ def march(
 
         jmin = min_jacobian_two_layers(layer, new_layer, periodic_j=periodic[1])
         if jmin <= 0.0:
-            raise RuntimeError(
+            raise MarchingError(
                 f"Negative Jacobian ({jmin:.3e}) detected at layer k={k+1}.  "
                 "Reduce ds, growth ratio, or increase smooth_strength."
             )

@@ -18,6 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
+from shore.exceptions import MeshInputError
+
 
 def write_geo(path: str | Path, grid: np.ndarray) -> None:
     """Write a single structured block to an ASCII geo file.
@@ -61,7 +63,7 @@ def read_geo(path: str | Path) -> np.ndarray:
 
     n = ni * nj * nk
     if data.size != 3 * n:
-        raise ValueError(
+        raise MeshInputError(
             f"Expected {3 * n} values for ({ni},{nj},{nk}) grid, "
             f"got {data.size}."
         )

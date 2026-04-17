@@ -6,6 +6,8 @@ from pathlib import Path
 
 import trimesh
 
+from shore.exceptions import MeshInputError
+
 
 def load_stl(path: str | Path) -> trimesh.Trimesh:
     """Load an STL file and return a watertight-checked Trimesh.
@@ -30,11 +32,11 @@ def load_stl(path: str | Path) -> trimesh.Trimesh:
     """
     path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(path)
+        raise MeshInputError(f"STL file not found: {path}")
 
     geometry = trimesh.load(path, force="mesh")
 
     if not isinstance(geometry, trimesh.Trimesh):
-        raise ValueError(f"Expected a single mesh, got {type(geometry)}")
+        raise MeshInputError(f"Expected a single mesh, got {type(geometry)}")
 
     return geometry

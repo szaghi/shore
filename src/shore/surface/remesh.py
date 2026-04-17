@@ -19,6 +19,8 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
+from shore.exceptions import MeshInputError, ParameterError
+
 
 def sphere_latlon_directions(
     ni: int,
@@ -63,7 +65,7 @@ def sphere_latlon_directions(
     # --- resolve theta_cap ---
     n_supplied = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
     if n_supplied > 1:
-        raise ValueError(
+        raise ParameterError(
             "Supply at most one of theta_cap, theta_cap_deg, theta_margin."
         )
     if theta_cap_deg is not None:
@@ -76,7 +78,7 @@ def sphere_latlon_directions(
         theta_cap = 0.05 * np.pi
 
     if not (0.0 < theta_cap < np.pi / 2):
-        raise ValueError(
+        raise ParameterError(
             f"theta_cap={theta_cap:.6f} must be in (0, pi/2). "
             "0 would collapse the cap to a point; pi/2 would put the "
             "cap edge at the equator."
@@ -141,7 +143,7 @@ def project_sphere_to_surface(
     # --- resolve theta_cap ---
     n_supplied = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
     if n_supplied > 1:
-        raise ValueError(
+        raise ParameterError(
             "Supply at most one of theta_cap, theta_cap_deg, theta_margin."
         )
     if theta_cap_deg is not None:
@@ -168,7 +170,7 @@ def project_sphere_to_surface(
     n_rays = flat_dirs.shape[0]
     if len(hit_rays) != n_rays:
         missing = n_rays - len(hit_rays)
-        raise ValueError(
+        raise MeshInputError(
             f"{missing} of {n_rays} rays missed the body.  "
             "The body may not be star-shaped w.r.t. its centroid, or the STL "
             "has holes.  Try repairing the mesh or shifting the centroid."

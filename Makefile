@@ -13,7 +13,7 @@ dev: $(VENV)/bin/activate
 
 ## Run test suite
 test: dev
-	$(VENV)/bin/pytest --cov=shore --cov-report=term-missing
+	$(VENV)/bin/pytest
 
 ## Check linting (no fixes)
 lint: dev

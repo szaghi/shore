@@ -35,6 +35,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+from shore.exceptions import MarchingError, ParameterError
 from shore.volume.hyperbolic import _compute_normals, _laplacian_smooth
 from shore.volume.jacobian import min_jacobian_two_layers, _jacobian_field_open
 
@@ -653,7 +654,7 @@ def _check_jacobian(
         jmin = float(jac.min())
 
     if jmin < tol:
-        raise RuntimeError(
+        raise MarchingError(
             f"Negative Jacobian ({jmin:.3e}) in {label} at layer k={k+1}. "
             "Reduce ds, growth ratio, or increase smooth_strength."
         )
@@ -740,7 +741,7 @@ def split_ogrid_with_polar_caps(
         ni, nj_raw, nk_in, _ = grid.shape
         nk = nk_in
     else:
-        raise ValueError(f"grid must be 3-D or 4-D, got shape {grid.shape}")
+        raise ParameterError(f"grid must be 3-D or 4-D, got shape {grid.shape}")
 
     # Step 1 — validate/adjust nj
     nj = _adjust_nj(nj_raw)
