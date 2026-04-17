@@ -42,6 +42,11 @@ def yang_latlon_directions(
     ni: int,
     nj: int,
     theta_margin: float = DEFAULT_THETA_MARGIN,
+    i_spacing: str = "uniform",
+    i_beta: float = 3.0,
+    j_spacing: str = "uniform",
+    j_beta: float = 3.0,
+    j_cluster_lon: float | None = None,
 ) -> np.ndarray:
     """Build (ni, nj) unit direction vectors for the Yang O-grid block.
 
@@ -63,7 +68,11 @@ def yang_latlon_directions(
     numpy.ndarray, shape (ni, nj, 3)
         Unit direction vectors for the Yang block.
     """
-    d = sphere_latlon_directions(ni, nj, theta_margin)  # (ni, nj, 3)
+    d = sphere_latlon_directions(
+        ni, nj, theta_margin,
+        i_spacing=i_spacing, i_beta=i_beta,
+        j_spacing=j_spacing, j_beta=j_beta, j_cluster_lon=j_cluster_lon,
+    )  # (ni, nj, 3)
     flat = d.reshape(-1, 3)  # (ni*nj, 3)
     rotated = (YANG_ROTATION @ flat.T).T  # (ni*nj, 3)
     return rotated.reshape(ni, nj, 3)
@@ -74,6 +83,11 @@ def project_yang_to_surface(
     ni: int,
     nj: int,
     theta_margin: float = DEFAULT_THETA_MARGIN,
+    i_spacing: str = "uniform",
+    i_beta: float = 3.0,
+    j_spacing: str = "uniform",
+    j_beta: float = 3.0,
+    j_cluster_lon: float | None = None,
 ) -> np.ndarray:
     """Project a Yang O-grid sphere grid onto a triangulated surface.
 
@@ -103,7 +117,11 @@ def project_yang_to_surface(
         star-shaped).
     """
     centroid = mesh.centroid  # (3,)
-    directions = yang_latlon_directions(ni, nj, theta_margin)  # (ni, nj, 3)
+    directions = yang_latlon_directions(
+        ni, nj, theta_margin,
+        i_spacing=i_spacing, i_beta=i_beta,
+        j_spacing=j_spacing, j_beta=j_beta, j_cluster_lon=j_cluster_lon,
+    )  # (ni, nj, 3)
 
     flat_dirs = directions.reshape(-1, 3)  # (ni*nj, 3)
     origins = np.tile(centroid, (flat_dirs.shape[0], 1))  # (ni*nj, 3)

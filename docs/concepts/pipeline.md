@@ -6,39 +6,41 @@ SHORE's pipeline transforms a raw triangulated surface into a structured volume 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Input: body.stl  (unstructured triangles, any complexity)       │
+│  Input: body.stl  (unstructured triangles, any complexity)      │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
                  ┌─────────────▼─────────────┐
-                 │   Stage 1 — Projection     │  shore project
+                 │   Stage 1 — Projection    │  shore project
                  │                           │
                  │  Build a (ni×nj) lat-lon  │
                  │  sphere around centroid.  │
+                 │  Redistribute angles     │
+                 │  with spacing law.       │
                  │  Cast ni×nj rays inward.  │
                  │  Intersect with STL BVH.  │
                  └─────────────┬─────────────┘
                                │  k=0 layer: (ni, nj, 3)
                  ┌─────────────▼─────────────┐
-                 │   Stage 2 — Marching       │  shore march
+                 │   Stage 2 — Marching      │  shore march
                  │                           │
                  │  For k = 0 … nk-2:        │
-                 │    compute normals(k)      │
-                 │    advance k+1            │
+                 │    compute normals(k)     │
+                 │    advance k+1 by step[k] │
                  │    smooth k+1             │
                  │    check Jacobian(k, k+1) │
                  └─────────────┬─────────────┘
                                │  volume: (ni, nj, nk, 3)
                  ┌─────────────▼─────────────┐
-                 │   Output: body.geo         │  write_geo
-                 │   Xall_GPU format          │
+                 │   Output: body.geo        │  write_geo
+                 │   Xall_GPU format         │
                  └───────────────────────────┘
                                │
               ┌────────────────┴────────────────┐
               │                                 │
 ┌─────────────▼─────────────┐   ┌──────────────▼──────────────┐
-│  ParaView export           │   │  Interactive viewer          │
-│  shore export body.geo     │   │  shore view body.geo         │
-│  → body.vts (.vts format)  │   │  → PyVista window / Jupyter  │
+│  ParaView export          │   │  Interactive viewer         │
+│  shore export body.geo    │   │  shore view body.geo        │
+│  → body.vts (.vts format) │   │  → PyVista window / Jupyter │
 └───────────────────────────┘   └─────────────────────────────┘
 ```
 
@@ -62,7 +64,7 @@ np.savez_compressed("body_k0.npz", k0=surface_layer)
 k0 = np.load("body_k0.npz")["k0"]   # shape (ni, nj, 3)
 ```
 
-This allows inspecting the surface projection before committing to a full march, and re-running stage 2 with different parameters without repeating stage 1.
+This allows inspecting the surface projection before committing to a full march, and re-running stage 2 with different parameters without repeating stage 1. Surface spacing (the angular distribution of rays) is baked into the `.npz` at stage 1 and cannot be changed at stage 2. Volume spacing (the wall-normal step-size distribution) is chosen independently at stage 2. See [Spacing laws](/concepts/spacing) for details.
 
 ## Visualization
 

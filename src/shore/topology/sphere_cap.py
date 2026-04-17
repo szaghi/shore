@@ -38,6 +38,7 @@ import numpy as np
 from shore.exceptions import MarchingError, ParameterError
 from shore.volume.hyperbolic import _compute_normals, _laplacian_smooth
 from shore.volume.jacobian import min_jacobian_two_layers, _jacobian_field_open
+from shore.volume.spacing import build_k_steps
 
 
 # ---------------------------------------------------------------------------
@@ -664,13 +665,14 @@ def _check_jacobian(
 def split_ogrid_with_polar_caps(
     grid: np.ndarray,
     nk: int,
-    ds: float,
+    ds: float = 1e-3,
     growth: float = 1.15,
     smooth_strength: float = 0.2,
     smooth_iters: int = 2,
     cap_pull: float = 0.0,
     cap_squareness: float = 0.0,
     layer_callback: Callable[[int, float], None] | None = None,
+    steps: np.ndarray | None = None,
 ) -> list[np.ndarray]:
     """Split a sphere O-grid into 4 equatorial sub-blocks + 2 polar cap blocks.
 
@@ -713,6 +715,10 @@ def split_ogrid_with_polar_caps(
         Optional callable ``(k, jmin_global)`` invoked after each accepted
         layer set, where ``jmin_global`` is the minimum Jacobian across all
         6 blocks.
+    steps :
+        Pre-computed wall-normal step sizes, shape ``(nk-1,)``.  When
+        supplied, overrides ``ds`` and ``growth``.  Use
+        ``shore.volume.spacing.build_k_steps`` to generate tanh/tanh2 laws.
 
     Returns
     -------
@@ -846,9 +852,11 @@ def split_ogrid_with_polar_caps(
     cap_north[:, :, 0, :] = cap_north_k0_seed
     cap_south[:, :, 0, :] = cap_south_k0_seed
 
+    _steps = steps if steps is not None else build_k_steps(nk, ds, growth)
+
     # Step 6 — simultaneous layer-by-layer marching
     for k in range(nk - 1):
-        step = ds * (growth ** k)
+        step = _steps[k]
 
         # --- 1. Advance all 4 equatorial sub-blocks ---
         new_subs = []

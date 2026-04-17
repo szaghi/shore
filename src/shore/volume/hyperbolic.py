@@ -27,6 +27,7 @@ import numpy as np
 
 from shore.exceptions import MarchingError
 from shore.volume.jacobian import min_jacobian_two_layers
+from shore.volume.spacing import build_k_steps
 
 
 # ---------------------------------------------------------------------------
@@ -166,12 +167,13 @@ def _laplacian_smooth(
 def march(
     surface: np.ndarray,
     nk: int,
-    ds: float,
+    ds: float = 1e-3,
     growth: float = 1.15,
     smooth_strength: float = 0.2,
     smooth_iters: int = 2,
     periodic: tuple[bool, bool] = (False, True),
     layer_callback: Callable[[int, float, float], None] | None = None,
+    steps: np.ndarray | None = None,
 ) -> np.ndarray:
     """Extrude a structured surface layer into a volume by hyperbolic marching.
 
@@ -198,6 +200,10 @@ def march(
         Optional callable invoked after each accepted layer with signature
         ``(k, jmin, step)`` where k is 1-based, jmin is the minimum cell
         Jacobian, and step is the physical layer thickness.
+    steps :
+        Pre-computed wall-normal step sizes, shape ``(nk-1,)``.  When
+        supplied, overrides ``ds`` and ``growth``.  Use
+        ``shore.volume.spacing.build_k_steps`` to generate tanh/tanh2 laws.
 
     Returns
     -------
@@ -206,9 +212,11 @@ def march(
 
     Raises
     ------
-    RuntimeError
+    MarchingError
         If a negative-Jacobian cell is detected during marching.
     """
+    _steps = steps if steps is not None else build_k_steps(nk, ds, growth)
+
     ni, nj, _ = surface.shape
     grid = np.empty((ni, nj, nk, 3), dtype=np.float64)
     grid[:, :, 0, :] = surface
@@ -216,7 +224,7 @@ def march(
     for k in range(nk - 1):
         layer     = grid[:, :, k, :]
         normals   = _compute_normals(layer, periodic=periodic)
-        step      = ds * (growth ** k)
+        step      = _steps[k]
         new_layer = layer + step * normals
 
         for _ in range(smooth_iters):

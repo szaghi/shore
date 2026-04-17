@@ -39,8 +39,37 @@ Key parameters:
 | `--ni` | 40 | Latitude points |
 | `--nj` | 60 | Longitude points |
 | `--nk` | 20 | Wall-normal layers |
-| `--ds` | 0.02 | First-layer thickness |
-| `--growth` | 1.10 | Layer growth ratio |
+| `--ds` | 0.02 | First-layer thickness (geometric) |
+| `--growth` | 1.10 | Layer growth ratio (geometric) |
+| `--smooth` | 0.2 | Laplacian blend strength [0–1] |
+| `--smooth-iters` | 2 | Laplacian sweeps per layer |
+| `--surface-i-spacing` | `uniform` | Latitude spacing: `uniform`, `tanh`, `tanh2` |
+| `--surface-i-beta` | 3.0 | Clustering strength for latitude tanh/tanh2 |
+| `--surface-j-spacing` | `uniform` | Longitude spacing: `uniform`, `tanh2` |
+| `--surface-j-beta` | 3.0 | Clustering strength for longitude tanh2 |
+| `--j-cluster-lon` | — | Longitude to cluster toward (radians) |
+| `--volume-k-spacing` | `geometric` | Wall-normal spacing: `geometric`, `tanh`, `tanh2` |
+| `--volume-k-beta` | 3.0 | Clustering strength for volume tanh/tanh2 |
+| `--volume-k-thickness` | — | Total wall-normal thickness (required for tanh/tanh2) |
+
+Spacing examples:
+
+```bash
+# Tanh volume spacing — fixed far-field boundary
+python examples/visualize_geo.py --generate \
+  --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
+
+# Longitude clustering at the leading edge (phi=0)
+python examples/visualize_geo.py --generate \
+  --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0
+
+# Latitude clustering + tanh volume spacing
+python examples/visualize_geo.py --generate \
+  --surface-i-spacing tanh --surface-i-beta 4.0 \
+  --volume-k-spacing tanh --volume-k-beta 3.0 --volume-k-thickness 1.5
+```
+
+See [Spacing laws](/concepts/spacing) for an explanation of each distribution and what physical region it clusters toward.
 
 Visualise an existing `.geo` or `.npz` file directly:
 
@@ -75,7 +104,10 @@ Both blocks share the same `(ni, nj, nk)` dimensions and can be exported to Para
 
 ### `examples/visualize.ipynb` — Jupyter Notebook
 
-A fully commented Jupyter notebook that reproduces the full pipeline and plots the per-layer Jacobian profile:
+A Jupyter notebook covering the full pipeline, Jacobian analysis, and spacing-law comparison:
+
+- Sections 0–8: generation, inspection, Jacobian profiles, VTK export
+- Sections 9–12: surface and volume spacing distributions, tanh vs. geometric comparison
 
 ```bash
 # Launch Jupyter with the notebook
@@ -151,6 +183,7 @@ python -m pytest tests/test_cli.py::TestMesh::test_exit_code_ok -v
 | `tests/test_hyperbolic.py` | Normal estimation, Laplacian smoothing, marching |
 | `tests/test_yinyang.py` | Yin-Yang rotation, coverage masks, combined coverage |
 | `tests/test_cli.py` | All CLI commands end-to-end |
+| `tests/test_spacing.py` | 1D spacing laws, domain builders, error cases |
 
 ### Filtering tests by keyword
 

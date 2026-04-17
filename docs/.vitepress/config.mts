@@ -52,6 +52,7 @@ export default defineConfig({
           items: [
             { text: 'Pipeline overview',      link: '/concepts/pipeline' },
             { text: 'Hyperbolic marching',     link: '/concepts/hyperbolic-marching' },
+            { text: 'Spacing laws',            link: '/concepts/spacing' },
             { text: 'O-grid topology',         link: '/concepts/o-grid' },
             { text: 'Sphere polar cap',        link: '/concepts/sphere-cap' },
             { text: 'Chimera mesh generation', link: '/concepts/chimera' },
@@ -79,6 +80,7 @@ export default defineConfig({
             { text: 'surface.remesh',         link: '/reference/api-surface-remesh' },
             { text: 'volume.hyperbolic',      link: '/reference/api-hyperbolic' },
             { text: 'volume.jacobian',        link: '/reference/api-jacobian' },
+            { text: 'volume.spacing',         link: '/reference/api-spacing' },
             { text: 'topology.sphere_cap',    link: '/reference/api-sphere-cap' },
             { text: 'io.geo',                 link: '/reference/api-geo' },
             { text: 'io.vtk',                 link: '/reference/api-vtk' },

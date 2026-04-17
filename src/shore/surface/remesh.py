@@ -20,6 +20,7 @@ import numpy as np
 import trimesh
 
 from shore.exceptions import MeshInputError, ParameterError
+from shore.volume.spacing import build_i_coords, build_j_coords
 
 
 def sphere_latlon_directions(
@@ -28,6 +29,11 @@ def sphere_latlon_directions(
     theta_cap: float | None = None,
     theta_cap_deg: float | None = None,
     theta_margin: float | None = None,
+    i_spacing: str = "uniform",
+    i_beta: float = 3.0,
+    j_spacing: str = "uniform",
+    j_beta: float = 3.0,
+    j_cluster_lon: float | None = None,
 ) -> np.ndarray:
     """Build (ni, nj) unit direction vectors on a lat-lon sphere.
 
@@ -84,10 +90,10 @@ def sphere_latlon_directions(
             "cap edge at the equator."
         )
 
-    lats = np.linspace(theta_cap, np.pi - theta_cap, ni)
+    lats = build_i_coords(ni, theta_cap, np.pi - theta_cap, spacing=i_spacing, beta=i_beta)
 
     # longitude: [0, 2*pi) — nj points, periodic
-    lons = np.linspace(0.0, 2.0 * np.pi, nj, endpoint=False)
+    lons = build_j_coords(nj, spacing=j_spacing, beta=j_beta, cluster_lon=j_cluster_lon)
 
     lat_grid, lon_grid = np.meshgrid(lats, lons, indexing="ij")
 
@@ -105,6 +111,11 @@ def project_sphere_to_surface(
     theta_cap: float | None = None,
     theta_cap_deg: float | None = None,
     theta_margin: float | None = None,
+    i_spacing: str = "uniform",
+    i_beta: float = 3.0,
+    j_spacing: str = "uniform",
+    j_beta: float = 3.0,
+    j_cluster_lon: float | None = None,
 ) -> np.ndarray:
     """Project a structured sphere grid onto a triangulated surface.
 
@@ -152,7 +163,11 @@ def project_sphere_to_surface(
         theta_cap = theta_margin
 
     centroid = mesh.centroid  # (3,)
-    directions = sphere_latlon_directions(ni, nj, theta_cap=theta_cap)  # (ni, nj, 3)
+    directions = sphere_latlon_directions(
+        ni, nj, theta_cap=theta_cap,
+        i_spacing=i_spacing, i_beta=i_beta,
+        j_spacing=j_spacing, j_beta=j_beta, j_cluster_lon=j_cluster_lon,
+    )  # (ni, nj, 3)
 
     flat_dirs = directions.reshape(-1, 3)  # (ni*nj, 3)
     origins = np.tile(centroid, (flat_dirs.shape[0], 1))  # (ni*nj, 3)

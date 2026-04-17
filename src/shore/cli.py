@@ -16,6 +16,7 @@ from shore.surface.io import load_stl
 from shore.surface.remesh import project_sphere_to_surface
 from shore.volume.hyperbolic import march
 from shore.volume.jacobian import jacobian_per_layer
+from shore.volume.spacing import build_k_steps
 
 app = typer.Typer(
     name="shore",
@@ -46,6 +47,16 @@ _THETA_CAP_DEG = Annotated[float | None, typer.Option("--theta-cap-deg", help="C
 _THETA_MARGIN = Annotated[float | None, typer.Option("--theta-margin", help="Deprecated alias for --theta-cap (radians). Use --theta-cap instead.")]
 _CAP_PULL       = Annotated[float, typer.Option("--cap-pull", help="[caps] Blend factor [0,1) doming the cap interior toward the pole. 0=off (default). Values 0.3-0.5 improve interior cell quality.")]
 _CAP_SQUARENESS = Annotated[float, typer.Option("--cap-squareness", help="[caps] Blend factor [0,1] straightening each cap boundary edge from circular arc toward geodesic chord (inscribed square). 0=circular (default), 1=full chord (~90 deg corner angle).")]
+
+# --- spacing options ---
+_SURFACE_I_SPACING = Annotated[str,         typer.Option("--surface-i-spacing", help="Latitude spacing law: 'uniform' (default), 'tanh' (cluster near theta_cap), 'tanh2' (both ends).")]
+_SURFACE_I_BETA    = Annotated[float,        typer.Option("--surface-i-beta",    help="Clustering strength for --surface-i-spacing tanh/tanh2 (default 3.0).")]
+_SURFACE_J_SPACING = Annotated[str,         typer.Option("--surface-j-spacing", help="Longitude spacing law: 'uniform' (default), 'tanh2' (cluster toward --j-cluster-lon).")]
+_SURFACE_J_BETA    = Annotated[float,        typer.Option("--surface-j-beta",    help="Clustering strength for --surface-j-spacing tanh2 (default 3.0).")]
+_J_CLUSTER_LON     = Annotated[float | None, typer.Option("--j-cluster-lon",     help="Longitude in radians to cluster toward with --surface-j-spacing tanh2.")]
+_VOLUME_K_SPACING   = Annotated[str,         typer.Option("--volume-k-spacing",   help="Wall-normal spacing law: 'geometric' (default), 'tanh' (cluster near wall), 'tanh2' (both ends).")]
+_VOLUME_K_BETA      = Annotated[float,        typer.Option("--volume-k-beta",      help="Clustering strength for --volume-k-spacing tanh/tanh2 (default 3.0).")]
+_VOLUME_K_THICKNESS = Annotated[float | None, typer.Option("--volume-k-thickness", help="Total wall-normal thickness. Required for --volume-k-spacing tanh/tanh2.")]
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +92,50 @@ def _default_output(input_path: Path, suffix: str) -> Path:
     return input_path.parent / (input_path.stem + suffix)
 
 
+def _resolve_spacing(
+    surface_i_spacing: str,
+    surface_i_beta: float,
+    surface_j_spacing: str,
+    surface_j_beta: float,
+    j_cluster_lon: float | None,
+    volume_k_spacing: str,
+    volume_k_beta: float,
+    volume_k_thickness: float | None,
+    nk: int,
+    ds: float,
+    growth: float,
+) -> tuple[dict, np.ndarray]:
+    """Validate spacing params, build surface kwargs and k-steps array."""
+    if volume_k_spacing in {"tanh", "tanh2"} and volume_k_thickness is None:
+        _err.print(
+            "[red]Error:[/red] --volume-k-thickness is required when "
+            f"--volume-k-spacing={volume_k_spacing}."
+        )
+        raise typer.Exit(1) from None
+
+    surface_kwargs: dict = {}
+    if surface_i_spacing != "uniform":
+        surface_kwargs["i_spacing"] = surface_i_spacing
+        surface_kwargs["i_beta"]    = surface_i_beta
+    if surface_j_spacing != "uniform":
+        surface_kwargs["j_spacing"]     = surface_j_spacing
+        surface_kwargs["j_beta"]        = surface_j_beta
+        surface_kwargs["j_cluster_lon"] = j_cluster_lon
+
+    try:
+        k_steps = build_k_steps(
+            nk, ds, growth,
+            spacing=volume_k_spacing,
+            beta=volume_k_beta,
+            total_thickness=volume_k_thickness,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    return surface_kwargs, k_steps
+
+
 # ---------------------------------------------------------------------------
 # shore mesh
 # ---------------------------------------------------------------------------
@@ -102,6 +157,14 @@ def mesh(
     theta_margin:  _THETA_MARGIN  = None,
     cap_pull:        _CAP_PULL        = 0.0,
     cap_squareness:  _CAP_SQUARENESS  = 0.0,
+    surface_i_spacing: _SURFACE_I_SPACING = "uniform",
+    surface_i_beta:    _SURFACE_I_BETA    = 3.0,
+    surface_j_spacing: _SURFACE_J_SPACING = "uniform",
+    surface_j_beta:    _SURFACE_J_BETA    = 3.0,
+    j_cluster_lon:     _J_CLUSTER_LON     = None,
+    volume_k_spacing:   _VOLUME_K_SPACING   = "geometric",
+    volume_k_beta:      _VOLUME_K_BETA      = 3.0,
+    volume_k_thickness: _VOLUME_K_THICKNESS = None,
     verbose:      _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL → structured O-grid volume → geo."""
@@ -128,6 +191,13 @@ def mesh(
 
     out = output or _default_output(input, ".geo")
 
+    surface_kwargs, k_steps = _resolve_spacing(
+        surface_i_spacing, surface_i_beta,
+        surface_j_spacing, surface_j_beta, j_cluster_lon,
+        volume_k_spacing, volume_k_beta, volume_k_thickness,
+        nk, ds, growth,
+    )
+
     # --- stage 1: load ---
     if verbose:
         with _progress() as prog:
@@ -138,11 +208,11 @@ def mesh(
         mesh_obj = load_stl(input)
 
     if topology == "single":
-        _run_single_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, verbose)
+        _run_single_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, verbose, surface_kwargs, k_steps)
     elif topology == "caps":
-        _run_caps_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, cap_pull, cap_squareness, verbose)
+        _run_caps_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, cap_pull, cap_squareness, verbose, surface_kwargs, k_steps)
     else:
-        _run_double_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, verbose)
+        _run_double_topology(mesh_obj, out, ni, nj, nk, ds, growth, smooth, smooth_iters, theta_cap, verbose, surface_kwargs, k_steps)
 
 
 def _run_single_topology(
@@ -157,16 +227,18 @@ def _run_single_topology(
     smooth_iters: int,
     theta_cap: float | None,
     verbose: bool,
+    surface_kwargs: dict,
+    k_steps: np.ndarray,
 ) -> None:
     """Run the single O-grid topology pipeline."""
     # --- stage 1: project ---
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Projecting    ", total=1, info="")
-            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
-        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
 
     # --- stage 2: march ---
     if verbose:
@@ -174,10 +246,11 @@ def _run_single_topology(
             t = prog.add_task("Marching      ", total=nk - 1, info="")
             grid = march(
                 k0, nk, ds, growth, smooth, smooth_iters,
+                steps=k_steps,
                 layer_callback=_make_march_callback(prog, t),
             )
     else:
-        grid = march(k0, nk, ds, growth, smooth, smooth_iters)
+        grid = march(k0, nk, ds, growth, smooth, smooth_iters, steps=k_steps)
 
     # --- stage 3: write ---
     write_geo(out, grid)
@@ -200,6 +273,8 @@ def _run_caps_topology(
     cap_pull: float,
     cap_squareness: float,
     verbose: bool,
+    surface_kwargs: dict,
+    k_steps: np.ndarray,
 ) -> None:
     """Run the 6-block sphere polar cap topology pipeline."""
     from shore.topology.sphere_cap import split_ogrid_with_polar_caps
@@ -208,10 +283,10 @@ def _run_caps_topology(
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Projecting    ", total=1, info="")
-            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
-        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
 
     # --- stage 2: march all 6 blocks ---
     nc = nj // 4 + 1
@@ -225,12 +300,13 @@ def _run_caps_topology(
             blocks = split_ogrid_with_polar_caps(
                 k0, nk, ds, growth, smooth, smooth_iters,
                 cap_pull=cap_pull, cap_squareness=cap_squareness,
-                layer_callback=_cb,
+                steps=k_steps, layer_callback=_cb,
             )
     else:
         blocks = split_ogrid_with_polar_caps(
             k0, nk, ds, growth, smooth, smooth_iters,
             cap_pull=cap_pull, cap_squareness=cap_squareness,
+            steps=k_steps,
         )
 
     # --- stage 3: write ---
@@ -259,6 +335,8 @@ def _run_double_topology(
     smooth_iters: int,
     theta_cap: float,
     verbose: bool,
+    surface_kwargs: dict,
+    k_steps: np.ndarray,
 ) -> None:
     """Run the double O-grid (Yin-Yang) topology pipeline."""
     from shore.surface.yinyang import project_yang_to_surface
@@ -267,16 +345,16 @@ def _run_double_topology(
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Projecting Yin ", total=1, info="")
-            k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+            k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
 
         with _progress() as prog:
             t = prog.add_task("Projecting Yang", total=1, info="")
-            k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_cap)
+            k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_cap, **surface_kwargs)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
-        k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
-        k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_cap)
+        k0_yin = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
+        k0_yang = project_yang_to_surface(mesh_obj, ni, nj, theta_margin=theta_cap, **surface_kwargs)
 
     # --- stage 2: march both ---
     stem = out.stem.removesuffix("_yin").removesuffix("_yang")
@@ -288,17 +366,17 @@ def _run_double_topology(
             t = prog.add_task("Marching Yin  ", total=nk - 1, info="")
             yin_grid = march(
                 k0_yin, nk, ds, growth, smooth, smooth_iters,
-                layer_callback=_make_march_callback(prog, t),
+                steps=k_steps, layer_callback=_make_march_callback(prog, t),
             )
         with _progress() as prog:
             t = prog.add_task("Marching Yang ", total=nk - 1, info="")
             yang_grid = march(
                 k0_yang, nk, ds, growth, smooth, smooth_iters,
-                layer_callback=_make_march_callback(prog, t),
+                steps=k_steps, layer_callback=_make_march_callback(prog, t),
             )
     else:
-        yin_grid = march(k0_yin, nk, ds, growth, smooth, smooth_iters)
-        yang_grid = march(k0_yang, nk, ds, growth, smooth, smooth_iters)
+        yin_grid = march(k0_yin, nk, ds, growth, smooth, smooth_iters, steps=k_steps)
+        yang_grid = march(k0_yang, nk, ds, growth, smooth, smooth_iters, steps=k_steps)
 
     # --- stage 3: write ---
     write_geo(yin_out, yin_grid)
@@ -321,6 +399,11 @@ def project(
     theta_cap:     _THETA_CAP     = None,
     theta_cap_deg: _THETA_CAP_DEG = None,
     theta_margin:  _THETA_MARGIN  = None,
+    surface_i_spacing: _SURFACE_I_SPACING = "uniform",
+    surface_i_beta:    _SURFACE_I_BETA    = 3.0,
+    surface_j_spacing: _SURFACE_J_SPACING = "uniform",
+    surface_j_beta:    _SURFACE_J_BETA    = 3.0,
+    j_cluster_lon:     _J_CLUSTER_LON     = None,
     verbose:       _VERBOSE       = False,
 ) -> None:
     """Project a structured sphere grid onto an STL surface (k=0 layer only)."""
@@ -337,6 +420,15 @@ def project(
     elif theta_margin is not None:
         theta_cap = theta_margin
 
+    surface_kwargs: dict = {}
+    if surface_i_spacing != "uniform":
+        surface_kwargs["i_spacing"] = surface_i_spacing
+        surface_kwargs["i_beta"]    = surface_i_beta
+    if surface_j_spacing != "uniform":
+        surface_kwargs["j_spacing"]     = surface_j_spacing
+        surface_kwargs["j_beta"]        = surface_j_beta
+        surface_kwargs["j_cluster_lon"] = j_cluster_lon
+
     out = output or _default_output(input, "_k0.npz")
 
     if verbose:
@@ -347,11 +439,11 @@ def project(
 
         with _progress() as prog:
             t = prog.add_task("Projecting    ", total=1, info="")
-            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+            k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
             prog.update(t, advance=1, info=f"({ni}×{nj}) surface layer")
     else:
         mesh_obj = load_stl(input)
-        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap)
+        k0 = project_sphere_to_surface(mesh_obj, ni, nj, theta_cap=theta_cap, **surface_kwargs)
 
     np.savez_compressed(out, k0=k0)
 
@@ -372,11 +464,21 @@ def march_cmd(
     growth:       _GROWTH  = 1.15,
     smooth:       _SMOOTH  = 0.2,
     smooth_iters: _SITERS  = 2,
+    volume_k_spacing:   _VOLUME_K_SPACING   = "geometric",
+    volume_k_beta:      _VOLUME_K_BETA      = 3.0,
+    volume_k_thickness: _VOLUME_K_THICKNESS = None,
     verbose:      _VERBOSE = False,
 ) -> None:
     """Extrude a structured surface layer (.npz) into a volume (.geo)."""
     if not input.exists():
         _err.print(f"[red]Error:[/red] file not found: {input}")
+        raise typer.Exit(1) from None
+
+    if volume_k_spacing in {"tanh", "tanh2"} and volume_k_thickness is None:
+        _err.print(
+            "[red]Error:[/red] --volume-k-thickness is required when "
+            f"--volume-k-spacing={volume_k_spacing}."
+        )
         raise typer.Exit(1) from None
 
     out = output or _default_output(input, ".geo")
@@ -388,15 +490,26 @@ def march_cmd(
 
     k0 = data["k0"]
 
+    try:
+        k_steps = build_k_steps(
+            nk, ds, growth,
+            spacing=volume_k_spacing,
+            beta=volume_k_beta,
+            total_thickness=volume_k_thickness,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from None
+
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Marching      ", total=nk - 1, info="")
             grid = march(
                 k0, nk, ds, growth, smooth, smooth_iters,
-                layer_callback=_make_march_callback(prog, t),
+                steps=k_steps, layer_callback=_make_march_callback(prog, t),
             )
     else:
-        grid = march(k0, nk, ds, growth, smooth, smooth_iters)
+        grid = march(k0, nk, ds, growth, smooth, smooth_iters, steps=k_steps)
 
     ni, nj, *_ = grid.shape
     write_geo(out, grid)

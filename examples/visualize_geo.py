@@ -11,6 +11,15 @@ Run from the project root after activating .venv:
     # Generate Yin-Yang double O-grid and export as MultiBlock:
     python examples/visualize_geo.py --generate --topology double --vtk
 
+    # Tanh-spaced boundary layer with fixed total thickness:
+    python examples/visualize_geo.py --generate \\
+        --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
+
+    # Latitude clustering (toward cap boundary) + longitude clustering:
+    python examples/visualize_geo.py --generate \\
+        --surface-i-spacing tanh --surface-i-beta 4.0 \\
+        --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0
+
     # Visualise an existing file:
     python examples/visualize_geo.py sphere.geo
     python examples/visualize_geo.py sphere_k0.npz
@@ -45,22 +54,54 @@ def generate_sphere(
     theta_cap: float | None = None,
     cap_pull: float = 0.0,
     cap_squareness: float = 0.0,
+    smooth: float = 0.2,
+    smooth_iters: int = 2,
+    surface_i_spacing: str = "uniform",
+    surface_i_beta: float = 3.0,
+    surface_j_spacing: str = "uniform",
+    surface_j_beta: float = 3.0,
+    j_cluster_lon: float | None = None,
+    volume_k_spacing: str = "geometric",
+    volume_k_beta: float = 3.0,
+    volume_k_thickness: float | None = None,
 ) -> tuple[Path, ...]:
     """Create sphere.stl, sphere_k0.npz, and sphere.geo using the SHORE API.
 
     Returns tuple of generated .geo paths.
     """
     import trimesh
-    import numpy as np
 
     from shore.io.geo import write_geo
     from shore.surface.io import load_stl
     from shore.surface.remesh import project_sphere_to_surface
     from shore.volume.hyperbolic import march
+    from shore.volume.spacing import build_k_steps
+
+    # --- build surface kwargs (only pass non-defaults) ---
+    surface_kwargs: dict = {}
+    if surface_i_spacing != "uniform":
+        surface_kwargs["i_spacing"] = surface_i_spacing
+        surface_kwargs["i_beta"] = surface_i_beta
+    if surface_j_spacing != "uniform":
+        surface_kwargs["j_spacing"] = surface_j_spacing
+        surface_kwargs["j_beta"] = surface_j_beta
+        surface_kwargs["j_cluster_lon"] = j_cluster_lon
+
+    # --- build k-steps ---
+    if volume_k_spacing in {"tanh", "tanh2"} and volume_k_thickness is None:
+        print("Error: --volume-k-thickness is required for tanh/tanh2 volume spacing.",
+              file=sys.stderr)
+        sys.exit(1)
+    k_steps = build_k_steps(
+        nk, ds, growth,
+        spacing=volume_k_spacing,
+        beta=volume_k_beta,
+        total_thickness=volume_k_thickness,
+    )
 
     # 1 — STL
     if not stl_path.exists():
-        print(f"Generating {stl_path} …")
+        print(f"Generating {stl_path} ...")
         mesh = trimesh.creation.icosphere(subdivisions=4, radius=1.0)
         mesh.export(str(stl_path))
         print(f"  {len(mesh.faces)} triangles written.")
@@ -72,27 +113,31 @@ def generate_sphere(
     if topology == "single":
         # 2a — surface projection (k=0) for single O-grid
         if npz_path and not npz_path.exists():
-            print(f"Projecting {ni}×{nj} surface layer → {npz_path} …")
-            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
+            print(f"Projecting {ni}x{nj} surface layer -> {npz_path} ...")
+            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap,
+                                           **surface_kwargs)
             np.savez_compressed(str(npz_path), k0=k0)
             print(f"  Surface layer shape: {k0.shape}.")
         elif npz_path:
             print(f"  {npz_path} already exists, skipping projection.")
             k0 = np.load(str(npz_path))["k0"]
         else:
-            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
+            k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap,
+                                           **surface_kwargs)
 
         # 3a — hyperbolic marching for single O-grid
         if not geo_path.exists():
-            print(f"Marching {nk} layers → {geo_path} …")
+            print(f"Marching {nk} layers -> {geo_path} ...")
 
             def _cb(k: int, jmin: float, step: float) -> None:
                 print(f"  layer {k:3d}  jmin={jmin:.3e}  step={step:.3e}", end="\r")
 
-            grid = march(k0, nk=nk, ds=ds, growth=growth, layer_callback=_cb)
+            grid = march(k0, nk=nk, ds=ds, growth=growth,
+                         smooth_strength=smooth, smooth_iters=smooth_iters,
+                         steps=k_steps, layer_callback=_cb)
             print()  # newline after \r
             write_geo(str(geo_path), grid)
-            print(f"  {geo_path} written — shape {grid.shape[:3]}.")
+            print(f"  {geo_path} written -- shape {grid.shape[:3]}.")
         else:
             print(f"  {geo_path} already exists, skipping marching.")
 
@@ -102,7 +147,8 @@ def generate_sphere(
         from shore.topology.sphere_cap import split_ogrid_with_polar_caps
 
         # 2c — surface projection (k=0) for caps topology
-        k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
+        k0 = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap,
+                                       **surface_kwargs)
 
         # 3c — split O-grid with polar caps
         stem = geo_path.stem
@@ -110,20 +156,21 @@ def generate_sphere(
         cap_geo_paths = [geo_path.parent / f"{stem}_{lbl}.geo" for lbl in labels]
 
         if not cap_geo_paths[0].exists():
-            print(f"Generating 6-block sphere-cap topology ({nk} layers) …")
+            print(f"Generating 6-block sphere-cap topology ({nk} layers) ...")
 
             def _cb(k: int, jmin: float) -> None:
                 print(f"  layer {k:3d}  jmin={jmin:.3e}", end="\r")
 
             blocks = split_ogrid_with_polar_caps(
                 k0, nk=nk, ds=ds, growth=growth,
+                smooth_strength=smooth, smooth_iters=smooth_iters,
                 cap_pull=cap_pull, cap_squareness=cap_squareness,
-                layer_callback=_cb,
+                steps=k_steps, layer_callback=_cb,
             )
             print()
             for lbl, p, blk in zip(labels, cap_geo_paths, blocks, strict=True):
                 write_geo(str(p), blk)
-                print(f"  {p} written — shape {blk.shape[:3]}.")
+                print(f"  {p} written -- shape {blk.shape[:3]}.")
         else:
             print(f"  {cap_geo_paths[0]} already exists, skipping generation.")
 
@@ -135,8 +182,10 @@ def generate_sphere(
         theta_margin = np.pi / 6
 
         # 2b — project both Yin and Yang
-        k0_yin = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap)
-        k0_yang = project_yang_to_surface(mesh, ni=ni, nj=nj, theta_margin=theta_cap)
+        k0_yin = project_sphere_to_surface(mesh, ni=ni, nj=nj, theta_cap=theta_cap,
+                                           **surface_kwargs)
+        k0_yang = project_yang_to_surface(mesh, ni=ni, nj=nj, theta_margin=theta_cap,
+                                          **surface_kwargs)
 
         stem = geo_path.stem.removesuffix("_yin").removesuffix("_yang")
         yin_geo_path = geo_path.parent / f"{stem}_yin.geo"
@@ -144,18 +193,22 @@ def generate_sphere(
 
         # 3b — march both Yin and Yang
         if not yin_geo_path.exists():
-            print(f"Marching {nk} layers Yin → {yin_geo_path} …")
-            yin_grid = march(k0_yin, nk=nk, ds=ds, growth=growth)
+            print(f"Marching {nk} layers Yin -> {yin_geo_path} ...")
+            yin_grid = march(k0_yin, nk=nk, ds=ds, growth=growth,
+                             smooth_strength=smooth, smooth_iters=smooth_iters,
+                             steps=k_steps)
             write_geo(str(yin_geo_path), yin_grid)
-            print(f"  {yin_geo_path} written — shape {yin_grid.shape[:3]}.")
+            print(f"  {yin_geo_path} written -- shape {yin_grid.shape[:3]}.")
         else:
             print(f"  {yin_geo_path} already exists, skipping marching.")
 
         if not yang_geo_path.exists():
-            print(f"Marching {nk} layers Yang → {yang_geo_path} …")
-            yang_grid = march(k0_yang, nk=nk, ds=ds, growth=growth)
+            print(f"Marching {nk} layers Yang -> {yang_geo_path} ...")
+            yang_grid = march(k0_yang, nk=nk, ds=ds, growth=growth,
+                              smooth_strength=smooth, smooth_iters=smooth_iters,
+                              steps=k_steps)
             write_geo(str(yang_geo_path), yang_grid)
-            print(f"  {yang_geo_path} written — shape {yang_grid.shape[:3]}.")
+            print(f"  {yang_geo_path} written -- shape {yang_grid.shape[:3]}.")
         else:
             print(f"  {yang_geo_path} already exists, skipping marching.")
 
@@ -266,8 +319,39 @@ def main() -> None:
     gen.add_argument("--ni",     type=int,   default=40,   help="Latitude points")
     gen.add_argument("--nj",     type=int,   default=60,   help="Longitude points")
     gen.add_argument("--nk",     type=int,   default=20,   help="Wall-normal layers")
-    gen.add_argument("--ds",     type=float, default=0.02, help="First-layer thickness")
-    gen.add_argument("--growth", type=float, default=1.10, help="Layer growth ratio")
+    gen.add_argument("--ds",     type=float, default=0.02, help="First-layer thickness (geometric)")
+    gen.add_argument("--growth", type=float, default=1.10, help="Layer growth ratio (geometric)")
+    gen.add_argument("--smooth", type=float, default=0.2,  help="Laplacian smooth strength [0-1]")
+    gen.add_argument("--smooth-iters", type=int, default=2, help="Laplacian sweeps per layer")
+
+    # surface spacing
+    gen.add_argument(
+        "--surface-i-spacing", default="uniform",
+        choices=["uniform", "tanh", "tanh2"],
+        help="Latitude spacing law",
+    )
+    gen.add_argument("--surface-i-beta", type=float, default=3.0,
+                     help="Clustering strength for latitude tanh/tanh2")
+    gen.add_argument(
+        "--surface-j-spacing", default="uniform",
+        choices=["uniform", "tanh2"],
+        help="Longitude spacing law",
+    )
+    gen.add_argument("--surface-j-beta", type=float, default=3.0,
+                     help="Clustering strength for longitude tanh2")
+    gen.add_argument("--j-cluster-lon", type=float, default=None,
+                     help="Longitude to cluster toward (radians, tanh2 only)")
+
+    # volume spacing
+    gen.add_argument(
+        "--volume-k-spacing", default="geometric",
+        choices=["geometric", "tanh", "tanh2"],
+        help="Wall-normal spacing law",
+    )
+    gen.add_argument("--volume-k-beta", type=float, default=3.0,
+                     help="Clustering strength for tanh/tanh2")
+    gen.add_argument("--volume-k-thickness", type=float, default=None,
+                     help="Total wall-normal thickness (required for tanh/tanh2)")
     theta_grp = gen.add_mutually_exclusive_group()
     theta_grp.add_argument(
         "--theta-cap", type=float, default=None, metavar="RAD",
@@ -329,6 +413,16 @@ def main() -> None:
             theta_cap=theta_cap,
             cap_pull=args.cap_pull,
             cap_squareness=args.cap_squareness,
+            smooth=args.smooth,
+            smooth_iters=args.smooth_iters,
+            surface_i_spacing=args.surface_i_spacing,
+            surface_i_beta=args.surface_i_beta,
+            surface_j_spacing=args.surface_j_spacing,
+            surface_j_beta=args.surface_j_beta,
+            j_cluster_lon=args.j_cluster_lon,
+            volume_k_spacing=args.volume_k_spacing,
+            volume_k_beta=args.volume_k_beta,
+            volume_k_thickness=args.volume_k_thickness,
         )
 
         # VTK export after generation

@@ -76,9 +76,10 @@ shore march sphere_k0.npz --nk 30 --ds 1e-3 --growth 1.15 -o sphere.geo -v
 
 | Parameter | Effect | Typical range |
 |---|---|---|
-| `--ds` | First-layer thickness | 1e-5 – 1e-2 (body units) |
+| `--ds` | First-layer thickness (geometric spacing) | 1e-5 – 1e-2 (body units) |
 | `--growth` | Layer-to-layer thickness ratio | 1.05 – 1.25 |
 | `--smooth` | Laplacian blend per layer | 0.1 – 0.5 |
+| `--smooth-iters` | Laplacian sweeps per layer | 1 – 5 |
 | `--nk` | Total layers | 20 – 60 |
 
 **Grid quality vs. speed trade-offs:**
@@ -86,6 +87,45 @@ shore march sphere_k0.npz --nk 30 --ds 1e-3 --growth 1.15 -o sphere.geo -v
 - Reducing `--growth` gives a smoother grid but requires more layers for the same far-field extent.
 - Increasing `--smooth` improves orthogonality at the cost of some cell-size uniformity.
 - If `shore check` reports a near-inversion (jmin < 1e-6) on early layers, the body likely has concavities relative to its centroid — increase `--smooth` or reduce `--ds`.
+
+## Controlling cell distribution with spacing laws
+
+The default geometric spacing (`ds * growth^k`) works well when you only care about the first-layer thickness. When you need more control — a fixed far-field boundary, clustering around a geometric feature, or finer cells at the cap boundaries — switch to a tanh-based law.
+
+### Wall-normal (k-direction)
+
+```bash
+# Geometric: fixed first-layer, unbounded outer boundary
+shore mesh wing.stl --nk 40 --ds 1e-3 --growth 1.10 -o wing.geo
+
+# Tanh: fixed total thickness, cluster near wall
+shore mesh wing.stl --nk 40 --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 5.0 -o wing.geo
+
+# Tanh2: fixed total thickness, cluster at wall AND far-field
+shore mesh wing.stl --nk 40 --volume-k-spacing tanh2 --volume-k-beta 3.0 --volume-k-thickness 5.0 -o wing.geo
+```
+
+Key difference: with `geometric`, `--ds` controls the first layer and the outer boundary floats. With `tanh`/`tanh2`, `--volume-k-thickness` fixes the outer boundary and the first-layer size is determined by `nk` and `--volume-k-beta`.
+
+### Surface (i- and j-directions)
+
+Surface spacing is set at projection time and cannot be changed without re-projecting. Use `--surface-i-spacing` for latitude (pole-to-pole) and `--surface-j-spacing` for longitude (around the body).
+
+```bash
+# Longitude clustering at the leading edge (phi = 0)
+shore mesh airfoil.stl \
+  --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0 \
+  --ni 40 --nj 80 --nk 30
+
+# Latitude clustering at cap boundaries (for caps topology)
+shore mesh body.stl --topology caps \
+  --surface-i-spacing tanh --surface-i-beta 4.0 \
+  --cap-pull 0.4
+```
+
+The `--j-cluster-lon` value is a longitude in radians: `0.0` for the positive x-axis, `pi/2` for the y-axis, `pi` for the negative x-axis. Set it to the azimuthal angle of the geometric feature you want to refine.
+
+See [Spacing laws](/concepts/spacing) for the full explanation of each law, what physical region it clusters toward, and how to choose $\beta$.
 
 ::: warning Star-shaped constraint
 The surface projection assumes the body is **star-shaped** with respect to its centroid: every ray from the centroid must hit the surface exactly once. This is satisfied by spheres, ellipsoids, fuselages, and most convex CFD bodies. Concave bodies (e.g. re-entrant cavities, forked geometries) will produce a `ValueError` during projection — see [Limitations](/concepts/pipeline#limitations).
@@ -99,11 +139,19 @@ All CLI commands are thin wrappers over a pure Python API:
 from shore.surface.io       import load_stl
 from shore.surface.remesh   import project_sphere_to_surface
 from shore.volume.hyperbolic import march
+from shore.volume.spacing   import build_k_steps
 from shore.io.geo            import write_geo
 
 mesh = load_stl("sphere.stl")
 k0   = project_sphere_to_surface(mesh, ni=40, nj=60)
+
+# Geometric spacing (default — same as ds=1e-3, growth=1.15)
 grid = march(k0, nk=30, ds=1e-3, growth=1.15)
+
+# Tanh spacing — fixed outer boundary, cluster at wall
+steps = build_k_steps(30, ds=1e-3, spacing="tanh", beta=4.0, total_thickness=2.0)
+grid = march(k0, nk=30, steps=steps)
+
 write_geo("sphere.geo", grid)
 ```
 
@@ -172,7 +220,7 @@ pl = view_surface(k0, jupyter=True)
 pl.show()
 ```
 
-See `examples/visualize.ipynb` for a complete notebook that also plots the per-layer Jacobian profile with Matplotlib.
+See `examples/visualize.ipynb` for a complete notebook that covers projection, marching, Jacobian analysis, and spacing-law comparison with plots.
 
 ### Automated screenshots
 
