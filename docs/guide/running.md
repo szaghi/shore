@@ -102,6 +102,31 @@ For the double topology, two files are produced:
 
 Both blocks share the same `(ni, nj, nk)` dimensions and can be exported to ParaView individually or as a combined MultiBlock (see VTK export).
 
+### `examples/visualize_geo.py` — 6-block sphere-cap topology
+
+Generate the caps topology to avoid polar singularities with six conforming blocks:
+
+```bash
+# Basic caps topology
+python examples/visualize_geo.py --generate --topology caps
+
+# With quality controls: dome interior + straighten boundary + equalise interfaces
+python examples/visualize_geo.py --generate --topology caps \
+    --cap-pull 0.4 --cap-squareness 0.5 --correct-spacing --vtk
+
+# Larger cap (20°) with interior dome and interface correction
+python examples/visualize_geo.py --generate --topology caps \
+    --theta-cap-deg 20 --cap-pull 0.4 --correct-spacing --vtk --no-view
+```
+
+The caps topology produces six files per run:
+
+- `sphere_sub0.geo` through `sphere_sub3.geo` — equatorial sub-blocks
+- `sphere_cap_north.geo` — north polar cap
+- `sphere_cap_south.geo` — south polar cap
+
+The `--correct-spacing` flag equalises cell widths at all block interfaces after marching, improving mesh quality at block boundaries. This is applied after the final layer is computed and does not change the marching step sizes.
+
 ### `examples/visualize.ipynb` — Jupyter Notebook
 
 A Jupyter notebook covering the full pipeline, Jacobian analysis, and spacing-law comparison:

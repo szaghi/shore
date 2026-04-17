@@ -29,7 +29,7 @@ from shore.topology.sphere_cap import (
     split_ogrid_with_polar_caps,
 )
 from shore.volume.hyperbolic import _compute_normals
-from shore.volume.jacobian import _jacobian_field_open, jacobian_field
+from shore.volume.jacobian import _jacobian_field_open
 
 
 # ---------------------------------------------------------------------------
@@ -511,3 +511,4 @@ class TestCapPull:
         seed = _build_cap_k0(eq_rows, nc, pole="north")
         result = _pull_cap_interior(seed, eq_rows, cap_pull=0.0, pole="north")
         np.testing.assert_array_equal(seed, result)
+

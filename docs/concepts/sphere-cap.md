@@ -223,6 +223,10 @@ blocks = split_ogrid_with_polar_caps(
     cap_squareness=0.5,   # straighten boundary edges toward inscribed square
     cap_pull=0.4,         # dome interior toward pole
 )
+
+# Equalise cell widths at all block interfaces after marching
+from shore.topology.sphere_cap import correct_interface_spacing
+correct_interface_spacing(blocks)
 ```
 
 Or via the example script:
@@ -230,7 +234,7 @@ Or via the example script:
 ```bash
 .venv/bin/python examples/visualize_geo.py \
     --generate --topology caps --vtk --no-view --nk 10 \
-    --cap-squareness 0.5 --cap-pull 0.4
+    --cap-squareness 0.5 --cap-pull 0.4 --correct-spacing
 ```
 
 ## Grid parameters
@@ -294,9 +298,10 @@ Or via the example script:
 .venv/bin/python examples/visualize_geo.py \
     --generate --topology caps --vtk --no-view --nk 10
 
-# Larger cap (20°) with interior dome
+# Larger cap (20°) with interior dome and spacing correction
 .venv/bin/python examples/visualize_geo.py \
-    --generate --topology caps --vtk --no-view --nk 10 --theta-cap-deg 20 --cap-pull 0.4
+    --generate --topology caps --vtk --no-view --nk 10 \
+    --theta-cap-deg 20 --cap-pull 0.4 --correct-spacing
 
 paraview sphere_caps.vtm
 ```

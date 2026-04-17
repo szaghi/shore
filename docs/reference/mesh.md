@@ -35,6 +35,7 @@ shore mesh [OPTIONS] INPUT
 | `--theta-cap-deg FLOAT` | — | Same as `--theta-cap` but in degrees |
 | `--cap-pull FLOAT` | 0.0 | [caps] Dome cap interior toward pole [0, 1) |
 | `--cap-squareness FLOAT` | 0.0 | [caps] Straighten cap boundary edges [0, 1] |
+| `--correct-spacing` | off | [caps] Equalise cell widths at all block interfaces after marching |
 
 ### Surface spacing
 
@@ -115,6 +116,15 @@ shore mesh body.stl \
   --surface-i-spacing tanh --surface-i-beta 4.0 \
   --cap-pull 0.4 \
   -o body_caps.geo
+```
+
+Caps topology with interface spacing equalisation:
+
+```bash
+shore mesh body.stl \
+  --topology caps --ni 60 --nj 80 --nk 30 \
+  --correct-spacing --cap-pull 0.4 --cap-squareness 0.5 \
+  -o body_caps_corrected.geo
 ```
 
 Longitude clustering toward the leading edge. `--j-cluster-lon 0.0` places the dense band at $\phi = 0$ (positive x-axis); cells are coarsest at the opposite side ($\phi = \pi$):

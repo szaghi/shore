@@ -47,7 +47,6 @@ _THETA_CAP_DEG = Annotated[float | None, typer.Option("--theta-cap-deg", help="C
 _THETA_MARGIN = Annotated[float | None, typer.Option("--theta-margin", help="Deprecated alias for --theta-cap (radians). Use --theta-cap instead.")]
 _CAP_PULL       = Annotated[float, typer.Option("--cap-pull", help="[caps] Blend factor [0,1) doming the cap interior toward the pole. 0=off (default). Values 0.3-0.5 improve interior cell quality.")]
 _CAP_SQUARENESS = Annotated[float, typer.Option("--cap-squareness", help="[caps] Blend factor [0,1] straightening each cap boundary edge from circular arc toward geodesic chord (inscribed square). 0=circular (default), 1=full chord (~90 deg corner angle).")]
-
 # --- spacing options ---
 _SURFACE_I_SPACING = Annotated[str,         typer.Option("--surface-i-spacing", help="Latitude spacing law: 'uniform' (default), 'tanh' (cluster near theta_cap), 'tanh2' (both ends).")]
 _SURFACE_I_BETA    = Annotated[float,        typer.Option("--surface-i-beta",    help="Clustering strength for --surface-i-spacing tanh/tanh2 (default 3.0).")]

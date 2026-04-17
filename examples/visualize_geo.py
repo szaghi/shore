@@ -20,6 +20,10 @@ Run from the project root after activating .venv:
         --surface-i-spacing tanh --surface-i-beta 4.0 \\
         --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0
 
+
+    # Caps topology with interface spacing correction:
+    python examples/visualize_geo.py --generate --topology caps \
+        --correct-spacing --cap-pull 0.4 --cap-squareness 0.5
     # Visualise an existing file:
     python examples/visualize_geo.py sphere.geo
     python examples/visualize_geo.py sphere_k0.npz
@@ -35,7 +39,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Sphere generation helper
@@ -54,6 +57,7 @@ def generate_sphere(
     theta_cap: float | None = None,
     cap_pull: float = 0.0,
     cap_squareness: float = 0.0,
+    correct_spacing: bool = False,
     smooth: float = 0.2,
     smooth_iters: int = 2,
     surface_i_spacing: str = "uniform",
@@ -168,6 +172,11 @@ def generate_sphere(
                 steps=k_steps, layer_callback=_cb,
             )
             print()
+            if correct_spacing:
+                from shore.topology.sphere_cap import correct_interface_spacing
+                print("Correcting interface spacing ...")
+                correct_interface_spacing(blocks)
+                print("  Done.")
             for lbl, p, blk in zip(labels, cap_geo_paths, blocks, strict=True):
                 write_geo(str(p), blk)
                 print(f"  {p} written -- shape {blk.shape[:3]}.")
@@ -228,7 +237,7 @@ def export_to_vtk(
     Returns list of generated VTK file paths.
     """
     from shore.io.geo import read_geo
-    from shore.io.vtk import write_vts, write_double_vtm
+    from shore.io.vtk import write_double_vtm, write_vts
 
     vtk_paths: list[Path] = []
 
@@ -373,6 +382,10 @@ def main() -> None:
              "from circular arc toward geodesic chord (inscribed square). "
              "0=circular (default), 1=full chord (~90 deg corner angle).",
     )
+    gen.add_argument(
+        "--correct-spacing", action="store_true",
+        help="[caps topology] Equalise cell widths at all block interfaces after marching.",
+    )
 
     # -- visualisation options -----------------------------------------------
     parser.add_argument(
@@ -413,6 +426,7 @@ def main() -> None:
             theta_cap=theta_cap,
             cap_pull=args.cap_pull,
             cap_squareness=args.cap_squareness,
+            correct_spacing=args.correct_spacing,
             smooth=args.smooth,
             smooth_iters=args.smooth_iters,
             surface_i_spacing=args.surface_i_spacing,
@@ -468,13 +482,13 @@ def main() -> None:
                     write_surface_vts(vts_path, data["k0"])
                     print(f"  {vts_path} written.")
                 else:
-                    print(f"Warning: .npz has no 'k0' array.", file=sys.stderr)
+                    print("Warning: .npz has no 'k0' array.", file=sys.stderr)
             except Exception as e:
                 print(f"Warning: VTK export failed: {e}", file=sys.stderr)
         elif args.generate:
             pass  # VTK already done during generation
         else:
-            print(f"Warning: --vtk requires a .geo or .npz input.", file=sys.stderr)
+            print("Warning: --vtk requires a .geo or .npz input.", file=sys.stderr)
 
     # -- resolve input -------------------------------------------------------
     if args.input is None:
