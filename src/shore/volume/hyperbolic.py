@@ -1,34 +1,12 @@
-"""Hyperbolic marching: extrude a structured surface layer into a volume.
+"""Hyperbolic marching primitives.
 
-Algorithm
----------
-Given the k=0 surface layer (ni, nj, 3), each subsequent layer k+1 is
-computed by:
-
-    P[i,j,k+1] = P[i,j,k] + ds * r^k * n̂[i,j,k]
-
-where:
-- ds   : first-layer thickness
-- r    : geometric growth ratio
-- n̂    : outward unit normal at node (i,j,k), estimated from the four
-         in-plane neighbours in the structured grid
-
-After each layer, optional Laplacian smoothing is applied to suppress
-high-frequency wiggles.  A per-cell Jacobian check detects inverted cells.
-
-The j-direction is treated as periodic (O-grid topology).
+Provides the per-layer normal estimation, Laplacian smoothing, and STL
+surface-normal query used by the OOP mesh marcher (``shore.mesh.Mesh``).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import numpy as np
-
-from shore.exceptions import MarchingError
-from shore.volume.jacobian import min_jacobian_two_layers
-from shore.volume.spacing import build_k_steps
-
 
 # ---------------------------------------------------------------------------
 # Normal estimation
@@ -116,7 +94,7 @@ def _laplacian_smooth(
     -------
     numpy.ndarray, shape (ni, nj, 3)
     """
-    ni, nj = layer.shape[0], layer.shape[1]
+    nj = layer.shape[1]
     periodic_i, periodic_j = periodic
 
     # j neighbours
@@ -161,85 +139,31 @@ def _laplacian_smooth(
 
 
 # ---------------------------------------------------------------------------
-# Main marching routine
+# STL surface normal query
 # ---------------------------------------------------------------------------
 
-def march(
-    surface: np.ndarray,
-    nk: int,
-    ds: float = 1e-3,
-    growth: float = 1.15,
-    smooth_strength: float = 0.2,
-    smooth_iters: int = 2,
-    periodic: tuple[bool, bool] = (False, True),
-    layer_callback: Callable[[int, float, float], None] | None = None,
-    steps: np.ndarray | None = None,
-) -> np.ndarray:
-    """Extrude a structured surface layer into a volume by hyperbolic marching.
+def _stl_normals(trimesh_obj: object, points: np.ndarray) -> np.ndarray:
+    """Query surface normals at arbitrary points from a trimesh object.
+
+    Uses closest-point projection; returns the face normal of the nearest
+    triangle (flat, not interpolated — sufficient for blending guidance).
 
     Parameters
     ----------
-    surface :
-        k=0 wall layer, shape (ni, nj, 3).
-    nk :
-        Total number of layers in the wall-normal direction (including k=0).
-    ds :
-        First-layer thickness (physical length units matching the STL).
-    growth :
-        Geometric growth ratio between successive layers.
-    smooth_strength :
-        Laplacian blend factor applied after each layer (0 = off).
-    smooth_iters :
-        Number of Laplacian sweeps per layer.
-    periodic :
-        ``(periodic_i, periodic_j)`` flags passed to normal estimation and
-        Laplacian smoothing.  Default ``(False, True)`` is the standard
-        O-grid topology (i open, j periodic).  Use ``(False, False)`` for
-        polar cap blocks.
-    layer_callback :
-        Optional callable invoked after each accepted layer with signature
-        ``(k, jmin, step)`` where k is 1-based, jmin is the minimum cell
-        Jacobian, and step is the physical layer thickness.
-    steps :
-        Pre-computed wall-normal step sizes, shape ``(nk-1,)``.  When
-        supplied, overrides ``ds`` and ``growth``.  Use
-        ``shore.volume.spacing.build_k_steps`` to generate tanh/tanh2 laws.
+    trimesh_obj :
+        A ``trimesh.Trimesh`` instance.
+    points :
+        Shape (N, 3).
 
     Returns
     -------
-    numpy.ndarray, shape (ni, nj, nk, 3)
-        Full structured volume grid.
-
-    Raises
-    ------
-    MarchingError
-        If a negative-Jacobian cell is detected during marching.
+    numpy.ndarray, shape (N, 3), unit normals.
     """
-    _steps = steps if steps is not None else build_k_steps(nk, ds, growth)
+    import trimesh.proximity as prox
+    _, _, tri_ids = prox.closest_point(trimesh_obj, points)
+    normals = trimesh_obj.face_normals[tri_ids]
+    mag = np.linalg.norm(normals, axis=-1, keepdims=True)
+    mag = np.where(mag < 1e-15, 1.0, mag)
+    return normals / mag
 
-    ni, nj, _ = surface.shape
-    grid = np.empty((ni, nj, nk, 3), dtype=np.float64)
-    grid[:, :, 0, :] = surface
 
-    for k in range(nk - 1):
-        layer     = grid[:, :, k, :]
-        normals   = _compute_normals(layer, periodic=periodic)
-        step      = _steps[k]
-        new_layer = layer + step * normals
-
-        for _ in range(smooth_iters):
-            new_layer = _laplacian_smooth(new_layer, smooth_strength, periodic=periodic)
-
-        jmin = min_jacobian_two_layers(layer, new_layer, periodic_j=periodic[1])
-        if jmin <= 0.0:
-            raise MarchingError(
-                f"Negative Jacobian ({jmin:.3e}) detected at layer k={k+1}.  "
-                "Reduce ds, growth ratio, or increase smooth_strength."
-            )
-
-        grid[:, :, k + 1, :] = new_layer
-
-        if layer_callback is not None:
-            layer_callback(k + 1, jmin, step)
-
-    return grid

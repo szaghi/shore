@@ -7,14 +7,15 @@ import pytest
 
 pv = pytest.importorskip("pyvista", reason="pyvista not installed")
 
-from shore.vis import save_screenshot, view_geo, view_surface
-from tests.conftest import sphere_layer
+from shore.vis import save_screenshot, view_geo, view_surface  # noqa: E402
+from tests.conftest import sphere_layer  # noqa: E402
 
 
 def _make_volume(ni: int = 6, nj: int = 8, nk: int = 4) -> np.ndarray:
-    from shore.volume.hyperbolic import march
-    surface = sphere_layer(ni, nj, radius=1.0)
-    return march(surface, nk=nk, ds=0.05, growth=1.1, smooth_strength=0.0)
+    """Synthetic O-grid volume: concentric sphere shells at geometric radii."""
+    radii = 1.0 * 1.1 ** np.arange(nk)
+    layers = [sphere_layer(ni, nj, radius=float(r)) for r in radii]
+    return np.stack(layers, axis=2)
 
 
 class TestViewGeo:

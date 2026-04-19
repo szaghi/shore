@@ -15,7 +15,7 @@ def jacobian_field(grid: np.ndarray) -> np.ndarray:
     Each cell Jacobian is the scalar triple product of the three edge
     vectors from the cell's (i, j, k) corner:
 
-        J = (e_i × e_j) · e_k
+        J = (e_i x e_j) . e_k
 
     where e_i, e_j, e_k are the edge vectors in the i-, j-, and k-directions
     respectively. J > 0 for a valid cell; J ≤ 0 for an inverted cell.
@@ -45,52 +45,6 @@ def jacobian_field(grid: np.ndarray) -> np.ndarray:
     e3  = lk1 - lk                        # k-tangent
 
     return np.einsum("ijkl,ijkl->ijk", np.cross(e2, e1), e3)
-
-
-def jacobian_per_layer(grid: np.ndarray) -> np.ndarray:
-    """Return the minimum cell Jacobian for each wall-normal layer interval.
-
-    Parameters
-    ----------
-    grid :
-        Structured volume, shape (ni, nj, nk, 3).
-
-    Returns
-    -------
-    numpy.ndarray, shape (nk-1,)
-        ``result[k]`` is the minimum Jacobian among all cells between
-        layer k and layer k+1.
-    """
-    return jacobian_field(grid).min(axis=(0, 1))
-
-
-def min_jacobian_two_layers(
-    layer_k: np.ndarray,
-    layer_k1: np.ndarray,
-    periodic_j: bool = True,
-) -> float:
-    """Return the minimum Jacobian between two consecutive structured layers.
-
-    Convenience wrapper used during hyperbolic marching.
-
-    Parameters
-    ----------
-    layer_k, layer_k1 :
-        Consecutive layers, shape (ni, nj, 3).
-    periodic_j :
-        When ``True`` (default) the j-direction wraps around (O-grid).
-        When ``False`` the last j-column does not wrap; the cell count in j
-        is ``nj-1`` instead of ``nj``.
-
-    Returns
-    -------
-    float
-        Minimum cell Jacobian. Negative → inverted cell.
-    """
-    two_layer = np.stack([layer_k, layer_k1], axis=2)  # (ni, nj, 2, 3)
-    if periodic_j:
-        return float(jacobian_field(two_layer).min())
-    return float(_jacobian_field_open(two_layer).min())
 
 
 def _jacobian_field_open(grid: np.ndarray) -> np.ndarray:

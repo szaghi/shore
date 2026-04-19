@@ -31,8 +31,7 @@ except ImportError as e:
         "Install it with: pip install shore[vis]  or  pip install pyvista"
     ) from e
 
-from shore.volume.jacobian import jacobian_field, _jacobian_field_open
-
+from shore.volume.jacobian import _jacobian_field_open, jacobian_field
 
 # ---------------------------------------------------------------------------
 # Conversion helpers
@@ -72,7 +71,7 @@ def _grid_points(grid: np.ndarray) -> np.ndarray:
     ])
 
 
-def geo_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> "pv.StructuredGrid":
+def geo_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> pv.StructuredGrid:
     """Convert a structured volume grid to a PyVista StructuredGrid.
 
     The j-direction is closed (first column repeated at end) so that
@@ -105,7 +104,7 @@ def geo_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> "pv.Structur
     return sg
 
 
-def surface_to_pyvista(k0: np.ndarray) -> "pv.StructuredGrid":
+def surface_to_pyvista(k0: np.ndarray) -> pv.StructuredGrid:
     """Convert a k=0 surface layer to a PyVista StructuredGrid (nk=1 slab).
 
     Parameters
@@ -167,7 +166,7 @@ def write_surface_vts(path: str | Path, k0: np.ndarray) -> None:
     sg.save(str(path))
 
 
-def open_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> "pv.StructuredGrid":
+def open_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> pv.StructuredGrid:
     """Convert a non-periodic (open) structured block to a PyVista StructuredGrid.
 
     Unlike ``geo_to_pyvista``, no j-direction closing is performed.  Used for
@@ -226,27 +225,3 @@ def write_caps_vtm(
     mb.save(str(path))
 
 
-def write_double_vtm(
-    path: str | Path,
-    yin: np.ndarray,
-    yang: np.ndarray,
-    with_jacobian: bool = True,
-) -> None:
-    """Export a Yin-Yang double O-grid as a PyVista MultiBlock (.vtm).
-
-    Parameters
-    ----------
-    path :
-        Output path. The ``.vtm`` extension is used if no extension given.
-    yin, yang :
-        Yin and Yang volume grids, each shape (ni, nj, nk, 3).
-    with_jacobian :
-        Attach per-cell Jacobian as CellData on each block.
-    """
-    path = Path(path)
-    if path.suffix not in {".vtm", ".vtmb"}:
-        path = path.with_suffix(".vtm")
-    mb = pv.MultiBlock()
-    mb["yin"] = geo_to_pyvista(yin, with_jacobian=with_jacobian)
-    mb["yang"] = geo_to_pyvista(yang, with_jacobian=with_jacobian)
-    mb.save(str(path))

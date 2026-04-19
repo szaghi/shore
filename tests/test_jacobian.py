@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from shore.volume.jacobian import jacobian_field, jacobian_per_layer, min_jacobian_two_layers
+from shore.volume.jacobian import _jacobian_field_open, jacobian_field
 from tests.conftest import sphere_layer
 
 
@@ -18,31 +17,24 @@ def _box_grid(ni: int, nj: int, nk: int) -> np.ndarray:
     return np.stack([ig, jg, kg], axis=-1)
 
 
+def _sphere_shell(ni: int, nj: int, radii: list[float]) -> np.ndarray:
+    """Stack sphere O-grid layers at the given radii into a (ni, nj, nk, 3) volume."""
+    layers = [sphere_layer(ni, nj, radius=r) for r in radii]
+    return np.stack(layers, axis=2)
+
+
 class TestJacobianField:
     def test_shape(self):
         grid = _box_grid(5, 6, 4)
         jac = jacobian_field(grid)
         assert jac.shape == (4, 6, 3)
 
-    def test_ogrid_all_positive(self):
-        # Use a sphere O-grid: j-direction is genuinely periodic.
-        # A Cartesian box grid is NOT a valid O-grid topology —
-        # the periodic j-wrap would create a fold.
-        surface = sphere_layer(8, 10, radius=1.0)
-        from shore.volume.hyperbolic import march  # noqa: PLC0415
-        grid = march(surface, nk=5, ds=0.05, growth=1.1, smooth_strength=0.0)
-        assert jacobian_field(grid).min() > 0.0
-
     def test_sphere_ogrid_all_positive(self):
-        surface = sphere_layer(16, 20, radius=1.0)
-        from shore.volume.hyperbolic import march
-        grid = march(surface, nk=8, ds=0.05, growth=1.1, smooth_strength=0.0)
+        grid = _sphere_shell(16, 20, [1.0, 1.1, 1.25, 1.45, 1.7])
         assert jacobian_field(grid).min() > 0.0
 
     def test_inverted_layer_negative(self):
-        """Moving the outer layer inside the inner one must give negative Jacobian."""
         grid = _box_grid(5, 6, 3)
-        # Reverse the k-direction: outer shell moved to k=0 position
         grid_inv = grid[:, :, ::-1, :]
         assert jacobian_field(grid_inv).min() < 0.0
 
@@ -53,35 +45,12 @@ class TestJacobianField:
         assert jac.shape[1] == 8   # nj cells (periodic)
 
 
-class TestJacobianPerLayer:
+class TestJacobianFieldOpen:
     def test_shape(self):
         grid = _box_grid(5, 6, 4)
-        jpl = jacobian_per_layer(grid)
-        assert jpl.shape == (3,)   # nk-1
+        jac = _jacobian_field_open(grid)
+        assert jac.shape == (4, 5, 3)   # non-periodic j → nj-1
 
-    def test_values_match_field_min(self):
-        grid = _box_grid(5, 6, 4)
-        jac = jacobian_field(grid)
-        jpl = jacobian_per_layer(grid)
-        for k in range(3):
-            assert np.isclose(jpl[k], jac[:, :, k].min())
-
-
-class TestMinJacobianTwoLayers:
-    def test_positive_for_outward_extrusion(self):
-        surface = sphere_layer(10, 12, radius=1.0)
-        outer = sphere_layer(10, 12, radius=1.5)
-        assert min_jacobian_two_layers(surface, outer) > 0.0
-
-    def test_negative_for_inward_extrusion(self):
-        surface = sphere_layer(10, 12, radius=1.0)
-        inner = sphere_layer(10, 12, radius=0.5)
-        assert min_jacobian_two_layers(surface, inner) < 0.0
-
-    def test_consistent_with_jacobian_field(self):
-        """Must match jacobian_field on a 2-layer stack."""
-        l0 = sphere_layer(10, 12, radius=1.0)
-        l1 = sphere_layer(10, 12, radius=1.5)
-        two = np.stack([l0, l1], axis=2)
-        expected = float(jacobian_field(two).min())
-        assert np.isclose(min_jacobian_two_layers(l0, l1), expected)
+    def test_sphere_shell_positive(self):
+        grid = _sphere_shell(10, 12, [1.0, 1.2, 1.5])
+        assert _jacobian_field_open(grid).min() > 0.0

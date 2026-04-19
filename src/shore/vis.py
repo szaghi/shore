@@ -43,12 +43,11 @@ except ImportError as e:
 from shore.io.vtk import geo_to_pyvista, surface_to_pyvista
 from shore.volume.jacobian import jacobian_field
 
-
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _make_plotter(jupyter: bool, off_screen: bool = False) -> "pv.Plotter":
+def _make_plotter(jupyter: bool, off_screen: bool = False) -> pv.Plotter:
     """Create a plotter configured for the chosen backend."""
     if jupyter:
         pv.set_jupyter_backend("html")
@@ -56,7 +55,7 @@ def _make_plotter(jupyter: bool, off_screen: bool = False) -> "pv.Plotter":
 
 
 def _jacobian_clim(grid: np.ndarray) -> tuple[float, float]:
-    """Colour limits for the Jacobian: 5th–95th percentile, floored at 0."""
+    """Colour limits for the Jacobian: 5th-95th percentile, floored at 0."""
     jac = jacobian_field(grid)
     lo = max(0.0, float(np.percentile(jac, 5)))
     hi = float(np.percentile(jac, 95))
@@ -77,7 +76,7 @@ def view_geo(
     colorby: str = "Jacobian",
     cmap: str = "RdYlGn",
     wall_color: str = "steelblue",
-) -> "pv.Plotter":
+) -> pv.Plotter:
     """Visualise a structured volume grid.
 
     Renders the full O-grid block coloured by the Jacobian field.  The k=0
@@ -94,7 +93,7 @@ def view_geo(
     show_edges :
         Draw cell edges (default True).
     opacity :
-        Grid block opacity [0–1] (default 0.6).
+        Grid block opacity [0-1] (default 0.6).
     colorby :
         Cell data array to colour by.  ``"Jacobian"`` (default) or ``"none"``.
     cmap :
@@ -144,7 +143,7 @@ def view_surface(
     show_edges: bool = True,
     cmap: str = "viridis",
     colorby: str = "radius",
-) -> "pv.Plotter":
+) -> pv.Plotter:
     """Visualise a k=0 surface layer.
 
     Colours nodes by distance from the origin (``"radius"``) or by a flat
