@@ -74,18 +74,21 @@ _THETA_CAP_DEG = Annotated[
                  help="Polar exclusion angle in degrees. Mutually exclusive with --theta-cap."),
 ]
 _CAP_PULL = Annotated[
-    float,
-    typer.Option("--cap-pull",
-                 help="Dome factor [0,1) for cap interior toward pole. 0=off (default)."),
+    float | None,
+    typer.Option(
+        "--cap-pull",
+        help="[DEPRECATED, Phase 4] Ignored — cap interior is now built by "
+             "Shirley + stereographic projection with C1 seam continuity.",
+        hidden=True,
+    ),
 ]
 _CAP_SQUARENESS = Annotated[
-    float,
+    float | None,
     typer.Option(
         "--cap-squareness",
-        help=(
-            "Straighten cap boundary edges toward geodesic chord [0,1]. "
-            "0=circular (default)."
-        ),
+        help="[DEPRECATED, Phase 4] Ignored — cap boundary is always the "
+             "equator seam (no squareness blending needed).",
+        hidden=True,
     ),
 ]
 
@@ -223,8 +226,8 @@ def mesh(
     smooth_iters: _SITERS  = 2,
     theta_cap:     _THETA_CAP     = None,
     theta_cap_deg: _THETA_CAP_DEG = None,
-    cap_pull:        _CAP_PULL        = 0.0,
-    cap_squareness:  _CAP_SQUARENESS  = 0.0,
+    cap_pull:        _CAP_PULL        = None,
+    cap_squareness:  _CAP_SQUARENESS  = None,
     surface_i_spacing: _SURFACE_I_SPACING = "uniform",
     surface_i_beta:    _SURFACE_I_BETA    = 3.0,
     surface_j_spacing: _SURFACE_J_SPACING = "uniform",
@@ -240,6 +243,23 @@ def mesh(
     if not input.exists():
         _err.print(f"[red]Error:[/red] file not found: {input}")
         raise typer.Exit(1) from None
+
+    if cap_pull is not None:
+        import warnings as _warn
+        _warn.warn(
+            "--cap-pull is deprecated (Phase 4): cap interior is now built by "
+            "Shirley concentric + stereographic projection and the flag is ignored.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if cap_squareness is not None:
+        import warnings as _warn
+        _warn.warn(
+            "--cap-squareness is deprecated (Phase 4): cap boundary is always the "
+            "equator seam and the flag is ignored.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     theta = _resolve_theta(theta_cap, theta_cap_deg)
     spacing_k = _build_spacing_k(
@@ -275,9 +295,15 @@ def mesh(
         )
 
     # --- build topology + march ---
-    topo = CapsTopology(cap_pull=cap_pull, cap_squareness=cap_squareness)
+    _theta_topo = theta if theta is not None else 0.05 * np.pi
+    topo = CapsTopology()
     try:
-        blocks = topo.build(surface, nk, nc_cap=nc_cap, spacing_k=spacing_k, mesh=body.mesh)
+        blocks = topo.build(
+            surface, nk, nc_cap=nc_cap, spacing_k=spacing_k,
+            projector=body.projector,
+            theta_cap=_theta_topo,
+            i_spacing=surface_i_spacing, i_beta=surface_i_beta,
+        )
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(1) from None

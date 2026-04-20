@@ -241,3 +241,38 @@ class TestMeshMarch:
             # march was NOT called, so inner layers are uninitialised;
             # just verify the allocation shape is correct
             assert blk.nodes.shape[2] == 5
+
+    def test_caps_bvh_built_once(self, sphere_stl):
+        """Phase 3: Projector should be instantiated exactly once per Body.
+
+        Body._projector is a cached_property: the Projector (and its embedded
+        RayMeshIntersector / BVH) is built on first access and reused for all
+        subsequent calls — including the cap interior projection inside
+        CapsTopology.build when projector= is passed.
+        """
+        from unittest.mock import patch
+
+        import shore.surface.projector as _proj_module
+        from shore.mesh.body import Body
+
+        build_count = 0
+        real_init = _proj_module.Projector.__init__
+
+        def counting_init(self_inner, *args, **kwargs):
+            nonlocal build_count
+            build_count += 1
+            real_init(self_inner, *args, **kwargs)
+
+        with patch.object(_proj_module.Projector, "__init__", counting_init):
+            body = Body.from_stl(sphere_stl)
+            surface, nc_cap = body.project_caps(ni=9, nj=16)
+            CapsTopology().build(
+                surface, nk=3, nc_cap=nc_cap,
+                projector=body.projector,
+            )
+
+        assert build_count == 1, (
+            f"Expected exactly 1 Projector build, got {build_count}.  "
+            "Check that Body._projector is a cached_property and that "
+            "CapsTopology.build uses projector= instead of building its own."
+        )

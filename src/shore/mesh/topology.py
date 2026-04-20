@@ -9,12 +9,8 @@ import numpy as np
 from shore.mesh.block import HexBlock
 from shore.mesh.face import FaceBC
 from shore.mesh.spacing import Spacing1D
-from shore.topology.sphere_cap import (
-    _adjust_nj,
-    _build_cap_k0,
-    _pull_cap_interior,
-    _squareness_rows,
-)
+from shore.surface.cap import build_cap_k0
+from shore.topology.sphere_cap import _adjust_nj
 
 
 class Topology(ABC):
@@ -57,21 +53,10 @@ class CapsTopology(Topology):
     Shared faces are numpy views — writing to one block's boundary
     automatically updates the adjacent block.
 
-    Parameters
-    ----------
-    cap_pull :
-        Dome factor for cap interior (0 = flat Laplacian).
-    cap_squareness :
-        Straighten cap boundary edges toward geodesic chord (0 = circular arc).
+    The cap k=0 seed face is built by the Shirley concentric + stereographic
+    pipeline in ``shore.surface.cap.build_cap_k0``, which achieves C1 spacing
+    continuity at the cap/equator seam (exact at edge midpoints).
     """
-
-    def __init__(
-        self,
-        cap_pull: float = 0.0,
-        cap_squareness: float = 0.0,
-    ) -> None:
-        self.cap_pull       = cap_pull
-        self.cap_squareness = cap_squareness
 
     def build(
         self,
@@ -80,6 +65,11 @@ class CapsTopology(Topology):
         nc_cap: int | None = None,
         spacing_k: Spacing1D | None = None,
         mesh: object | None = None,
+        projector: object | None = None,
+        theta_cap: float = 0.05 * np.pi,
+        i_spacing: str = "uniform",
+        i_beta: float = 3.0,
+        pole_eps_deg: float = 0.5,
         **kwargs,
     ) -> list[HexBlock]:
         """Build 6 blocks from the k=0 surface layer.
@@ -90,20 +80,32 @@ class CapsTopology(Topology):
             Projected k=0 surface.  When ``nc_cap`` is given, shape is
             ``(ni_total, nj, 3)`` covering the full sphere; otherwise
             ``(ni, nj, 3)`` covering only the equatorial band (legacy path,
-            caps built by Laplacian).
+            caps built analytically from the equator boundary rows).
         nk :
             Total number of wall-normal layers (including k=0).
         nc_cap :
             Number of rows in each polar cap block as returned by
-            ``Body.project_caps`` / ``project_caps_to_surface``.  When
-            supplied the cap k=0 interior is ray-cast from the STL (requires
-            ``mesh``); otherwise falls back to Laplacian.
+            ``Body.project_caps`` / ``project_caps_to_surface``.
         spacing_k :
             Wall-normal spacing law shared by all blocks.  Defaults to
             ``Spacing1D(law='geometric', ds=1e-3)``.
         mesh :
-            ``trimesh.Trimesh`` instance.  Required for the ray-cast cap
-            interior path (when ``nc_cap`` is supplied).
+            ``trimesh.Trimesh`` instance.  Legacy alternative to *projector*;
+            creates a temporary Projector using ``mesh.centroid``.
+        projector :
+            Pre-built ``Projector`` instance (shares cached BVH with the
+            projection step).  Preferred over *mesh* — avoids a second BVH
+            build.
+        theta_cap :
+            Polar exclusion angle (radians) used by the equator projection.
+            Must match the value used by ``body.project_caps``/``body.project``.
+        i_spacing :
+            Latitude spacing law of the equator (``'uniform'`` | ``'tanh'`` |
+            ``'tanh2'``).  Inherited by the cap radial profile.
+        i_beta :
+            Clustering strength for tanh/tanh2 i-spacing.
+        pole_eps_deg :
+            Angular exclusion at each pole in degrees (default 0.5 deg).
 
         Returns
         -------
@@ -119,11 +121,12 @@ class CapsTopology(Topology):
             surface = surface[:, :nj, :]
 
         _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
+        pole_eps_rad = float(np.deg2rad(pole_eps_deg))
 
         # ------------------------------------------------------------------
-        # Split full surface into equatorial band
-        # When nc_cap is supplied the surface covers the full sphere; the
-        # equatorial band is the middle ni rows (shared boundary rows with caps).
+        # Split full surface into equatorial band.  When nc_cap is supplied
+        # the surface covers the full sphere; the equatorial band is the
+        # middle ni rows (shared boundary rows with caps).
         # ------------------------------------------------------------------
         if nc_cap is not None:
             ni = ni_total_raw - 2 * (nc_cap - 1)
@@ -154,56 +157,30 @@ class CapsTopology(Topology):
         ring[:, -1, 0, :] = ring[:, 0, 0, :]
 
         # ------------------------------------------------------------------
-        # Cap k=0 seeds
-        # Sub-block pole rows are the cap boundary.  For cap_squareness > 0
-        # the boundary rows fed to the cap seed are squareness-modified copies
-        # (so the cap k=0 is consistent with what marching will produce at k=1),
-        # but the sub_nodes ring is NOT modified — equatorial nodes stay on STL.
+        # Cap k=0 seeds — Shirley concentric + stereographic
         # ------------------------------------------------------------------
-        north_eq_rows_k0 = [sub_nodes[q][ni - 1, :, 0, :] for q in range(4)]
-        south_eq_rows_k0 = [sub_nodes[q][0, :, 0, :] for q in range(4)]
+        north_eq_rows = [sub_nodes[q][ni - 1, :, 0, :] for q in range(4)]
+        south_eq_rows = [sub_nodes[q][0, :, 0, :] for q in range(4)]
 
-        if self.cap_squareness != 0.0:
-            north_cap_rows_k0 = _squareness_rows(north_eq_rows_k0, self.cap_squareness)
-            south_cap_rows_k0 = _squareness_rows(south_eq_rows_k0, self.cap_squareness)
-            # Re-stitch shared corners on the cap-seed rows (copies only)
-            for q in range(4):
-                q_next = (q + 1) % 4
-                shared_n = 0.5 * (north_cap_rows_k0[q][-1] + north_cap_rows_k0[q_next][0])
-                north_cap_rows_k0[q][-1]       = shared_n
-                north_cap_rows_k0[q_next][0]   = shared_n
-                shared_s = 0.5 * (south_cap_rows_k0[q][-1] + south_cap_rows_k0[q_next][0])
-                south_cap_rows_k0[q][-1]       = shared_s
-                south_cap_rows_k0[q_next][0]   = shared_s
-        else:
-            north_cap_rows_k0 = north_eq_rows_k0
-            south_cap_rows_k0 = south_eq_rows_k0
+        cap_proj = projector if projector is not None else (
+            _projector_from_mesh(mesh) if mesh is not None else None
+        )
 
         cap_north_nodes = np.empty((nc_j, nc_j, nk, 3), dtype=np.float64)
         cap_south_nodes = np.empty((nc_j, nc_j, nk, 3), dtype=np.float64)
 
-        if mesh is not None:
-            from shore.surface.remesh import project_gnomonic_cap_to_surface
-            cap_north_k0 = project_gnomonic_cap_to_surface(
-                mesh, north_cap_rows_k0, nc_j, pole="north"
-            )
-            cap_south_k0 = project_gnomonic_cap_to_surface(
-                mesh, south_cap_rows_k0, nc_j, pole="south"
-            )
-        else:
-            cap_north_k0 = _build_cap_k0(north_cap_rows_k0, nc_j, pole="north")
-            cap_south_k0 = _build_cap_k0(south_cap_rows_k0, nc_j, pole="south")
-
-            if self.cap_pull != 0.0:
-                cap_north_k0 = _pull_cap_interior(
-                    cap_north_k0, north_cap_rows_k0, self.cap_pull, pole="north"
-                )
-                cap_south_k0 = _pull_cap_interior(
-                    cap_south_k0, south_cap_rows_k0, self.cap_pull, pole="south"
-                )
-
-        cap_north_nodes[:, :, 0, :] = cap_north_k0
-        cap_south_nodes[:, :, 0, :] = cap_south_k0
+        cap_north_nodes[:, :, 0, :] = build_cap_k0(
+            north_eq_rows, theta_cap=theta_cap, ni=ni, pole="north",
+            projector=cap_proj,
+            i_spacing=i_spacing, i_beta=i_beta,
+            pole_eps_rad=pole_eps_rad,
+        )
+        cap_south_nodes[:, :, 0, :] = build_cap_k0(
+            south_eq_rows, theta_cap=theta_cap, ni=ni, pole="south",
+            projector=cap_proj,
+            i_spacing=i_spacing, i_beta=i_beta,
+            pole_eps_rad=pole_eps_rad,
+        )
 
         # ------------------------------------------------------------------
         # Construct HexBlocks
@@ -258,3 +235,9 @@ class CapsTopology(Topology):
             cap_south_blk._set_face_bc(name, FaceBC.DIRICHLET)
 
         return [*sub_blocks, cap_north_blk, cap_south_blk]
+
+
+def _projector_from_mesh(mesh: object) -> object:
+    """Build a temporary Projector using mesh.centroid (legacy mesh= path)."""
+    from shore.surface.projector import Projector
+    return Projector(mesh, mesh.centroid)  # type: ignore[attr-defined]

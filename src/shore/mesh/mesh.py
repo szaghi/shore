@@ -15,7 +15,6 @@ from shore.topology.sphere_cap import (
     _check_jacobian,
     _march_cap_layer,
     _march_one_layer,
-    _squareness_rows,
 )
 from shore.volume.hyperbolic import _compute_normals
 from shore.volume.spacing import build_k_steps
@@ -84,18 +83,41 @@ class Mesh:
         Mesh
             Ready to call ``.march()``.
         """
-        body    = Body.from_stl(path)
-        surface = body.project(
-            ni, nj,
-            theta_cap=theta_cap,
-            theta_cap_deg=theta_cap_deg,
-            i_spacing=i_spacing,
-            i_beta=i_beta,
-            j_spacing=j_spacing,
-            j_beta=j_beta,
-            j_cluster_lon=j_cluster_lon,
-        )
-        blocks = topology.build(surface, nk, spacing_k=spacing_k)
+        body = Body.from_stl(path)
+
+        if theta_cap_deg is not None and theta_cap is None:
+            _theta = float(np.deg2rad(theta_cap_deg))
+        elif theta_cap is not None:
+            _theta = float(theta_cap)
+        else:
+            _theta = float(0.05 * np.pi)
+
+        from shore.mesh.topology import CapsTopology
+        if isinstance(topology, CapsTopology):
+            surface, nc_cap = body.project_caps(
+                ni, nj,
+                theta_cap=_theta,
+                i_spacing=i_spacing, i_beta=i_beta,
+                j_spacing=j_spacing, j_beta=j_beta,
+                j_cluster_lon=j_cluster_lon,
+            )
+            blocks = topology.build(
+                surface, nk,
+                nc_cap=nc_cap,
+                spacing_k=spacing_k,
+                projector=body.projector,
+                theta_cap=_theta,
+                i_spacing=i_spacing, i_beta=i_beta,
+            )
+        else:
+            surface = body.project(
+                ni, nj,
+                theta_cap=_theta,
+                i_spacing=i_spacing, i_beta=i_beta,
+                j_spacing=j_spacing, j_beta=j_beta,
+                j_cluster_lon=j_cluster_lon,
+            )
+            blocks = topology.build(surface, nk, spacing_k=spacing_k)
         return cls(body=body, blocks=blocks, topology=topology)
 
     # ------------------------------------------------------------------
@@ -179,8 +201,6 @@ class Mesh:
 
         _steps = steps if steps is not None else build_k_steps(nk, ds, growth)
 
-        cap_squareness = self.topology.cap_squareness
-
         do_blend = blend_normals_k > 0
         if do_blend:
             from shore.volume.hyperbolic import _stl_normals
@@ -245,21 +265,6 @@ class Mesh:
             # --- 2. Extract pole rows for cap boundary pins ---
             north_eq_rows = [new_subs[q][ni - 1, :, :] for q in range(4)]
             south_eq_rows = [new_subs[q][0, :, :]      for q in range(4)]
-
-            if cap_squareness != 0.0:
-                # Squareness-modified rows used only as cap boundary pins.
-                # Equatorial sub-blocks keep their unmodified positions to avoid
-                # a geometric kink at the seam.
-                north_eq_rows = _squareness_rows(north_eq_rows, cap_squareness)
-                south_eq_rows = _squareness_rows(south_eq_rows, cap_squareness)
-                for q in range(4):
-                    q_next = (q + 1) % 4
-                    shared_n = 0.5 * (north_eq_rows[q][-1] + north_eq_rows[q_next][0])
-                    north_eq_rows[q][-1]       = shared_n
-                    north_eq_rows[q_next][0]   = shared_n
-                    shared_s = 0.5 * (south_eq_rows[q][-1] + south_eq_rows[q_next][0])
-                    south_eq_rows[q][-1]       = shared_s
-                    south_eq_rows[q_next][0]   = shared_s
 
             # --- 3. Advance cap blocks ---
             if do_blend and k < blend_normals_k:
