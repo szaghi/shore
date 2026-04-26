@@ -66,7 +66,6 @@ export default defineConfig({
           items: [
             { text: 'shore mesh',    link: '/reference/mesh' },
             { text: 'shore project', link: '/reference/project' },
-            { text: 'shore march',   link: '/reference/march' },
             { text: 'shore info',    link: '/reference/info' },
             { text: 'shore check',   link: '/reference/check' },
             { text: 'shore export',  link: '/reference/export' },

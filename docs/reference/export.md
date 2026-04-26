@@ -83,23 +83,26 @@ After loading a `.vts` file in ParaView:
 
 ## Multi-block export (sphere-cap topology)
 
-The `shore export` command handles single-block `.geo` files. For the 6-block
-sphere-cap topology, use the Python API directly:
+The `shore export` command handles single-block `.geo` files. For the
+6-block caps topology, use the Python API to bundle them into one
+ParaView-friendly `.vtm` MultiBlock:
 
 ```python
+from shore.io.geo import read_geo
 from shore.io.vtk import write_caps_vtm
 
-# blocks is the list[np.ndarray] returned by split_ogrid_with_polar_caps
-write_caps_vtm("sphere_caps.vtm", blocks, with_jacobian=True)
+labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
+blocks = [read_geo(f"sphere_{lbl}.geo") for lbl in labels]
+write_caps_vtm("sphere.vtm", blocks, with_jacobian=True)
 ```
 
 Or use the example script:
 
 ```bash
 .venv/bin/python examples/visualize_geo.py \
-    --generate --topology caps --vtk --no-view --nk 10
-# writes sphere_sub0.vts … sphere_cap_south.vts + sphere_caps.vtm
-paraview sphere_caps.vtm
+    --generate --vtk --no-view --nk 10
+# writes 6 sphere_<label>.geo files + sphere.vtm (MultiBlock)
+paraview sphere.vtm
 ```
 
 ## See also

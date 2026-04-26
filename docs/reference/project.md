@@ -1,8 +1,19 @@
 # shore project
 
-Project a structured sphere grid onto an STL surface, producing the k=0 layer only.
+Project a structured single-block lat-lon sphere grid onto an STL
+surface, producing the k=0 layer only as an `.npz` file.
 
-Use this command to inspect the surface projection before committing to a full march, or when you want to cache stage 1 and experiment with different marching parameters without repeating the ray casting.
+::: warning Independent of `shore mesh`
+The `.npz` produced here is a **single-block** surface (`(ni, nj, 3)` lat-lon
+grid; not the 6-block caps topology). It is meant for inspection, custom
+post-processing, or downstream tools that consume the raw projected
+surface. The `shore mesh` command does **not** read this `.npz` —
+the caps topology projects directly through the cached BVH inside
+`Mesh.from_stl`.
+:::
+
+Use this command when you want to inspect the surface projection or cache
+the stage-1 ray-cast for downstream non-caps workflows.
 
 ## Synopsis
 
@@ -90,15 +101,17 @@ print(f"mean radius = {radii.mean():.4f}")   # ≈ 1.0
 print(f"std  radius = {radii.std():.4f}")    # ≈ 0.0 for a perfect sphere
 ```
 
-Verify the projected layer looks correct before marching:
+Verify the projected layer looks correct before generating the full mesh:
 
 ```bash
 shore project fuselage.stl --ni 60 --nj 90 -o fuselage_k0.npz
-# Then inspect fuselage_k0.npz in pyvista or matplotlib before marching
-shore march fuselage_k0.npz --nk 40 --ds 1e-4 -o fuselage.geo -v
+# Inspect fuselage_k0.npz in pyvista or matplotlib, then run the
+# full pipeline through shore mesh (which projects internally).
+shore mesh fuselage.stl --ni 60 --nj 90 --nk 40 --ds 1e-4 -o fuselage -v
 ```
 
-Latitude clustering near the cap boundaries (finer cells at i=0 and i=ni-1, coarser at the equator):
+Latitude clustering near the lat-lon cap boundaries (finer cells at i=0
+and i=ni-1, coarser at the equator):
 
 ```bash
 shore project body.stl \
@@ -133,7 +146,8 @@ When surface spacing is non-uniform, the lat-lon directions are redistributed us
 
 ## See also
 
-- [`shore march`](march) — extrude the saved k=0 layer
-- [`shore mesh`](mesh) — run the full pipeline
+- [`shore mesh`](mesh) — full STL → 6-block caps mesh pipeline
+- [Caps topology](/concepts/sphere-cap) — the 6-block topology that
+  `shore mesh` builds (does not consume `.npz` from `shore project`)
 - [Spacing laws](/concepts/spacing) — clustering distributions explained
 - [Pipeline overview](/concepts/pipeline)

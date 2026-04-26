@@ -2,74 +2,58 @@
 
 ## Your first O-grid
 
-Given a body surface `sphere.stl`, generate a structured O-grid with 40 latitude points, 60 longitude points, and 30 wall-normal layers:
+Given a body surface `sphere.stl`, generate a 6-block caps-topology
+volume grid with 40 equator latitude points, 60 longitude points, and
+30 wall-normal layers:
 
 ```bash
-shore mesh sphere.stl --ni 40 --nj 60 --nk 30 --ds 1e-3 --growth 1.15 -o sphere.geo -v
+shore mesh sphere.stl --ni 40 --nj 60 --nk 30 --ds 1e-3 --growth 1.15 -o sphere -v
 ```
 
 SHORE will:
 
 1. Load the STL and count triangles
-2. Project a structured `(40×60)` sphere template onto the body surface
-3. March 29 layers outward from the surface, growing each step by 15 %
-4. Write `sphere.geo` in Xall_GPU format
+2. Build the south and north cap k=0 seed faces by gnomonic flat-square
+   projection (4 corners on the colatitude-`theta_cap` parallel)
+3. Build the equator k=0 from the cap seam rings via great-circle
+   meridians (with C1 spacing match at every seam vertex)
+4. March 29 layers outward with seam-aware normals, Laplacian smoothing,
+   and per-layer Jacobian guards
+5. Write 6 `.geo` files: `sphere_sub0.geo` ... `sphere_cap_south.geo`
 
 The `-v` flag shows the live progress bar:
 
 ```
-⠸ Loading STL     ████████████████████████  1/1   320 triangles         0:00:00
-⠸ Projecting      ████████████████████████  1/1   (40×60) surface layer  0:00:00
-⠸ Marching        ████████████████████████ 29/29  jmin=8.23e-03  Δs=4.28e-02  0:00:00
-✓ Wrote sphere.geo  (40×60×30)
+⠸ Loading STL     ████████████████  1/1   5,120 triangles  0:00:00
+⠸ Marching caps   ████████████████ 29/29  jmin=2.30e-05    0:00:00
+✓ Wrote 6 .geo files  (sub: 40x16x30, caps: 16x16x30)
 ```
 
 ## Inspecting the result
 
 ```bash
-shore info sphere.geo
+shore info sphere_sub0.geo
 ```
 
 ```
-┌──────────────────────────────────────────────┐
-│ sphere.geo                                   │
-├─────────────┬───────────────────────────────┤
-│ Dimensions  │ ni=40  nj=60  nk=30           │
-│ Points      │ 72,000                         │
-│ Cells       │ 47,151                         │
-│ x bounds    │ [-1.042,  1.042]               │
-│ y bounds    │ [-1.042,  1.042]               │
-│ z bounds    │ [-1.042,  1.042]               │
-└─────────────┴───────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│ sphere_sub0.geo                                 │
+├─────────────┬───────────────────────────────────┤
+│ Dimensions  │ ni=40  nj=16  nk=30               │
+│ Points      │ 19,200                            │
+│ Cells       │ 16,965                            │
+│ x bounds    │ [-1.042,  1.042]                  │
+│ y bounds    │ [-1.042,  1.042]                  │
+│ z bounds    │ [-1.042,  1.042]                  │
+└─────────────┴───────────────────────────────────┘
 ```
 
 ```bash
-shore check sphere.geo
+shore check sphere_sub0.geo
 ```
 
 ```
 ✓ All Jacobians positive.
-```
-
-## Running stages individually
-
-For debugging, you can run each stage separately:
-
-```bash
-# Stage 1: project the surface only
-shore project sphere.stl --ni 40 --nj 60 -o sphere_k0.npz -v
-
-# Inspect the projected layer in Python
-python -c "
-import numpy as np
-k0 = np.load('sphere_k0.npz')['k0']
-print(k0.shape)        # (40, 60, 3)
-import numpy.linalg as la
-print(la.norm(k0, axis=-1).mean())  # ≈ 1.0
-"
-
-# Stage 2: extrude the saved layer
-shore march sphere_k0.npz --nk 30 --ds 1e-3 --growth 1.15 -o sphere.geo -v
 ```
 
 ## Choosing marching parameters
@@ -84,89 +68,140 @@ shore march sphere_k0.npz --nk 30 --ds 1e-3 --growth 1.15 -o sphere.geo -v
 
 **Grid quality vs. speed trade-offs:**
 
-- Reducing `--growth` gives a smoother grid but requires more layers for the same far-field extent.
-- Increasing `--smooth` improves orthogonality at the cost of some cell-size uniformity.
-- If `shore check` reports a near-inversion (jmin < 1e-6) on early layers, the body likely has concavities relative to its centroid — increase `--smooth` or reduce `--ds`.
+- Reducing `--growth` gives a smoother grid but requires more layers for
+  the same far-field extent.
+- Increasing `--smooth` improves orthogonality at the cost of some
+  cell-size uniformity.
+- If `shore check` reports a near-inversion (jmin < 1e-6) on early
+  layers, the body likely has concavities relative to the centroid —
+  increase `--smooth` or reduce `--ds`.
+
+## Cap / equator compatibility
+
+The caps topology pins the equator's first/last meridional step to the
+cap-edge first cell at every seam vertex (C1 spacing match). For the
+pinning to be active, the cap radial step and the equator's natural
+radial step should be within ~2× of each other:
+
+$$
+\frac{\theta_{\text{cap}}}{n_c - 1} \approx \frac{\pi - 2\theta_{\text{cap}}}{n_i - 1},
+\quad n_c = \tfrac{n_j}{4} + 1
+$$
+
+The defaults `--ni 40 --nj 60 --theta-cap` (= $\pi/6$) land in the
+compatibility window. If you push `theta_cap` very small with a coarse
+`ni`, SHORE falls back to unpinned spacing and emits one
+`UserWarning` per build with guidance.
 
 ## Controlling cell distribution with spacing laws
 
-The default geometric spacing (`ds * growth^k`) works well when you only care about the first-layer thickness. When you need more control — a fixed far-field boundary, clustering around a geometric feature, or finer cells at the cap boundaries — switch to a tanh-based law.
+The default geometric spacing (`ds * growth^k`) works well when you only
+care about the first-layer thickness. When you need more control —
+fixed far-field, clustering at cap seams or cap corners — switch to a
+tanh-based law.
 
 ### Wall-normal (k-direction)
 
 ```bash
 # Geometric: fixed first-layer, unbounded outer boundary
-shore mesh wing.stl --nk 40 --ds 1e-3 --growth 1.10 -o wing.geo
+shore mesh wing.stl --nk 40 --ds 1e-3 --growth 1.10 -o wing
 
 # Tanh: fixed total thickness, cluster near wall
-shore mesh wing.stl --nk 40 --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 5.0 -o wing.geo
+shore mesh wing.stl --nk 40 \
+    --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 5.0 \
+    -o wing
 
 # Tanh2: fixed total thickness, cluster at wall AND far-field
-shore mesh wing.stl --nk 40 --volume-k-spacing tanh2 --volume-k-beta 3.0 --volume-k-thickness 5.0 -o wing.geo
+shore mesh wing.stl --nk 40 \
+    --volume-k-spacing tanh2 --volume-k-beta 3.0 --volume-k-thickness 5.0 \
+    -o wing
 ```
 
-Key difference: with `geometric`, `--ds` controls the first layer and the outer boundary floats. With `tanh`/`tanh2`, `--volume-k-thickness` fixes the outer boundary and the first-layer size is determined by `nk` and `--volume-k-beta`.
+Key difference: with `geometric`, `--ds` controls the first layer and
+the outer boundary floats. With `tanh`/`tanh2`, `--volume-k-thickness`
+fixes the outer boundary and the first-layer size is determined by
+`nk` and `--volume-k-beta`.
 
 ### Surface (i- and j-directions)
 
-Surface spacing is set at projection time and cannot be changed without re-projecting. Use `--surface-i-spacing` for latitude (pole-to-pole) and `--surface-j-spacing` for longitude (around the body).
-
 ```bash
-# Longitude clustering at the leading edge (phi = 0)
-shore mesh airfoil.stl \
-  --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0 \
-  --ni 40 --nj 80 --nk 30
+# Equator meridional clustering at the cap seams (tanh i-spacing)
+shore mesh body.stl --ni 60 --nj 80 \
+    --surface-i-spacing tanh --surface-i-beta 4.0 \
+    --theta-cap-deg 30 \
+    -o body
 
-# Latitude clustering at cap boundaries (for caps topology)
-shore mesh body.stl --topology caps \
-  --surface-i-spacing tanh --surface-i-beta 4.0 \
-  --cap-pull 0.4
+# Cap-corner clustering (tanh2 j-spacing on the cap edges,
+# inherited by the equator seam)
+shore mesh body.stl --ni 40 --nj 60 \
+    --surface-j-spacing tanh2 --surface-j-beta 4.0 \
+    --theta-cap-deg 30 \
+    -o body
 ```
 
-The `--j-cluster-lon` value is a longitude in radians: `0.0` for the positive x-axis, `pi/2` for the y-axis, `pi` for the negative x-axis. Set it to the azimuthal angle of the geometric feature you want to refine.
-
-See [Spacing laws](/concepts/spacing) for the full explanation of each law, what physical region it clusters toward, and how to choose $\beta$.
+See [Spacing laws](/concepts/spacing) for the full explanation of each
+law, what physical region it clusters toward, and how to choose $\beta$.
 
 ::: warning Star-shaped constraint
-The surface projection assumes the body is **star-shaped** with respect to its centroid: every ray from the centroid must hit the surface exactly once. This is satisfied by spheres, ellipsoids, fuselages, and most convex CFD bodies. Concave bodies (e.g. re-entrant cavities, forked geometries) will produce a `ValueError` during projection — see [Limitations](/concepts/pipeline#limitations).
+The surface projection assumes the body is **star-shaped** with respect
+to its anchor (centroid by default). Every ray from the anchor must hit
+the surface exactly once. This is satisfied by spheres, ellipsoids,
+fuselages, and most convex CFD bodies. Concave bodies (re-entrant
+cavities, forked geometries) will fail during projection — see
+[Limitations](/concepts/pipeline#limitations).
 :::
 
 ## Using SHORE from Python
 
-All CLI commands are thin wrappers over a pure Python API:
+The CLI is a thin wrapper over the OOP Python API:
 
 ```python
-from shore.surface.io       import load_stl
-from shore.surface.remesh   import project_sphere_to_surface
-from shore.volume.hyperbolic import march
-from shore.volume.spacing   import build_k_steps
-from shore.io.geo            import write_geo
+import numpy as np
+from shore.mesh import CapsTopology, Mesh, Spacing1D
 
-mesh = load_stl("sphere.stl")
-k0   = project_sphere_to_surface(mesh, ni=40, nj=60)
+m = Mesh.from_stl(
+    "sphere.stl",
+    topology=CapsTopology(),
+    ni=40, nj=60, nk=30,
+    theta_cap=float(np.pi / 6),
+    spacing_k=Spacing1D(law="geometric", ds=1e-3, growth=1.15),
+)
 
-# Geometric spacing (default — same as ds=1e-3, growth=1.15)
-grid = march(k0, nk=30, ds=1e-3, growth=1.15)
-
-# Tanh spacing — fixed outer boundary, cluster at wall
-steps = build_k_steps(30, ds=1e-3, spacing="tanh", beta=4.0, total_thickness=2.0)
-grid = march(k0, nk=30, steps=steps)
-
-write_geo("sphere.geo", grid)
+m.march(ds=1e-3, growth=1.15, smooth_strength=0.2, smooth_iters=2)
+m.write_geo("sphere")  # writes 6 sphere_<label>.geo files
 ```
 
-The `march` function also accepts a `layer_callback` for custom progress reporting:
+The `march` method also accepts a `layer_callback` for custom progress
+reporting:
 
 ```python
-def my_callback(k: int, jmin: float, step: float) -> None:
-    print(f"layer {k:3d}  jmin={jmin:.3e}  step={step:.3e}")
+def my_callback(k: int, jmin: float) -> None:
+    print(f"layer {k:3d}  jmin={jmin:.3e}")
 
-grid = march(k0, nk=30, ds=1e-3, growth=1.15, layer_callback=my_callback)
+m.march(ds=1e-3, growth=1.15, layer_callback=my_callback)
+```
+
+For wall-normal spacing other than geometric, build a `Spacing1D`:
+
+```python
+from shore.mesh import Spacing1D
+
+# Tanh spacing — cluster at wall, fixed total thickness
+sp_k = Spacing1D(law="tanh", beta=4.0, total_thickness=2.0)
+steps = sp_k.build_steps(40)
+
+m = Mesh.from_stl(
+    "wing.stl", topology=CapsTopology(),
+    ni=60, nj=80, nk=40,
+    spacing_k=sp_k,
+)
+m.march(steps=steps)
 ```
 
 ## Visualization
 
-SHORE ships two complementary visualization paths: **ParaView** via VTK export and **PyVista** for interactive Python views.
+SHORE ships two complementary visualization paths: **ParaView** via VTK
+export and **PyVista** for interactive Python views.
 
 ::: tip Install the vis extras
 ```bash
@@ -176,28 +211,30 @@ pip install shore[vis]   # adds pyvista
 
 ### ParaView
 
-Export any `.geo` or `.npz` file to VTK StructuredGrid format and open it in ParaView:
+Export the 6 `.geo` files to a single VTK MultiBlock `.vtm` and open
+it in ParaView:
 
 ```bash
-shore export sphere.geo           # → sphere.vts
-shore export sphere_k0.npz        # → sphere_k0.vts
-paraview sphere.vts
+shore export sphere_sub0.geo  # → sphere_sub0.vts
+# ... or via the Python API for MultiBlock:
+python -c "
+from shore.io.geo import read_geo
+from shore.io.vtk import write_caps_vtm
+labels = ['sub0', 'sub1', 'sub2', 'sub3', 'cap_north', 'cap_south']
+blocks = [read_geo(f'sphere_{lbl}.geo') for lbl in labels]
+write_caps_vtm('sphere.vtm', blocks, with_jacobian=True)
+"
+paraview sphere.vtm
 ```
-
-The `.vts` file contains the grid coordinates and, for volume grids, a `Jacobian` cell-data array. In ParaView:
-
-1. Set representation to **Surface with Edges** to inspect cell structure.
-2. Colour by **Jacobian** to spot low-quality cells.
-3. Use **Clip** or **Slice** filters to examine interior layers.
 
 ### Interactive desktop viewer
 
 ```bash
-shore view sphere.geo         # opens a PyVista window
-shore view sphere_k0.npz      # view the projected surface
+shore view sphere_sub0.geo   # opens a PyVista window
 ```
 
-The wall layer (k=0) is highlighted in steelblue; outer layers are coloured by the Jacobian on a `RdYlGn` scale. Use `--colorby none` for a plain view.
+The wall layer (k=0) is highlighted; outer layers are coloured by the
+Jacobian on a `RdYlGn` scale. Use `--colorby none` for a plain view.
 
 ### Jupyter notebook
 
@@ -205,32 +242,19 @@ The wall layer (k=0) is highlighted in steelblue; outer layers are coloured by t
 import pyvista as pv
 pv.set_jupyter_backend("html")   # inline rendering, no display required
 
-from shore.vis import view_geo, view_surface
 from shore.io.geo import read_geo
-import numpy as np
+from shore.io.vtk import open_to_pyvista
 
-# Volume grid
-grid = read_geo("sphere.geo")
-pl = view_geo(grid, jupyter=True)
-pl.show()
-
-# Surface layer
-k0 = np.load("sphere_k0.npz")["k0"]
-pl = view_surface(k0, jupyter=True)
+grid = read_geo("sphere_sub0.geo")
+sg = open_to_pyvista(grid, with_jacobian=True)
+pl = pv.Plotter()
+pl.add_mesh(sg, scalars="Jacobian", cmap="RdYlGn", show_edges=True, opacity=0.7)
 pl.show()
 ```
 
-See `examples/visualize.ipynb` for a complete notebook that covers projection, marching, Jacobian analysis, and spacing-law comparison with plots.
-
-### Automated screenshots
-
-```python
-from shore.vis import save_screenshot
-from shore.io.geo import read_geo
-
-grid = read_geo("sphere.geo")
-save_screenshot(grid, "sphere_preview.png", window_size=(1600, 1200))
-```
+See `examples/visualize.ipynb` for a complete notebook that covers
+mesh generation, Jacobian analysis, spacing-law comparison, and the C1
+seam-matching demo.
 
 ### Accessing Jacobian data directly
 
@@ -238,13 +262,13 @@ save_screenshot(grid, "sphere_preview.png", window_size=(1600, 1200))
 from shore.volume.jacobian import jacobian_field, jacobian_per_layer
 from shore.io.geo import read_geo
 import numpy as np
-
-grid = read_geo("sphere.geo")
-
-J      = jacobian_field(grid)      # (ni-1, nj, nk-1) — per-cell
-jmins  = jacobian_per_layer(grid)  # (nk-1,)  — per-layer minimum
-
 import matplotlib.pyplot as plt
+
+grid = read_geo("sphere_sub0.geo")
+
+J = jacobian_field(grid)             # (ni-1, nj, nk-1) — per-cell
+jmins = jacobian_per_layer(grid)     # (nk-1,)  — per-layer minimum
+
 plt.plot(np.arange(1, len(jmins)+1), jmins, marker="o")
 plt.xlabel("Layer")
 plt.ylabel("Min Jacobian")

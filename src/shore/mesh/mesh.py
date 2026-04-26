@@ -19,6 +19,99 @@ from shore.topology.sphere_cap import (
 from shore.volume.hyperbolic import _compute_normals
 from shore.volume.spacing import build_k_steps
 
+# ---------------------------------------------------------------------------
+# Ghost-row helpers for seam-aware normals during marching
+# ---------------------------------------------------------------------------
+# Each block computes its outward normal from i- and j-tangents.  Without
+# ghost rows the boundary tangents fall back to one-sided differences, which
+# disagree with the partner block's centred difference at the same seam.  The
+# disagreement accumulates over many marching layers as a visible spacing
+# jump across block seams (sub-sub j-seams and cap-equator i-seams).
+#
+# These helpers gather the partner block's "row one inward" data, mapped
+# through the index permutation/reversal of ``_overwrite_cap_boundaries``,
+# so that ``_compute_normals`` can use centred differences at every seam.
+
+
+def _sub_ghost_rows(
+    q: int,
+    sub_k: list[np.ndarray],
+    cap_north_k: np.ndarray,
+    cap_south_k: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Ghost rows for sub_q at the current k-layer.
+
+    j_lo / j_hi come from the adjacent sub-blocks' row one inward from the
+    shared seam.  i_lo / i_hi come from the cap blocks; the index mapping
+    mirrors ``_overwrite_cap_boundaries``: for each sub_q the cap edge that
+    receives sub_q's pole row has a known orientation, and the cap "row one
+    inward" is the row offset by 1 in the perpendicular direction.
+    """
+    q_prev = (q - 1) % 4
+    q_next = (q + 1) % 4
+    g: dict[str, np.ndarray] = {}
+    g["j_lo"] = sub_k[q_prev][:, -2, :]
+    g["j_hi"] = sub_k[q_next][:, 1, :]
+
+    # i_hi = cap_north's "row one inward from sub_q's pole edge", indexed
+    # through the inverse of _overwrite_cap_boundaries (north pole).
+    if q == 0:
+        g["i_hi"] = cap_north_k[1, :, :]
+    elif q == 1:
+        g["i_hi"] = cap_north_k[:, -2, :]
+    elif q == 2:
+        g["i_hi"] = cap_north_k[-2, ::-1, :]
+    else:  # q == 3:  cap_north[:, 0, :] ← sub3[ni-1, ::-1, :]  ⇒  ghost = cap_north[::-1, 1, :]
+        g["i_hi"] = cap_north_k[::-1, 1, :]
+
+    # i_lo = cap_south's "row one inward from sub_q's south pole edge",
+    # indexed through the inverse of _overwrite_cap_boundaries (south pole).
+    if q == 0:
+        g["i_lo"] = cap_south_k[:, 1, :]
+    elif q == 1:
+        g["i_lo"] = cap_south_k[-2, :, :]
+    elif q == 2:  # cap_south[:, -1, :] ← sub2[0, ::-1, :]  ⇒  ghost = cap_south[::-1, -2, :]
+        g["i_lo"] = cap_south_k[::-1, -2, :]
+    else:  # q == 3
+        g["i_lo"] = cap_south_k[1, ::-1, :]
+
+    return g
+
+
+def _cap_ghost_rows(
+    pole: str,
+    sub_k: list[np.ndarray],
+    ni: int,
+) -> dict[str, np.ndarray]:
+    """Ghost rows for a cap block (north or south) at the current k-layer.
+
+    Mirrors the inverse of ``_overwrite_cap_boundaries``: each cap edge is
+    bound to a sub-block pole row, and the ghost row beyond that edge is
+    that sub-block's "row one inward from the pole" — i.e. ``[ni-2, :]`` for
+    north cap, ``[1, :]`` for south cap, with the same reversal pattern as
+    the override.
+    """
+    g: dict[str, np.ndarray] = {}
+    if pole == "north":
+        # cap_north[0,  :] ← sub0[ni-1, :]   → ghost beyond = sub0[ni-2, :]
+        # cap_north[:, -1] ← sub1[ni-1, :]   → ghost beyond = sub1[ni-2, :]
+        # cap_north[-1, :] ← sub2[ni-1, ::-1] → ghost beyond = sub2[ni-2, ::-1]
+        # cap_north[:,  0] ← sub3[ni-1, ::-1] → ghost beyond = sub3[ni-2, ::-1]
+        g["i_lo"] = sub_k[0][ni - 2, :, :]
+        g["j_hi"] = sub_k[1][ni - 2, :, :]
+        g["i_hi"] = sub_k[2][ni - 2, ::-1, :]
+        g["j_lo"] = sub_k[3][ni - 2, ::-1, :]
+    else:  # south
+        # cap_south[:,  0] ← sub0[0, :]      → ghost beyond = sub0[1, :]
+        # cap_south[-1, :] ← sub1[0, :]      → ghost beyond = sub1[1, :]
+        # cap_south[:, -1] ← sub2[0, ::-1]   → ghost beyond = sub2[1, ::-1]
+        # cap_south[0,  :] ← sub3[0, ::-1]   → ghost beyond = sub3[1, ::-1]
+        g["j_lo"] = sub_k[0][1, :, :]
+        g["i_hi"] = sub_k[1][1, :, :]
+        g["j_hi"] = sub_k[2][1, ::-1, :]
+        g["i_lo"] = sub_k[3][1, ::-1, :]
+    return g
+
 
 class Mesh:
     """Multi-block structured mesh.
@@ -39,8 +132,8 @@ class Mesh:
         blocks: list[HexBlock],
         topology: Topology,
     ) -> None:
-        self.body     = body
-        self.blocks   = blocks
+        self.body = body
+        self.blocks = blocks
         self.topology = topology
 
     @classmethod
@@ -93,28 +186,32 @@ class Mesh:
             _theta = float(0.05 * np.pi)
 
         from shore.mesh.topology import CapsTopology
+
         if isinstance(topology, CapsTopology):
-            surface, nc_cap = body.project_caps(
-                ni, nj,
-                theta_cap=_theta,
-                i_spacing=i_spacing, i_beta=i_beta,
-                j_spacing=j_spacing, j_beta=j_beta,
-                j_cluster_lon=j_cluster_lon,
-            )
+            # Gnomonic algorithm builds the surface inside topology.build by
+            # projecting through the cached BVH; we only need ni, nj here.
             blocks = topology.build(
-                surface, nk,
-                nc_cap=nc_cap,
+                surface=None,
+                nk=nk,
+                ni=ni,
+                nj=nj,
                 spacing_k=spacing_k,
                 projector=body.projector,
                 theta_cap=_theta,
-                i_spacing=i_spacing, i_beta=i_beta,
+                i_spacing=i_spacing,
+                i_beta=i_beta,
+                j_spacing=j_spacing,
+                j_beta=j_beta,
             )
         else:
             surface = body.project(
-                ni, nj,
+                ni,
+                nj,
                 theta_cap=_theta,
-                i_spacing=i_spacing, i_beta=i_beta,
-                j_spacing=j_spacing, j_beta=j_beta,
+                i_spacing=i_spacing,
+                i_beta=i_beta,
+                j_spacing=j_spacing,
+                j_beta=j_beta,
                 j_cluster_lon=j_cluster_lon,
             )
             blocks = topology.build(surface, nk, spacing_k=spacing_k)
@@ -167,10 +264,9 @@ class Mesh:
             If the topology is not ``CapsTopology``.
         """
         from shore.mesh.topology import CapsTopology
+
         if not isinstance(self.topology, CapsTopology):
-            raise NotImplementedError(
-                "Mesh.march() currently only supports CapsTopology."
-            )
+            raise NotImplementedError("Mesh.march() currently only supports CapsTopology.")
         self._march_caps(
             ds=ds,
             growth=growth,
@@ -193,8 +289,8 @@ class Mesh:
     ) -> None:
         """Simultaneous marching for the 6-block CapsTopology."""
         sub_blocks = self.blocks[:4]
-        cap_north  = self.blocks[4]
-        cap_south  = self.blocks[5]
+        cap_north = self.blocks[4]
+        cap_south = self.blocks[5]
 
         nk = sub_blocks[0].nodes.shape[2]
         ni = sub_blocks[0].nodes.shape[0]
@@ -204,31 +300,52 @@ class Mesh:
         do_blend = blend_normals_k > 0
         if do_blend:
             from shore.volume.hyperbolic import _stl_normals
+
             trimesh_obj = self.body.mesh
 
         for k in range(nk - 1):
             step = float(_steps[k])
 
+            # Snapshot of the k-layer for every block — used as the source
+            # of ghost rows so that all 6 blocks see a *consistent* set of
+            # neighbour data for centred-difference normals at the seams.
+            sub_k = [blk.nodes[:, :, k, :] for blk in sub_blocks]
+            cn_k = cap_north.nodes[:, :, k, :]
+            cs_k = cap_south.nodes[:, :, k, :]
+
             # --- 1. Advance equatorial sub-blocks ---
             new_subs: list[np.ndarray] = []
-            for blk in sub_blocks:
-                layer_q = blk.nodes[:, :, k, :]
+            for q in range(len(sub_blocks)):
+                layer_q = sub_k[q]
                 ni_q, nj_q = layer_q.shape[:2]
+
+                # Ghost rows for sub_q at this layer (pre-march).  i_lo and
+                # i_hi come from the cap blocks (rotated/reversed per the
+                # _overwrite_cap_boundaries mapping); j_lo and j_hi come from
+                # adjacent sub-blocks via the periodic ring.
+                ghost = _sub_ghost_rows(q, sub_k, cn_k, cs_k)
+
                 if do_blend and k < blend_normals_k:
                     alpha = 1.0 - k / blend_normals_k
-                    grid_n = _compute_normals(layer_q, periodic=(False, False))
-                    stl_n  = _stl_normals(
-                        trimesh_obj, layer_q.reshape(-1, 3)
-                    ).reshape(ni_q, nj_q, 3)
+                    grid_n = _compute_normals(
+                        layer_q,
+                        periodic=(False, False),
+                        ghost_rows=ghost,
+                    )
+                    stl_n = _stl_normals(trimesh_obj, layer_q.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
                     blended = alpha * stl_n + (1.0 - alpha) * grid_n
                     mag = np.linalg.norm(blended, axis=-1, keepdims=True)
                     normals_override: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
                 else:
                     normals_override = None
                 new_q = _march_one_layer(
-                    layer_q, step, smooth_strength, smooth_iters,
+                    layer_q,
+                    step,
+                    smooth_strength,
+                    smooth_iters,
                     periodic=(False, False),
                     normals_override=normals_override,
+                    ghost_rows=ghost,
                 )
                 if do_blend:
                     # Laplacian smoothing corrupts the pole rows regardless of
@@ -238,16 +355,18 @@ class Mesh:
                     # to the body surface.
                     pole_pts = np.concatenate([layer_q[0], layer_q[-1]], axis=0)
                     stl_poles = _stl_normals(trimesh_obj, pole_pts)
-                    new_q[0]  = layer_q[0]  + step * stl_poles[:nj_q]
+                    new_q[0] = layer_q[0] + step * stl_poles[:nj_q]
                     new_q[-1] = layer_q[-1] + step * stl_poles[nj_q:]
                 new_subs.append(new_q)
 
-            # Re-stitch shared edges (SHARED views, but averaging removes
-            # any floating-point divergence from the smoothing passes)
+            # Re-stitch shared edges to absorb FP noise from the
+            # Laplacian-smoothing boundary clamp.  With seam-aware normals
+            # this should be sub-FP-noise; we keep the averaging as a
+            # belt-and-braces guard against any residual asymmetry.
             for q in range(4):
                 q_next = (q + 1) % 4
                 shared = 0.5 * (new_subs[q][:, -1, :] + new_subs[q_next][:, 0, :])
-                new_subs[q][:, -1, :]     = shared
+                new_subs[q][:, -1, :] = shared
                 new_subs[q_next][:, 0, :] = shared
 
             # Jacobian check for sub-blocks.
@@ -256,30 +375,45 @@ class Mesh:
             jmin_global = np.inf
             for q, blk in enumerate(sub_blocks):
                 jmin = _check_jacobian(
-                    blk.nodes[:, :, k, :], new_subs[q],
-                    periodic_j=False, label=blk.label, k=k,
-                    exclude_corners=True, tol=-1e-6,
+                    blk.nodes[:, :, k, :],
+                    new_subs[q],
+                    periodic_j=False,
+                    label=blk.label,
+                    k=k,
+                    exclude_corners=True,
+                    tol=-1e-6,
                 )
                 jmin_global = min(jmin_global, jmin)
 
             # --- 2. Extract pole rows for cap boundary pins ---
             north_eq_rows = [new_subs[q][ni - 1, :, :] for q in range(4)]
-            south_eq_rows = [new_subs[q][0, :, :]      for q in range(4)]
+            south_eq_rows = [new_subs[q][0, :, :] for q in range(4)]
 
             # --- 3. Advance cap blocks ---
+            cap_north_ghost = _cap_ghost_rows("north", sub_k, ni)
+            cap_south_ghost = _cap_ghost_rows("south", sub_k, ni)
+
             if do_blend and k < blend_normals_k:
                 alpha = 1.0 - k / blend_normals_k
-                cn_layer = cap_north.nodes[:, :, k, :]
+                cn_layer = cn_k
                 nc_c = cn_layer.shape[0]
-                grid_n = _compute_normals(cn_layer, periodic=(False, False))
-                stl_n  = _stl_normals(trimesh_obj, cn_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
+                grid_n = _compute_normals(
+                    cn_layer,
+                    periodic=(False, False),
+                    ghost_rows=cap_north_ghost,
+                )
+                stl_n = _stl_normals(trimesh_obj, cn_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
                 blended = alpha * stl_n + (1.0 - alpha) * grid_n
                 mag = np.linalg.norm(blended, axis=-1, keepdims=True)
                 cap_north_no: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
 
-                cs_layer = cap_south.nodes[:, :, k, :]
-                grid_n = _compute_normals(cs_layer, periodic=(False, False))
-                stl_n  = _stl_normals(trimesh_obj, cs_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
+                cs_layer = cs_k
+                grid_n = _compute_normals(
+                    cs_layer,
+                    periodic=(False, False),
+                    ghost_rows=cap_south_ghost,
+                )
+                stl_n = _stl_normals(trimesh_obj, cs_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
                 blended = alpha * stl_n + (1.0 - alpha) * grid_n
                 mag = np.linalg.norm(blended, axis=-1, keepdims=True)
                 cap_south_no: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
@@ -288,27 +422,43 @@ class Mesh:
                 cap_south_no = None
 
             new_cap_north = _march_cap_layer(
-                cap_north.nodes[:, :, k, :], step,
-                smooth_strength, smooth_iters,
-                north_eq_rows, pole="north",
+                cn_k,
+                step,
+                smooth_strength,
+                smooth_iters,
+                north_eq_rows,
+                pole="north",
                 normals_override=cap_north_no,
+                ghost_rows=cap_north_ghost,
             )
             new_cap_south = _march_cap_layer(
-                cap_south.nodes[:, :, k, :], step,
-                smooth_strength, smooth_iters,
-                south_eq_rows, pole="south",
+                cs_k,
+                step,
+                smooth_strength,
+                smooth_iters,
+                south_eq_rows,
+                pole="south",
                 normals_override=cap_south_no,
+                ghost_rows=cap_south_ghost,
             )
 
             jmin_cap_n = _check_jacobian(
-                cap_north.nodes[:, :, k, :], new_cap_north,
-                periodic_j=False, label="cap_north", k=k,
-                exclude_corners=True, tol=-1e-6,
+                cap_north.nodes[:, :, k, :],
+                new_cap_north,
+                periodic_j=False,
+                label="cap_north",
+                k=k,
+                exclude_corners=True,
+                tol=-1e-6,
             )
             jmin_cap_s = _check_jacobian(
-                cap_south.nodes[:, :, k, :], new_cap_south,
-                periodic_j=False, label="cap_south", k=k,
-                exclude_corners=True, tol=-1e-6,
+                cap_south.nodes[:, :, k, :],
+                new_cap_south,
+                periodic_j=False,
+                label="cap_south",
+                k=k,
+                exclude_corners=True,
+                tol=-1e-6,
             )
             jmin_global = min(jmin_global, jmin_cap_n, jmin_cap_s)
 
@@ -328,6 +478,7 @@ class Mesh:
     def write_geo(self, stem: str | Path) -> None:
         """Write each block as a separate ``<stem>_<label>.geo`` file."""
         from shore.io.geo import write_geo
+
         stem = Path(stem)
         for blk in self.blocks:
             write_geo(stem.parent / f"{stem.name}_{blk.label}.geo", blk.nodes)
@@ -343,9 +494,9 @@ class Mesh:
             Attach per-cell Jacobian as CellData (default True).
         """
         from shore.io.vtk import write_caps_vtm
+
         path = Path(stem).with_suffix(".vtm")
-        write_caps_vtm(path, [blk.nodes for blk in self.blocks],
-                       with_jacobian=with_jacobian)
+        write_caps_vtm(path, [blk.nodes for blk in self.blocks], with_jacobian=with_jacobian)
 
     # ------------------------------------------------------------------
     # Inspection (in-memory)
@@ -393,15 +544,14 @@ class Mesh:
             If any block has a negative Jacobian layer.
         """
         from shore.volume.jacobian import _jacobian_field_open
+
         result: dict = {"ok": True, "blocks": {}}
         for blk in self.blocks:
             jmins = []
             _ni, _nj, nk, _ = blk.nodes.shape
             # layer-by-layer min Jacobian
             for k in range(nk - 1):
-                two = np.stack(
-                    [blk.nodes[:, :, k, :], blk.nodes[:, :, k + 1, :]], axis=2
-                )
+                two = np.stack([blk.nodes[:, :, k, :], blk.nodes[:, :, k + 1, :]], axis=2)
                 jac = _jacobian_field_open(two)
                 jmins.append(float(jac.min()))
             any_neg = any(j <= 0.0 for j in jmins)
@@ -467,8 +617,7 @@ class Mesh:
             from shore.io.vtk import open_to_pyvista
         except ImportError as exc:
             raise ImportError(
-                "pyvista is required for visualisation. "
-                "Install with: pip install shore[vis]"
+                "pyvista is required for visualisation. Install with: pip install shore[vis]"
             ) from exc
 
         if jupyter:

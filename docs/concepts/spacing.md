@@ -1,6 +1,6 @@
 # Spacing laws
 
-SHORE provides three 1D spacing distributions for controlling node density along each structured direction. These are implemented in [`shore.volume.spacing`](/reference/api-spacing) using pure numpy — no scipy dependency.
+SHORE provides three 1D spacing distributions for controlling node density along each structured direction. These are implemented in `shore.volume.spacing` using pure numpy — no scipy dependency.
 
 ## The three laws
 
@@ -50,51 +50,51 @@ SHORE has three independent spacing axes, each with its own set of allowed laws:
 
 ### Latitude (i-direction)
 
-Controls the angular distribution of ray directions during surface projection. The interval spans $[\theta_{\text{cap}},\, \pi - \theta_{\text{cap}}]$ in colatitude.
+Controls the meridional distribution of equator nodes between the south
+cap seam and the north cap seam. Each j-column of the equator is a
+great-circle arc parametrised in colatitude on
+$[\theta_{\text{cap}},\, \pi - \theta_{\text{cap}}]$.
 
 **"Start" and "end" in physical space:**
 
-- `i = 0` (start of interval) = the **north cap boundary** (colatitude $\theta_{\text{cap}}$, near the north pole)
-- `i = ni-1` (end of interval) = the **south cap boundary** (colatitude $\pi - \theta_{\text{cap}}$, near the south pole)
-- `i = ni//2` (midpoint) = the **equator** ($\theta = \pi/2$)
+- `i = 0` = the **south cap seam** (colatitude $\theta_{\text{cap}}$, on the
+  cap_south boundary).
+- `i = ni - 1` = the **north cap seam** (colatitude
+  $\pi - \theta_{\text{cap}}$, on the cap_north boundary).
+- `i = ni // 2` = the **equator** ($\theta = \pi/2$).
 
 **What clusters where:**
 
 | Law | Dense region | Coarse region | Typical use |
 |---|---|---|---|
-| `tanh` | Near *both* cap boundaries (i=0 and i=ni-1) | Equatorial band | Caps topology: concentrate cells where equatorial sub-blocks meet the polar caps |
-| `tanh2` (default, no target) | Near *both* cap boundaries | Equatorial band | Same as `tanh` but symmetric — no bias toward north or south |
-| `uniform` | Everywhere | — | Default for smooth bodies with no polar singularity concerns |
+| `tanh` | Near both cap seams | Equator (mid-meridian) | Boundary-layer-style refinement at both cap seams |
+| `tanh2` | Near both cap seams | Equator | Symmetric variant of `tanh` |
+| `uniform` | Everywhere | — | Default |
 
-::: tip Why does `tanh` cluster at *both* ends?
-The i-direction interval spans a colatitude range symmetric about $\pi/2$. Since `tanh` clusters at the *start* ($\theta_{\text{cap}}$), the mirror-symmetric end ($\pi - \theta_{\text{cap}}$) receives the same clustering by the geometry of the sphere. Use `tanh` when you want finer cells at the cap boundaries and don't care about the asymmetry direction.
+::: info Per-meridian seam pinning
+The equator's first and last meridional intervals are **pinned** to the
+cap-edge first cell at the corresponding seam vertex (per-j), giving C1
+spacing continuity at every seam node when the cap and equator radial
+step sizes are within ~2x of each other. The chosen `i_spacing` law
+shapes the interior `ni − 2` cells between the two pinned endpoints. See
+the [caps topology page](/concepts/sphere-cap) for the compatibility
+window and fallback behaviour.
 :::
 
 ### Longitude (j-direction)
 
-Controls the azimuthal distribution of ray directions. The interval spans $[0, 2\pi)$ (periodic). One-sided tanh is not meaningful for a periodic axis, so only `uniform` and `tanh2` are available.
+Controls the **cap-edge tangent-plane distribution** along the
+$[-\tan(\theta_{\text{cap}}),\, +\tan(\theta_{\text{cap}})]$ interval used
+to build the gnomonic flat-square cap seed face. The cap edges are then
+written bit-exactly into the equator's pole rows (DIRICHLET binding), so
+the equator inherits the cap's j-distribution at the seam. Only `uniform`
+and `tanh2` are available — `tanh` (one-sided) is not meaningful for a
+4-corner symmetric distribution.
 
-**What `--j-cluster-lon` controls:**
-
-The `--j-cluster-lon` flag specifies the longitude $\phi_0$ (in radians) where the dense region is centred. Cells are finest in a band around $\phi = \phi_0$ and coarsest at the antipodal longitude $\phi = \phi_0 + \pi$.
-
-| `--j-cluster-lon` value | Physical location | Use case |
+| Law | Effect | Use |
 |---|---|---|
-| `0.0` | $\phi = 0$ (positive x-axis) | Leading edge of an airfoil aligned along x |
-| `pi / 2` ($\approx 1.571$) | $\phi = \pi/2$ (positive y-axis) | Feature at 90 deg from the reference axis |
-| `pi` ($\approx 3.141$) | $\phi = \pi$ (negative x-axis) | Trailing edge |
-| *(omit)* | $\phi = \pi$ (default) | Symmetric clustering at $\phi = 0$ and $\phi = \pi$ |
-
-```bash
-# Cluster at the leading edge (phi=0)
---surface-j-spacing tanh2 --j-cluster-lon 0.0
-
-# Cluster at a 45-deg feature (phi=pi/4)
---surface-j-spacing tanh2 --j-cluster-lon 0.7854
-
-# Default: symmetric at phi=pi (dense at 0 and pi, coarse at +-pi/2)
---surface-j-spacing tanh2
-```
+| `uniform` | Equispaced cap-edge nodes | Default; produces square-cell caps. |
+| `tanh2` | Cluster at cap corners (sub-block junctions) | Refine the seam near the 4-block junctions. |
 
 ### Wall-normal (k-direction)
 
@@ -156,65 +156,47 @@ shore mesh fuselage.stl \
   -o fuselage_bl.geo
 ```
 
-### Leading-edge refinement on an airfoil
+### Cap-corner refinement
 
-Cluster longitude cells around $\phi = 0$ where the leading edge is, combined with tanh wall-normal spacing.
-
-```bash
-shore mesh airfoil.stl \
-  --ni 40 --nj 80 --nk 40 \
-  --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0 \
-  --volume-k-spacing tanh --volume-k-beta 3.0 --volume-k-thickness 3.0 \
-  -o airfoil_le.geo
-```
-
-### Caps topology with boundary-layer refinement
-
-Concentrate latitude cells at the cap boundaries where the equatorial and polar blocks meet.
+Cluster cells near the cap corners (sub-block junctions on the seam) using
+tanh2 j-spacing. The equator's seam pole rows inherit the same
+distribution by DIRICHLET binding, so the j-clustering is consistent
+between cap and equator.
 
 ```bash
 shore mesh body.stl \
-  --topology caps --ni 60 --nj 80 --nk 30 \
-  --surface-i-spacing tanh --surface-i-beta 4.0 \
-  --cap-pull 0.4 \
-  -o body_caps.geo
+  --ni 40 --nj 60 --nk 30 \
+  --surface-j-spacing tanh2 --surface-j-beta 4.0 \
+  --theta-cap-deg 30 \
+  -o body.geo
 ```
 
-### Experimenting with spacing via the two-stage pipeline
+### Caps topology with meridional refinement
 
-Project once, then try different volume distributions without re-projecting:
+Concentrate equator cells near both cap seams using tanh i-spacing,
+combined with tanh wall-normal clustering.
 
 ```bash
-# Stage 1: project once
-shore project wing.stl --ni 60 --nj 90 \
-  --surface-j-spacing tanh2 --j-cluster-lon 0.0 \
-  -o wing_k0.npz
-
-# Stage 2a: geometric spacing (default)
-shore march wing_k0.npz --nk 40 --ds 1e-3 --growth 1.10 -o wing_geom.geo
-
-# Stage 2b: tanh spacing within thickness=2
-shore march wing_k0.npz --nk 40 --volume-k-spacing tanh --volume-k-beta 3.0 --volume-k-thickness 2.0 -o wing_tanh.geo
-
-# Stage 2c: tanh2 for bounded domain
-shore march wing_k0.npz --nk 40 --volume-k-spacing tanh2 --volume-k-beta 4.0 --volume-k-thickness 2.0 -o wing_tanh2.geo
-
-# Compare quality
-shore check wing_geom.geo
-shore check wing_tanh.geo
-shore check wing_tanh2.geo
+shore mesh body.stl \
+  --ni 60 --nj 80 --nk 30 \
+  --surface-i-spacing tanh --surface-i-beta 4.0 \
+  --volume-k-spacing tanh --volume-k-beta 3.0 --volume-k-thickness 2.0 \
+  --theta-cap-deg 30 \
+  -o body.geo
 ```
 
 ## Python API
 
 ```python
-from shore.volume.spacing import build_i_coords, build_j_coords, build_k_steps
+from shore.volume.spacing import build_i_coords, build_k_steps, tanh_two_sided
 
-# Latitude: tanh clustering near cap boundaries
-i_coords = build_i_coords(60, theta_start=0.1, theta_stop=3.04, spacing="tanh", beta=4.0)
+# Latitude (equator meridian): tanh clustering near both cap seams
+i_coords = build_i_coords(60, theta_start=0.524, theta_stop=2.618,
+                           spacing="tanh", beta=4.0)
 
-# Longitude: tanh2 clustering at the leading edge (phi = 0)
-j_coords = build_j_coords(80, spacing="tanh2", beta=5.0, cluster_lon=0.0)
+# Cap-edge tangent-plane (j-direction): tanh2 clustering at corners
+half_side = 0.577  # tan(30 deg)
+j_coords = tanh_two_sided(16, -half_side, half_side, beta=3.0)
 
 # Wall-normal: tanh within fixed thickness
 k_steps = build_k_steps(40, ds=0.01, spacing="tanh", beta=3.0, total_thickness=3.0)
@@ -226,6 +208,6 @@ k_steps = build_k_steps(40, ds=0.01, spacing="tanh2", beta=4.0, total_thickness=
 ## See also
 
 - [`shore mesh`](/reference/mesh) — full pipeline with all spacing flags
-- [`shore project`](/reference/project) — surface spacing (stage 1)
-- [`shore march`](/reference/march) — volume spacing (stage 2)
+- [Caps topology](/concepts/sphere-cap) — how cap and equator spacing
+  interact at the seam
 - [Hyperbolic marching](/concepts/hyperbolic-marching) — the extrusion algorithm

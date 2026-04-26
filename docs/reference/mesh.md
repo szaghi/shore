@@ -1,8 +1,13 @@
 # shore mesh
 
-Full pipeline: STL → structured O-grid volume → geo.
+Full pipeline: STL → 6-block O-grid volume → geo files.
 
-Equivalent to running `shore project` followed by `shore march` in sequence.
+The `mesh` command always builds the [caps topology](/concepts/sphere-cap)
+(4 equatorial sub-blocks + 2 polar caps, 6 `.geo` files written). The cap
+k=0 face is a gnomonic flat-square projection; the equator is built from
+the cap seam rings with C1 spacing match at every seam vertex; marching
+uses seam-aware normals so multi-block edge spacing stays continuous
+across all layers.
 
 ## Synopsis
 
@@ -22,32 +27,33 @@ shore mesh [OPTIONS] INPUT
 
 | Option | Default | Description |
 |---|---|---|
-| `--ni INTEGER` | 40 | Latitude resolution (pole-to-pole, exclusive of poles) |
-| `--nj INTEGER` | 60 | Longitude resolution (full circle, periodic) |
+| `--ni INTEGER` | 40 | Equator meridional resolution (south seam → north seam) |
+| `--nj INTEGER` | 60 | Longitude resolution (multiple of 4; rounded down with a warning if not) |
 | `--nk INTEGER` | 30 | Wall-normal layers, including k=0 (wall) |
 
-### Topology
+### Cap geometry
 
 | Option | Default | Description |
 |---|---|---|
-| `--topology TEXT` | `single` | `'single'`, `'double'` (Yin-Yang), or `'caps'` (6-block) |
-| `--theta-cap FLOAT` | — | Polar exclusion angle in radians |
-| `--theta-cap-deg FLOAT` | — | Same as `--theta-cap` but in degrees |
-| `--cap-pull FLOAT` | 0.0 | [caps] Dome cap interior toward pole [0, 1) |
-| `--cap-squareness FLOAT` | 0.0 | [caps] Straighten cap boundary edges [0, 1] |
-| `--correct-spacing` | off | [caps] Equalise cell widths at all block interfaces after marching |
+| `--theta-cap FLOAT` | $\pi/6$ | Polar exclusion angle in radians (cap corners sit at this colatitude) |
+| `--theta-cap-deg FLOAT` | — | Same as `--theta-cap` but in degrees (mutually exclusive) |
+
+::: tip Cap / equator compatibility
+Choose `ni`, `nj`, `theta_cap` so the cap radial step
+`theta_cap / (nc − 1)` (with `nc = nj // 4 + 1`) is within ~2× of the
+equator's natural radial step `(π − 2*theta_cap) / (ni − 1)`. This keeps
+the per-j C1 seam pinning active. When out of range, the equator falls
+back to its unpinned `i_spacing` law and emits a single `UserWarning`.
+:::
 
 ### Surface spacing
 
-Surface spacing redistributes the angular positions of the projection rays. It is set at projection time (stage 1) and baked into the `.npz`.
-
 | Option | Default | Description |
 |---|---|---|
-| `--surface-i-spacing TEXT` | `uniform` | Latitude spacing: `'uniform'`, `'tanh'` (cluster at cap boundaries), `'tanh2'` (both ends) |
-| `--surface-i-beta FLOAT` | 3.0 | Clustering strength for latitude tanh/tanh2 |
-| `--surface-j-spacing TEXT` | `uniform` | Longitude spacing: `'uniform'`, `'tanh2'` (cluster at a target longitude) |
-| `--surface-j-beta FLOAT` | 3.0 | Clustering strength for longitude tanh2 |
-| `--j-cluster-lon FLOAT` | — | Target longitude $\phi_0$ in radians where cells are finest (tanh2 only). `0.0` = +x, `pi/2` = +y, `pi` = -x. Default `pi` when omitted. |
+| `--surface-i-spacing TEXT` | `uniform` | Equator meridional spacing: `'uniform'`, `'tanh'`, `'tanh2'` |
+| `--surface-i-beta FLOAT` | 3.0 | Clustering strength for tanh/tanh2 i-spacing |
+| `--surface-j-spacing TEXT` | `uniform` | Cap-edge tangent-plane spacing: `'uniform'` or `'tanh2'`; inherited by the equator seam |
+| `--surface-j-beta FLOAT` | 3.0 | Clustering strength for tanh2 j-spacing |
 
 ### Volume spacing
 
@@ -59,20 +65,29 @@ Surface spacing redistributes the angular positions of the projection rays. It i
 | `--ds FLOAT` | 0.001 | First-layer thickness (geometric spacing) |
 | `--growth FLOAT` | 1.15 | Geometric growth ratio |
 
-### Smoothing
+### Smoothing & normals
 
 | Option | Default | Description |
 |---|---|---|
 | `--smooth FLOAT` | 0.2 | Laplacian blend strength per layer [0–1] |
 | `--smooth-iters INTEGER` | 2 | Laplacian sweeps applied after each layer |
+| `--blend-normals-k INTEGER` | 0 | Number of layers over which to blend STL surface normals into the grid-computed normals (0 = off; useful for sharp-feature bodies) |
 
 ### I/O and display
 
 | Option | Default | Description |
 |---|---|---|
-| `-o` / `--output PATH` | `<INPUT stem>.geo` | Output geo file path |
+| `-o` / `--output PATH` | `<INPUT stem>` | Output stem; writes `<stem>_sub0.geo` ... `<stem>_cap_south.geo` (6 files) |
 | `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats |
 | `--help` | — | Show this help and exit |
+
+### Deprecated
+
+| Option | Status |
+|---|---|
+| `--cap-pull FLOAT` | Ignored. Cap interior is now built by gnomonic flat-square projection — square cells by construction. |
+| `--cap-squareness FLOAT` | Ignored. Same reason. |
+| `--j-cluster-lon FLOAT` | Ignored. The gnomonic cap has 4-fold symmetry; use `--surface-j-spacing tanh2` to cluster nodes near the cap-corner longitudes. |
 
 ## Exit codes
 
@@ -81,74 +96,97 @@ Surface spacing redistributes the angular positions of the projection rays. It i
 | 0 | Success |
 | 1 | Input file not found, projection failed, or negative Jacobian during march |
 
+## Output
+
+The command writes 6 `.geo` files (one per block):
+
+```
+<stem>_sub0.geo        sub-block 0 (phi 0°→90°)         (ni × nc × nk)
+<stem>_sub1.geo        sub-block 1 (phi 90°→180°)       (ni × nc × nk)
+<stem>_sub2.geo        sub-block 2 (phi 180°→270°)      (ni × nc × nk)
+<stem>_sub3.geo        sub-block 3 (phi 270°→360°)      (ni × nc × nk)
+<stem>_cap_north.geo   north polar cap                  (nc × nc × nk)
+<stem>_cap_south.geo   south polar cap                  (nc × nc × nk)
+```
+
+with `nc = nj // 4 + 1`.
+
 ## Examples
 
 Minimal invocation — defaults for all grid parameters:
 
 ```bash
 shore mesh sphere.stl
-# → sphere.geo  (40x60x30, ds=1e-3, growth=1.15)
+# → sphere_sub*.geo, sphere_cap_*.geo  (40 x 60 x 30, theta_cap = pi/6)
 ```
 
-High-resolution boundary layer grid with verbose output:
+High-resolution boundary layer with verbose output:
 
 ```bash
 shore mesh fuselage.stl \
   --ni 80 --nj 120 --nk 50 \
   --ds 1e-5 --growth 1.12 --smooth 0.3 \
-  -o fuselage_bl.geo -v
+  -o fuselage_bl -v
 ```
 
 Tanh-spaced boundary layer with fixed total thickness:
 
 ```bash
 shore mesh wing.stl \
-  --ni 60 --nj 90 --nk 40 \
+  --ni 60 --nj 80 --nk 40 \
   --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0 \
-  -o wing_tanh.geo
+  -o wing_tanh
 ```
 
-Latitude clustering at the cap boundaries (caps topology — finer cells where equatorial and polar blocks meet):
+Equator meridional clustering at the cap seams:
 
 ```bash
 shore mesh body.stl \
-  --topology caps --ni 60 --nj 80 --nk 30 \
+  --ni 60 --nj 80 --nk 30 \
   --surface-i-spacing tanh --surface-i-beta 4.0 \
-  --cap-pull 0.4 \
-  -o body_caps.geo
+  --theta-cap-deg 30 \
+  -o body
 ```
 
-Caps topology with interface spacing equalisation:
+Cap-corner refinement (j-spacing tanh2):
 
 ```bash
 shore mesh body.stl \
-  --topology caps --ni 60 --nj 80 --nk 30 \
-  --correct-spacing --cap-pull 0.4 --cap-squareness 0.5 \
-  -o body_caps_corrected.geo
+  --ni 40 --nj 60 --nk 30 \
+  --surface-j-spacing tanh2 --surface-j-beta 4.0 \
+  --theta-cap-deg 30 \
+  -o body
 ```
 
-Longitude clustering toward the leading edge. `--j-cluster-lon 0.0` places the dense band at $\phi = 0$ (positive x-axis); cells are coarsest at the opposite side ($\phi = \pi$):
+STL-normal blending for sharp features (first 5 layers blend toward the
+true surface normal of the underlying triangulation):
 
 ```bash
 shore mesh airfoil.stl \
-  --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0 \
-  --ni 40 --nj 80 --nk 30 \
-  -o airfoil_le.geo
+  --ni 40 --nj 60 --nk 30 \
+  --blend-normals-k 5 \
+  -o airfoil
 ```
 
 ## Notes
 
-- The STL must be a single connected, watertight mesh. Multi-body STL files (multiple shells) will fail during projection — split them first with a CAD tool or trimesh.
-- `--nj` should be even to avoid degenerate cells at the poles of the sphere template.
-- The outer boundary (k=nk-1) is currently sphere-shaped. Use `shore check` to verify the grid before passing it to Xall_GPU.
-- Surface spacing is set at projection time (stage 1) and baked into the `.npz`; volume spacing is applied at march time (stage 2). Use `shore project` + `shore march` separately to experiment with volume spacing without re-projecting.
-- See [Spacing laws](/concepts/spacing) for a detailed explanation of each distribution and when to use it.
+- The STL must be a single connected, watertight mesh. Multi-body STL files
+  (multiple shells) will fail during projection — split them first with a
+  CAD tool or trimesh.
+- `--nj` must be a multiple of 4 (otherwise rounded down with a warning,
+  so the equatorial band can be split into 4 equal sectors).
+- The outer boundary (k=nk-1) is currently sphere-shaped after marching.
+  Use `shore check` to verify the per-block Jacobians.
+- See [Spacing laws](/concepts/spacing) for a detailed explanation of each
+  distribution and when to use it.
 
 ## See also
 
-- [`shore project`](project) — run stage 1 only
-- [`shore march`](march) — run stage 2 only
-- [`shore check`](check) — validate Jacobians
-- [Spacing laws](/concepts/spacing) — clustering distributions explained
-- [Quick Start](/guide/quickstart) — worked examples
+- [`shore project`](project) — generate the k=0 surface only (single-block,
+  legacy `body.project` path; not the caps topology)
+- [`shore check`](check) — validate Jacobians on existing `.geo` files
+- [`shore export`](export) — convert `.geo` to VTK MultiBlock for ParaView
+- [Caps topology](/concepts/sphere-cap) — block layout, cap construction,
+  seam matching
+- [Spacing laws](/concepts/spacing) — clustering distributions
 - [Hyperbolic marching](/concepts/hyperbolic-marching) — algorithm details

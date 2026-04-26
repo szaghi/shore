@@ -1,35 +1,28 @@
 # Sphere polar cap topology
 
 A standard lat-lon O-grid wraps the equatorial band of a sphere but leaves
-open holes at both poles. The **sphere-cap topology** closes those holes with
+open holes at both poles. The **caps topology** closes those holes with
 two hexahedral cap blocks, one per pole, producing a watertight 6-block
 structured grid with no singular axes.
 
 ## Motivation
 
 In a conventional lat-lon O-grid the latitude bounds are chosen to avoid the
-poles (typically `theta ∈ [0.05π, 0.95π]`). This leaves two open edges at
-`i = 0` (south) and `i = ni - 1` (north) that cannot be extruded into a
-conforming volume — the normal field degenerates as the ring of grid points
-collapses to a single pole node.
+poles (typically `theta ∈ [theta_cap, π − theta_cap]`). This leaves two open
+edges at `i = 0` (south) and `i = ni − 1` (north) that cannot be extruded
+into a conforming volume — the normal field degenerates as the ring of grid
+points collapses to a single pole node.
 
-Two standard workarounds exist:
-
-- **Pole singularity** — the two pole edges are collapsed to a single node.
-  This produces degenerate cells adjacent to the pole and is numerically
-  problematic for most CFD solvers.
-- **Yin-Yang** — two overlapping curvilinear O-grids shifted 90° avoid the
-  poles entirely. Chimera interpolation handles the overlap. This requires a
-  solver with Chimera capability and adds complexity.
-
-The **sphere-cap topology** takes a third route: the equatorial O-grid is
-split into four 90° sub-blocks along the azimuthal direction, and each polar
-hole is closed by a dedicated cap block whose seed face is determined by the
-four shared edges that meet at the pole.
+The **caps topology** splits the equatorial band into four 90° sub-blocks
+along the azimuthal direction and closes each polar hole with a dedicated
+cap block whose seed face is built by **gnomonic projection of a flat
+tangent square**. This is the same construction used by classic cubed-sphere
+schemes (e.g. for atmospheric-flow simulations on the sphere) and produces
+square-celled cap blocks with no concentric pole singularity.
 
 ## Block decomposition
 
-The result is six structured blocks:
+Six structured blocks:
 
 ```
               cap_north (nc × nc × nk)
@@ -47,267 +40,242 @@ The result is six structured blocks:
               cap_south (nc × nc × nk)
 ```
 
-where `nc = nj // 4 + 1`. Each sub-block spans one 90° azimuthal sector.
-Adjacent sub-blocks share their boundary j-column exactly (node-for-node
-conformity). Each cap shares its four boundary edges with the pole row of the
-four adjacent sub-blocks.
+where `nc = nj // 4 + 1`. Each sub-block spans one 90° azimuthal sector;
+`nj` must be a multiple of 4 (rounded down with a warning if not). Adjacent
+sub-blocks share their boundary j-column exactly (node-for-node conformity
+via numpy views into a contiguous ring allocation). Each cap shares its
+four boundary edges with the pole row of the four adjacent sub-blocks.
 
-## Seed face construction
+## Cap k=0 seed: gnomonic flat-square projection
 
-The k=0 face of each cap block is built by discrete Laplacian interpolation:
-
-1. The four boundary edges are set from the equatorial sub-block pole rows
-   (`i = ni-1` for the north cap, `i = 0` for the south cap).
-2. The interior nodes are initialised to zero and solved to convergence with
-   Dirichlet boundary conditions using the discrete Laplacian
-   (strength = 0.5, tolerance = $10^{-12}$).
-
-This produces the minimum-energy surface that interpolates the four boundary
-edges while keeping all boundary nodes exactly coincident with the equatorial
-blocks.
-
-::: info Why not gnomonic projection?
-A gnomonic (great-circle) projection of the four corner points onto the sphere
-is the natural choice for a spherical cap, but the winding correction required
-to make normals point outward changes the interior orientation relative to
-what the boundary edge mapping expects. The Laplacian approach bypasses this
-by building the seed face directly from the boundary constraints.
-:::
-
-## Simultaneous layer-by-layer marching
-
-All six blocks are marched simultaneously, one layer at a time:
+The cap is constructed by placing a flat **diamond** (a square rotated 45°)
+in 3D, tangent to the sphere at the cap pole, with corners on the cardinal
+axes at distance `tan(theta_cap)`. The 4 corners are the cap-equator
+junction points at azimuths `{0°, 90°, 180°, 270°}` — aligned with the 4
+sub-block junctions by construction. Interior nodes of the diamond are
+filled by bilinear interpolation, then every node is radially projected
+onto the body surface through the cached BVH ray-cast.
 
 ```
-for k in 0 .. nk-2:
-    1. Advance 4 equatorial sub-blocks (normal march + Laplacian smooth)
-    2. Re-stitch shared edges between adjacent sub-blocks (average)
-    3. Jacobian check on sub-blocks
-    4. Extract north/south pole rows from sub-blocks (the cap boundaries at k+1)
-    5. Advance 2 cap blocks:
-       a. Normal-based displacement (same step and normals as equatorial blocks)
-       b. Laplacian smoothing (same strength and iterations)
-       c. Overwrite boundary edges with equatorial pole rows (Dirichlet pinning)
-    6. Jacobian check on cap interior cells
-    7. Commit all 6 blocks to layer k+1
+         tangent plane at pole
+       (z = 1 in pole-local frame)
+
+              C1 (0, h, 1)
+                ╱╲
+               ╱  ╲
+              ╱    ╲
+   C2 ◄─────╳──────► C0   (corners on cardinal axes,
+   (-h,0,1) ╲      ╱  (h,0,1)   distance h = tan(theta_cap))
+              ╲    ╱
+               ╲  ╱
+                ╲╱
+              C3 (0, -h, 1)
 ```
 
-The Dirichlet boundary pinning in step 5c is what enforces conformity at every
-layer: the cap boundary is forced to match the equatorial sub-block pole rows
-exactly, regardless of what the cap's interior normal march would have produced.
+After radial projection (`p / |p|` then scale to body radius), the 4 corners
+land exactly at colatitude `theta_cap` on a unit sphere. Cap edges are
+great-circle arcs between adjacent corners. Cap cells are square-shaped in
+the bulk (modest gnomonic-square anisotropy at corners, ~√2). There is no
+concentric ring pattern around the pole — the cap is just a smooth
+square-topology patch on the body.
+
+### Why a diamond, not an axis-aligned square
+
+The 4 sub-block junctions on the seam parallel sit at azimuths
+`{0°, 90°, 180°, 270°}`. An axis-aligned square placed at the pole would
+have corners at azimuths `{±45°, ±135°}` — a 45° offset from the
+junctions. Rotating the square 45° (turning it into a diamond) places its
+corners exactly on the sub-block junctions, and the bilinear interpolation
+of the 4 corners
+$$
+P(a,b) = (1-a)(1-b)\,C_0 + a(1-b)\,C_1 + ab\,C_2 + (1-a)b\,C_3
+$$
+yields the closed-form expression
+$$
+x_{\text{local}} = h(1 - a - b),\qquad y_{\text{local}} = h(a - b)
+$$
+with `h = tan(theta_cap)` and `(a, b) ∈ [0, 1]²`.
+
+### `j_spacing` inheritance
+
+The tangent-plane parametrisation uses 1D laws (`uniform` or `tanh2`) on
+`[−h, +h]`, so the cap-edge node distribution along the seam matches the
+equator's `j_spacing`. The equator's pole rows are filled bit-exactly from
+the cap edges (DIRICHLET binding), so the equator inherits the cap's
+distribution at the seam without any reconciliation step.
+
+## Equator: great-circle meridians
+
+The equator's k=0 layer is built **after** the cap (so the cap edges are
+known). Each j-column is a great-circle arc from `seam_south[j]` to
+`seam_north[j]`, parametrised in colatitude by the user's `i_spacing` law
+(`uniform`, `tanh`, `tanh2`). Interior nodes are slerp-interpolated and
+ray-cast onto the body to handle non-spherical surfaces.
+
+The first/last interval on each meridian is **pinned** to the cap-edge
+first cell at the corresponding seam vertex, giving C1 spacing continuity
+across the seam (see next section).
+
+## Multi-block edge spacing match (C1 at seam vertices)
+
+At each cap-equator seam vertex three multi-block edges meet:
+
+1. The cap-seam edge running along one side of the cap (e.g. `cap[:, 0]`).
+2. The cap-seam edge running along the perpendicular side (e.g. `cap[0, :]`).
+3. The equatorial-meridian edge running radially inward (e.g. sub_q's
+   `[:, j_local]` column).
+
+The contract: **all three edges share a single first-cell length at the
+shared vertex**. This is the standard rule for clean multi-block
+edge-spacing in a structured grid.
+
+The cap is built first, fixing edges 1 and 2 by gnomonic-square geometry
+(both equal to the great-circle arc from seam[j] to seam[j+1]). The
+equator's per-meridian first step is then pinned to that arc length:
+
+```python
+first_step[j] = arccos(u_seam[j] · u_seam[j+1])  *  interval_j / omega_j
+```
+
+where `u_seam` are unit directions from anchor through the seam nodes,
+`omega_j` is the meridional arc angle, and `interval_j` is the colatitude
+span used by the meridian's spacing law. The factor
+`interval_j / omega_j` converts between the two angular parametrisations.
+
+The interior `ni − 2` cells of each meridian are then graded by `i_spacing`
+with these endpoint steps fixed.
+
+### Compatibility window and fallback
+
+Pinning the first/last step is only stable when the cap's seam step and
+the equator's natural first step (on the chosen `i_spacing` law) are
+within a factor of ~2 of each other. Beyond that, pinning produces a
+sharp discontinuity in cell size between the first and second cells of
+each meridian that destabilises hyperbolic marching.
+
+When the steps differ by more than 2×, the equator falls back to its
+unpinned `i_spacing` law and a single `UserWarning` is emitted with
+guidance on choosing compatible parameters.
+
+**Rule of thumb** (uniform i_spacing): for the per-j pinning to be active
+across the whole seam, choose `ni`, `nj`, `theta_cap` so that
+
+$$
+\frac{\theta_{\text{cap}}}{n_c - 1} \approx \frac{\pi - 2\theta_{\text{cap}}}{n_i - 1}
+$$
+
+with `n_c = n_j // 4 + 1`. For example, `theta_cap = π/6 (30°)` with
+`n_i = 40, n_j = 60` gives cap step ~2° and equator natural step ~3.1°
+(ratio 1.55× — within the 2× window).
+
+## Hyperbolic marching with seam-aware normals
+
+All six blocks are marched simultaneously, one layer at a time. Without
+seam-aware normal computation, each block would compute its boundary
+tangent from a one-sided difference internal to itself — sub_q's tangent
+at its `j_hi` seam uses sub_q's `layer[:, -1] - layer[:, -2]`, while
+sub_{q+1}'s tangent at its `j_lo` seam (the same seam) uses sub_{q+1}'s
+`layer[:, 1] - layer[:, 0]`. These disagree, the two blocks compute
+different normals at the same shared node, and the disagreement
+accumulates over many marching layers as a visible spacing jump on the
+outer surface.
+
+**Fix.** Each block receives a `ghost_rows` dict containing the partner
+block's "row one inward" data at the current layer, mapped through the
+inverse of `_overwrite_cap_boundaries` for cap-equator seams (with
+reversal for sub2/sub3). The boundary tangent then uses a centred
+difference against the ghost row, exactly matching what the partner
+block would compute on its side.
+
+The result: at layer k=0 the j-step ratio across each sub-sub seam is
+within ~1% of 1.0; over 20 marching layers it **converges** toward
+1.0000 (centred differences damp the small initial disagreement).
+
+```
+for k in 0 .. nk−2:
+    1. Snapshot the k-layer of all 6 blocks (consistent state for ghosts).
+    2. For each sub_q:
+       - gather ghost rows from sub_{q-1}, sub_{q+1}, cap_north, cap_south
+       - march with seam-aware normals + Laplacian smoothing
+    3. Re-stitch shared sub-sub edges (sub-FP-noise residual averaging).
+    4. Jacobian check on sub-blocks (corners excluded).
+    5. Extract pole rows from the new sub-block layers.
+    6. For each cap:
+       - gather ghost rows from the 4 sub-blocks
+       - march with seam-aware normals + Laplacian smoothing
+       - DIRICHLET-pin the 4 boundary edges from sub-block pole rows
+    7. Jacobian check on cap blocks (corners excluded).
+    8. Commit all 6 blocks to layer k+1.
+```
 
 ## Jacobian convention
 
-Equatorial sub-blocks and cap blocks use `_jacobian_field_open` (non-periodic
-j) because all six blocks have open boundaries. The four **corner cells** at
-each cap's `(i=0,j=0)`, `(i=0,j=nc-2)`, `(i=nc-2,j=0)`, `(i=nc-2,j=nc-2)`
-are excluded from the Jacobian check: these cells border the junction of four
-sub-blocks at a single shared node, and their signed volume is near-zero by
-construction — not a mesh-quality defect, but a topological consequence of
-four blocks meeting at one point.
+All six blocks use `_jacobian_field_open` (non-periodic j) because all
+boundaries are open. The four **corner cells** at each cap's
+`(0,0), (0,nc-2), (nc-2,0), (nc-2,nc-2)` are excluded from the check:
+these cells border the junction of four sub-blocks at a single shared
+node, and their signed volume is near-zero by construction — not a
+mesh-quality defect, but a topological consequence of four blocks
+meeting at one point. The tolerance for the remaining cells is `−1e−6`
+(floating-point noise floor for the seam-aware normal computation).
 
 ## Controlling cap size with `theta_cap`
 
-`theta_cap` (in radians, or `theta_cap_deg` in degrees) is the polar exclusion
-angle passed to `project_sphere_to_surface` when building the k=0 surface
-layer. It determines how far the equatorial band extends toward the poles, and
-therefore the physical size of the cap faces.
+`theta_cap` (radians) is the polar exclusion angle. The 4 cap corners
+sit at colatitude `theta_cap` on a unit sphere; cap-edge midpoints sit
+at colatitude `atan(tan(theta_cap)/√2)` (smaller than `theta_cap` —
+edges dip toward the pole, the natural shape of a great-circle arc
+between two parallel-circle corners).
 
-The equatorial band spans colatitudes `[theta_cap, pi - theta_cap]`. The cap
-boundary parallel has radius `sin(theta_cap)` on the unit sphere:
+| `theta_cap` | degrees | Corner colatitude | Edge-midpoint colatitude |
+|---|---|---|---|
+| π/12 | 15° | 15.00° | 10.71° |
+| π/6 | 30° (default) | 30.00° | 22.21° |
+| π/4 | 45° | 45.00° | 35.26° |
+| π/3 | 60° | 60.00° | 50.77° |
 
-| `theta_cap` | degrees | Cap boundary radius / sphere radius |
-|---|---|---|
-| 0.087 | 5° | 0.087 |
-| 0.157 | 9° (default) | 0.156 |
-| 0.262 | 15° | 0.259 |
-| 0.349 | 20° | 0.342 |
-| 0.524 | 30° | 0.500 |
-
-Larger `theta_cap` gives a physically larger cap face and a shorter equatorial
-band. The grid-space cap size `nc = nj // 4 + 1` is independent of `theta_cap`
-— it is set by `nj`. `theta_cap` controls only the physical arc length of the
-cap boundary.
-
-```python
-# Default ~9° cap
-surface = sphere_layer(40, 60)                              # theta_cap = 0.05*pi
-
-# 20° cap — larger polar region
-surface = sphere_layer(40, 60, theta_cap_deg=20.0)
-
-# Explicit radians
-surface = sphere_layer(40, 60, theta_cap=0.349)
-```
-
-Or via `project_sphere_to_surface` for a real STL body:
-
-```python
-k0 = project_sphere_to_surface(mesh, ni=40, nj=60, theta_cap_deg=20.0)
-```
-
-## Cap quality parameters {#quality}
-
-Two parameters control the mesh quality of the polar cap faces.  They are
-independent and can be combined freely.
-
-### `cap_squareness` — straighten boundary edges {#cap_squareness}
-
-Without any shaping the 4 cap boundary edges are arcs of the polar parallel
-circle, each spanning 90° of longitude.  Two adjacent arcs meet at a corner
-with an angle of roughly 157°.  For CFD solvers this wide angle produces
-poor aspect-ratio cells near the corners.
-
-The `cap_squareness` parameter blends each boundary edge from the circular arc
-toward the **geodesic chord** (great-circle arc) connecting its two corner
-nodes — the edge of the square inscribed in the parallel circle.  Corner nodes
-are fixed (they are shared between adjacent equatorial sub-blocks and cannot
-move); only the intermediate nodes along each edge are displaced.
-
-The blend uses spherical linear interpolation (slerp) between the two corner
-unit vectors, ensuring the displaced nodes remain on the sphere surface at
-every layer.  The squareness is re-applied at every layer so the cap boundary
-stays in the inscribed-square geometry as the grid grows outward.
-
-**Effect on corner angle:**
-
-| `cap_squareness` | Corner angle |
-|---|---|
-| 0.0 (default) | ~157° circular arc |
-| 0.25 | ~140° |
-| 0.50 | ~120° |
-| 0.75 | ~100° |
-| 1.0 | ~90° inscribed square |
-
-The full range `[0, 1]` is numerically stable — slerp is geometrically
-monotone and does not create concavities.
-
-### `cap_pull` — dome the cap interior {#cap_pull}
-
-Without `cap_pull` the cap k=0 seed face is the discrete Laplacian solution
-interpolating the four boundary arcs.  This produces wide, fan-shaped cells
-near the cap centre.
-
-The `cap_pull` parameter domes the interior toward the geographic pole by
-blending each interior node from its Laplacian position toward the pole point
-and re-projecting onto the sphere.  The 4 boundary edges are kept exactly
-unchanged, so the cap remains fully conforming with the equatorial sub-blocks.
-
-**Weight function** — a product of two sine profiles, symmetric around the
-face centre:
-
-```
-w(i, j) = cap_pull × sin(π × i/(nc−1)) × sin(π × j/(nc−1))
-```
-
-Zero on all 4 boundary edges, peak at the cap centre.
-
-**Effect on interior cell quality:**
-
-| `cap_pull` | Interior cell quality |
-|---|---|
-| 0.0 (default) | flat Laplacian face |
-| 0.3 | noticeably improved |
-| 0.5 | significantly improved |
-| ≥ 0.7 | may fail with aggressive `ds`/`growth` |
-
-**Practical recommendation:** use `cap_pull = 0.3`–`0.5`.  Values above ~0.6
-may trigger Jacobian failures at early layers as the dome transition becomes
-too steep for the normal march to follow.
-
-### Combined usage
-
-```python
-blocks = split_ogrid_with_polar_caps(
-    surface, nk=10, ds=0.02, growth=1.10,
-    cap_squareness=0.5,   # straighten boundary edges toward inscribed square
-    cap_pull=0.4,         # dome interior toward pole
-)
-
-# Equalise cell widths at all block interfaces after marching
-from shore.topology.sphere_cap import correct_interface_spacing
-correct_interface_spacing(blocks)
-```
-
-Or via the example script:
-
-```bash
-.venv/bin/python examples/visualize_geo.py \
-    --generate --topology caps --vtk --no-view --nk 10 \
-    --cap-squareness 0.5 --cap-pull 0.4 --correct-spacing
-```
-
-## Grid parameters
-
-The cap block size `nc = nj // 4 + 1` is determined by `nj`. If `nj` is not
-divisible by 4, it is rounded down to the nearest multiple of 4 with a
-`warnings.warn`. All six blocks use the same `nk`, `ds`, and `growth` as the
-underlying single-block O-grid.
-
-**Practical limit:** because the equatorial blocks have open i-boundaries and
-the cap blocks have open ij-boundaries, the cell quality degrades faster than
-in a periodic O-grid as the grid expands outward. For a unit sphere, `nk ≤ 10`
-with `ds = 0.02` and `growth = 1.10` gives a total thickness of ~0.32, which
-is well-behaved. Pushing beyond ~0.6× the sphere radius will invert equatorial
-cells near the poles.
+Larger `theta_cap` gives a physically larger cap face (more of the body
+covered by caps, less by the equatorial band). The grid-space cap size
+`nc = nj // 4 + 1` is set by `nj` and is independent of `theta_cap`.
 
 ## API
 
-The topology is implemented in `shore.topology.sphere_cap`. The main entry
-point is:
+The topology is implemented across three modules:
+
+- `shore.surface.cap.build_cap_k0(theta_cap, nc, pole, projector, ...)`
+  builds the gnomonic-square cap k=0 seed.
+- `shore.surface.equator.build_equator(cap_south, cap_north, ni, theta_cap,
+  projector, ...)` builds the equator from the cap seam rings.
+- `shore.mesh.topology.CapsTopology` orchestrates them and wires the 6
+  HexBlocks (SHARED memory views for sub-sub seams; DIRICHLET pinning for
+  cap-equator seams).
+
+The high-level entry point is `Mesh.from_stl(...)` with
+`topology=CapsTopology()`:
 
 ```python
-from shore.topology.sphere_cap import split_ogrid_with_polar_caps
-
-blocks = split_ogrid_with_polar_caps(
-    surface, nk=10, ds=0.02, growth=1.10, cap_pull=0.4  # optional: dome interior
-)
-# blocks[0..3]: equatorial sub-blocks, shape (ni, nc, nk, 3)
-# blocks[4]:   cap_north, shape (nc, nc, nk, 3)
-# blocks[5]:   cap_south, shape (nc, nc, nk, 3)
-```
-
-See [`shore.topology.sphere_cap`](/reference/api-sphere-cap) for the full API
-reference.
-
-## Example
-
-```python
+from shore.mesh import CapsTopology, Mesh, Spacing1D
 import numpy as np
-from tests.conftest import sphere_layer
-from shore.topology.sphere_cap import split_ogrid_with_polar_caps
-from shore.io.vtk import write_caps_vtm
 
-# Build a lat-lon surface layer with default cap size (~9°)
-surface = sphere_layer(40, 60)
-
-# Or with an explicit 20° cap
-surface = sphere_layer(40, 60, theta_cap_deg=20.0)
-
-# Generate 6-block topology (with optional interior dome for quality)
-blocks = split_ogrid_with_polar_caps(surface, nk=10, ds=0.02, growth=1.10, cap_pull=0.4)
-
-# Export as a ParaView MultiBlock (.vtm) with Jacobian cell data
-write_caps_vtm("sphere_caps.vtm", blocks, with_jacobian=True)
+m = Mesh.from_stl(
+    "sphere.stl",
+    topology=CapsTopology(),
+    ni=40, nj=60, nk=20,
+    theta_cap=float(np.pi / 6),
+    spacing_k=Spacing1D(law="geometric", ds=0.02, growth=1.1),
+)
+m.march(ds=0.02, growth=1.1)
+m.write_geo("sphere")  # writes 6 sphere_<label>.geo files
 ```
 
-Or via the example script:
-
-```bash
-# Default cap (~9°), no dome
-.venv/bin/python examples/visualize_geo.py \
-    --generate --topology caps --vtk --no-view --nk 10
-
-# Larger cap (20°) with interior dome and spacing correction
-.venv/bin/python examples/visualize_geo.py \
-    --generate --topology caps --vtk --no-view --nk 10 \
-    --theta-cap-deg 20 --cap-pull 0.4 --correct-spacing
-
-paraview sphere_caps.vtm
-```
+See [`shore.topology.sphere_cap`](/reference/api-sphere-cap) for the
+marching helpers (`_march_one_layer`, `_march_cap_layer`,
+`_overwrite_cap_boundaries`, `_check_jacobian`).
 
 ## See also
 
-- [`shore.topology.sphere_cap`](/reference/api-sphere-cap) — Python API
-- [Hyperbolic marching](/concepts/hyperbolic-marching) — underlying algorithm
+- [Hyperbolic marching](/concepts/hyperbolic-marching) — underlying
+  layer-by-layer algorithm
+- [Spacing laws](/concepts/spacing) — `i_spacing` / `j_spacing` /
+  `volume_k_spacing` knobs
 - [Chimera mesh generation](/concepts/chimera) — where this topology fits

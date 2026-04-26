@@ -1,6 +1,17 @@
 # shore.surface.remesh
 
-Unstructured STL surface → structured `(ni, nj)` quad grid via sphere projection.
+Unstructured STL surface → structured `(ni, nj)` quad grid via lat-lon
+sphere projection (single-block path).
+
+::: tip Caps topology uses different modules
+The 6-block caps topology built by `shore mesh` does **not** use the
+functions on this page. It uses `shore.surface.cap.build_cap_k0`
+(gnomonic flat-square cap seed) and `shore.surface.equator.build_equator`
+(great-circle meridian equator with C1 seam pinning). The functions
+below build a single-block lat-lon grid and are used by `shore project`,
+the `Body.project()` method, and downstream tools that consume a
+single-block surface array.
+:::
 
 ## Functions
 
@@ -126,5 +137,10 @@ gives a physically larger cap face and a shorter equatorial band.
 
 ## See also
 
-- [Sphere polar cap topology](/concepts/sphere-cap) — how `theta_cap` controls cap size
-- [`shore.topology.sphere_cap`](/reference/api-sphere-cap) — 6-block polar cap generation
+- [Caps topology](/concepts/sphere-cap) — the production 6-block path
+  (uses `shore.surface.cap.build_cap_k0` and
+  `shore.surface.equator.build_equator`, not the functions on this page)
+- [`shore.topology.sphere_cap`](/reference/api-sphere-cap) — marching
+  primitives shared by the caps topology
+- `shore.surface.cap.build_cap_k0` — gnomonic flat-square cap k=0 seed
+- `shore.surface.equator.build_equator` — equator k=0 from cap seam rings

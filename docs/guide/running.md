@@ -15,14 +15,16 @@ make dev    # pip install -e ".[dev,vis]"
 
 ## Running Examples
 
-SHORE ships two standalone example scripts that serve as both documentation and sanity checks:
+SHORE ships a standalone example script and a Jupyter notebook that
+serve as both documentation and sanity checks.
 
-### `examples/visualize_geo.py` — Single O-grid
+### `examples/visualize_geo.py` — caps topology
 
-The primary example generates a unit-sphere test case and optionally visualises it:
+The script generates a unit-sphere test case (always 6-block caps
+topology) and optionally visualises it:
 
 ```bash
-# Generate sphere.stl + sphere.geo and open the interactive viewer
+# Generate sphere.stl + 6 sphere_<label>.geo files and open the viewer
 python examples/visualize_geo.py --generate
 
 # Generate and save a screenshot instead of opening a window
@@ -30,126 +32,87 @@ python examples/visualize_geo.py --generate --screenshot sphere_preview.png
 
 # Generate only (skip the viewer)
 python examples/visualize_geo.py --generate --no-view
+
+# Export to a single VTK MultiBlock .vtm for ParaView
+python examples/visualize_geo.py --generate --vtk
 ```
 
 Key parameters:
 
 | Flag | Default | Description |
 |---|---|---|
-| `--ni` | 40 | Latitude points |
-| `--nj` | 60 | Longitude points |
+| `--ni` | 40 | Equator meridional resolution |
+| `--nj` | 60 | Longitude resolution (multiple of 4) |
 | `--nk` | 20 | Wall-normal layers |
 | `--ds` | 0.02 | First-layer thickness (geometric) |
 | `--growth` | 1.10 | Layer growth ratio (geometric) |
+| `--theta-cap` | π/6 | Polar exclusion angle in radians |
+| `--theta-cap-deg` | — | Polar exclusion angle in degrees |
 | `--smooth` | 0.2 | Laplacian blend strength [0–1] |
 | `--smooth-iters` | 2 | Laplacian sweeps per layer |
-| `--surface-i-spacing` | `uniform` | Latitude spacing: `uniform`, `tanh`, `tanh2` |
-| `--surface-i-beta` | 3.0 | Clustering strength for latitude tanh/tanh2 |
-| `--surface-j-spacing` | `uniform` | Longitude spacing: `uniform`, `tanh2` |
-| `--surface-j-beta` | 3.0 | Clustering strength for longitude tanh2 |
-| `--j-cluster-lon` | — | Longitude to cluster toward (radians) |
-| `--volume-k-spacing` | `geometric` | Wall-normal spacing: `geometric`, `tanh`, `tanh2` |
-| `--volume-k-beta` | 3.0 | Clustering strength for volume tanh/tanh2 |
+| `--surface-i-spacing` | `uniform` | Equator meridional spacing law |
+| `--surface-i-beta` | 3.0 | Clustering strength for tanh/tanh2 i-spacing |
+| `--surface-j-spacing` | `uniform` | Cap-edge tangent-plane spacing law |
+| `--surface-j-beta` | 3.0 | Clustering strength for tanh2 j-spacing |
+| `--volume-k-spacing` | `geometric` | Wall-normal spacing law |
+| `--volume-k-beta` | 3.0 | Clustering strength for tanh/tanh2 k-spacing |
 | `--volume-k-thickness` | — | Total wall-normal thickness (required for tanh/tanh2) |
+| `--blend-normals-k` | 0 | Layers over which to blend STL normals (0 = off) |
 
 Spacing examples:
 
 ```bash
-# Tanh volume spacing — fixed far-field boundary
+# Tanh wall-normal spacing — fixed far-field boundary
 python examples/visualize_geo.py --generate \
   --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
 
-# Longitude clustering at the leading edge (phi=0)
+# Equator meridional clustering at the cap seams
 python examples/visualize_geo.py --generate \
-  --surface-j-spacing tanh2 --surface-j-beta 5.0 --j-cluster-lon 0.0
+  --surface-i-spacing tanh --surface-i-beta 4.0
 
-# Latitude clustering + tanh volume spacing
+# Cap-corner clustering (tanh2 j-spacing — inherited by equator seam)
 python examples/visualize_geo.py --generate \
-  --surface-i-spacing tanh --surface-i-beta 4.0 \
-  --volume-k-spacing tanh --volume-k-beta 3.0 --volume-k-thickness 1.5
+  --surface-j-spacing tanh2 --surface-j-beta 5.0
 ```
 
-See [Spacing laws](/concepts/spacing) for an explanation of each distribution and what physical region it clusters toward.
+See [Spacing laws](/concepts/spacing) for an explanation of each
+distribution and what physical region it clusters toward.
 
 Visualise an existing `.geo` or `.npz` file directly:
 
 ```bash
-python examples/visualize_geo.py sphere.geo
+python examples/visualize_geo.py sphere_sub0.geo
 python examples/visualize_geo.py sphere_k0.npz
-python examples/visualize_geo.py sphere.geo --screenshot out.png --no-edges
+python examples/visualize_geo.py sphere_sub0.geo --screenshot out.png --no-edges
 ```
 
-### `examples/visualize_geo.py` — Double O-grid (Yin-Yang)
+Output: 6 `.geo` files per run
 
-Generate both Yin and Yang blocks for a complete sphere without polar singularities:
-
-```bash
-# Generate sphere_yin.geo and sphere_yang.geo
-python examples/visualize_geo.py --generate --topology double
-
-# With custom grid parameters
-python examples/visualize_geo.py --generate --topology double --ni 40 --nj 60 --nk 20
-
-# Validate both blocks
-shore check sphere_yin.geo
-shore check sphere_yang.geo
 ```
-
-For the double topology, two files are produced:
-
-- `sphere_yin.geo` — standard O-grid block
-- `sphere_yang.geo` — rotated O-grid block covering the complementary polar region
-
-Both blocks share the same `(ni, nj, nk)` dimensions and can be exported to ParaView individually or as a combined MultiBlock (see VTK export).
-
-### `examples/visualize_geo.py` — 6-block sphere-cap topology
-
-Generate the caps topology to avoid polar singularities with six conforming blocks:
-
-```bash
-# Basic caps topology
-python examples/visualize_geo.py --generate --topology caps
-
-# With quality controls: dome interior + straighten boundary + equalise interfaces
-python examples/visualize_geo.py --generate --topology caps \
-    --cap-pull 0.4 --cap-squareness 0.5 --correct-spacing --vtk
-
-# Larger cap (20°) with interior dome and interface correction
-python examples/visualize_geo.py --generate --topology caps \
-    --theta-cap-deg 20 --cap-pull 0.4 --correct-spacing --vtk --no-view
+sphere_sub0.geo .. sphere_sub3.geo   # equatorial sub-blocks
+sphere_cap_north.geo                 # north polar cap
+sphere_cap_south.geo                 # south polar cap
 ```
-
-The caps topology produces six files per run:
-
-- `sphere_sub0.geo` through `sphere_sub3.geo` — equatorial sub-blocks
-- `sphere_cap_north.geo` — north polar cap
-- `sphere_cap_south.geo` — south polar cap
-
-The `--correct-spacing` flag equalises cell widths at all block interfaces after marching, improving mesh quality at block boundaries. This is applied after the final layer is computed and does not change the marching step sizes.
 
 ### `examples/visualize.ipynb` — Jupyter Notebook
 
-A Jupyter notebook covering the full pipeline, Jacobian analysis, and spacing-law comparison:
+A complete notebook covering mesh generation, Jacobian analysis,
+spacing-law comparison, and the C1 seam-matching demo:
 
-- Sections 0–8: generation, inspection, Jacobian profiles, VTK export
-- Sections 9–12: surface and volume spacing distributions, tanh vs. geometric comparison
+- Sections 0–7: generation, inspection, Jacobian profiles, VTK export
+- Sections 8–9: surface and volume spacing distributions
+- Section 10: cap/equator C1 seam matching, with side-by-side comparison
+  of compatible and incompatible parameter regimes
 
 ```bash
-# Launch Jupyter with the notebook
 jupyter notebook examples/visualize.ipynb
 ```
 
-Or run headlessly for CI environments:
+For headless CI environments:
 
 ```python
 import pyvista as pv
 pv.set_jupyter_backend("static")   # no display required
-
-from shore.vis import view_geo
-from shore.io.geo import read_geo
-
-grid = read_geo("sphere.geo")
-pl = view_geo(grid, jupyter=True)  # returns a plotter, does not call .show()
 ```
 
 ## Running the Test Suite
@@ -167,27 +130,13 @@ source .venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-Expected output:
-
-```
-84 passed
-```
-
-All 84 tests must pass before any PR is merged.
-
 ### Running a specific test file
 
 ```bash
-# Unit tests for specific modules
-python -m pytest tests/test_hyperbolic.py -v      # marching kernel
-python -m pytest tests/test_jacobian.py -v        # Jacobian calculations
-python -m pytest tests/test_yinyang.py -v         # Yin-Yang double O-grid
+python -m pytest tests/test_cap_gnomonic.py -v   # caps construction + seam C1
+python -m pytest tests/test_jacobian.py -v       # Jacobian calculations
 python -m pytest tests/test_cli.py -v            # CLI commands
 python -m pytest tests/test_vtk.py -v            # VTK export
-
-# Run from the project root (pytest needs the src/ path)
-cd /path/to/shore
-python -m pytest tests/test_geo.py tests/test_vis.py -v
 ```
 
 ### Running a single test
@@ -200,32 +149,32 @@ python -m pytest tests/test_cli.py::TestMesh::test_exit_code_ok -v
 
 | File | What it tests |
 |---|---|
-| `tests/conftest.py` | Shared fixtures (`sphere_stl`, `sphere_layer`, `yang_layer`) |
+| `tests/conftest.py` | Shared fixtures (`sphere_stl`, `sphere_layer`) |
 | `tests/test_geo.py` | Geo file read/write round-trip fidelity |
 | `tests/test_vtk.py` | VTK XML export correctness |
 | `tests/test_vis.py` | PyVista conversion helpers |
 | `tests/test_jacobian.py` | Jacobian field calculations and inversion detection |
-| `tests/test_hyperbolic.py` | Normal estimation, Laplacian smoothing, marching |
-| `tests/test_yinyang.py` | Yin-Yang rotation, coverage masks, combined coverage |
+| `tests/test_cap_gnomonic.py` | Gnomonic cap, seam C0/C1, volume seam continuity |
+| `tests/test_mesh.py` | OOP `Mesh` API, `CapsTopology.build` |
+| `tests/test_anchor.py` / `test_load_stl_hygiene.py` | Mesh preconditioning |
+| `tests/test_projector.py` / `test_projector_validation.py` | Ray-cast Projector |
 | `tests/test_cli.py` | All CLI commands end-to-end |
 | `tests/test_spacing.py` | 1D spacing laws, domain builders, error cases |
 
 ### Filtering tests by keyword
 
 ```bash
-# Run only tests containing "sphere" in the name
-python -m pytest tests/ -k sphere -v
+# Run only seam-related tests
+python -m pytest tests/ -k seam -v
 
-# Run only tests for the Yin-Yang module
-python -m pytest tests/ -k yinyang -v
-
-# Skip slow tests (if marked)
-python -m pytest tests/ --ignore=tests/test_performance.py -v
+# Run only the gnomonic cap tests
+python -m pytest tests/test_cap_gnomonic.py -v
 ```
 
 ### Test parameters
 
-SHORE's test suite uses small default grids (`ni=10, nj=12, nk=6`) to keep execution fast. The full suite runs in under 1 second on a modern laptop.
+The test suite uses small default grids to keep execution fast. The
+full suite runs in under 5 seconds on a modern laptop.
 
 For coverage reporting:
 
@@ -253,17 +202,9 @@ make clean  # remove build artefacts, .ruff_cache, .pytest_cache
 
 If you see `No tests collected`, ensure:
 
-1. You are running from the project root (not inside the `tests/` directory)
-2. The `.venv` is activated: `source .venv/bin/activate`
-3. pytest is installed: `pip show pytest`
-
-```bash
-# Verify setup
-source .venv/bin/activate
-python -c "import sys; print(sys.executable)"   # should point to .venv/bin/python
-python -m pytest --version                       # should show pytest version
-python -c "import tests.conftest; print('conftest OK')"  # fixture import check
-```
+1. You are running from the project root (not inside `tests/`).
+2. The `.venv` is activated: `source .venv/bin/activate`.
+3. pytest is installed: `pip show pytest`.
 
 ### Virtual environment issues (WSL2)
 
@@ -274,26 +215,23 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-If you see `error: externally-managed-environment`, the system Python is being used instead of `.venv`.
-
 ### Visualisation not available
 
-The `shore view` command and `examples/visualize_geo.py` interactive mode require pyvista:
+The `shore view` command and the example script's interactive mode
+require pyvista:
 
 ```bash
 pip install shore[vis]
-# or
-pip install pyvista
 ```
 
-Without pyvista, the `--screenshot` and `--no-view` flags still work for offline generation.
+Without pyvista, `--screenshot` and `--no-view` still work for offline
+generation.
 
 ## CI / Automated Environments
 
 For headless CI (no display required):
 
 ```bash
-# Install
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
@@ -301,11 +239,11 @@ pip install -e ".[dev]"
 make lint
 
 # Test (headless)
-export DISPLAY=  # suppress pyvista display attempts
+export DISPLAY=
 make test
 
-# Generate example files only (no viewer)
+# Smoke-generate the example mesh
 python examples/visualize_geo.py --generate --no-view
-shore check sphere.geo
-shore info sphere.geo
+shore check sphere_sub0.geo
+shore info sphere_sub0.geo
 ```

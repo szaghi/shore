@@ -110,17 +110,19 @@ shore check sphere.geo
 
 ## Pipeline stages
 
-SHORE exposes each pipeline stage as an independent command for debugging:
+The `shore mesh` command builds the [6-block caps topology](docs/concepts/sphere-cap.md)
+end-to-end (gnomonic flat-square cap projection + great-circle meridian
+equator + seam-aware hyperbolic marching) and writes 6 `.geo` files. For
+debugging or downstream tools that consume a single-block lat-lon
+surface, `shore project` writes the `(ni, nj, 3)` surface layer as `.npz`
+without marching.
 
 ```bash
-# Stage 1 only — project and save the k=0 surface layer
+# Project the lat-lon surface only (single-block, .npz)
 shore project sphere.stl --ni 40 --nj 60 -o sphere_k0.npz -v
 
-# Stage 2 only — extrude from a saved surface layer
-shore march sphere_k0.npz --nk 30 --ds 1e-3 --growth 1.15 -o sphere.geo -v
-
 # Inspect any geo file
-shore info sphere.geo
+shore info sphere_sub0.geo
 ```
 
 The `.npz` intermediate format is a plain `numpy.savez_compressed` file — inspect it with:
@@ -134,9 +136,8 @@ k0 = np.load("sphere_k0.npz")["k0"]   # shape (ni, nj, 3)
 
 | Command | Description |
 |---|---|
-| `shore mesh INPUT.stl` | Full pipeline: STL → O-grid → geo |
-| `shore project INPUT.stl` | Stage 1: project sphere template onto STL surface |
-| `shore march INPUT.npz` | Stage 2: extrude surface layer into volume |
+| `shore mesh INPUT.stl` | Full pipeline: STL → 6-block caps O-grid → 6 `.geo` files |
+| `shore project INPUT.stl` | Project a single-block lat-lon surface onto the STL (`.npz`) |
 | `shore info INPUT.geo` | Print dimensions, point count, bounding box |
 | `shore check INPUT.geo` | Validate per-layer Jacobians, exit 1 on inversion |
 | `shore export INPUT` | Export `.geo` or `.npz` to VTK `.vts` for ParaView |
@@ -144,7 +145,7 @@ k0 = np.load("sphere_k0.npz")["k0"]   # shape (ni, nj, 3)
 
 All commands accept `--help` for full option lists.
 
-### Key options for `shore mesh` / `shore march`
+### Key options for `shore mesh`
 
 | Option | Default | Description |
 |---|---|---|
@@ -181,8 +182,10 @@ where $\Delta s$ is the first-layer thickness, $r$ is the growth ratio, and $\ha
 - [ ] Steger–Sorenson orthogonality source term for high-curvature bodies
 - [ ] STEP and parametric surface input (via pythonOCC or cadquery)
 - [x] PyVista visualization (`shore view`, `shore export`, `shore.vis`)
-- [x] Yin-Yang double O-grid topology (`--topology double`)
-- [x] Sphere polar cap 6-block topology (`--topology caps`)
+- [x] Sphere polar cap 6-block topology (caps — production default for `shore mesh`)
+- [x] Gnomonic flat-square cap k=0 projection with C1 seam-step pinning
+- [x] Seam-aware hyperbolic marching (centred-difference normals across block seams)
+- [ ] Yin-Yang double O-grid topology (Python-API only; not wired to CLI)
 - [ ] GitHub Actions CI
 
 ## Author

@@ -17,14 +17,24 @@ Run from the project root after activating .venv:
         --surface-i-spacing tanh --surface-i-beta 4.0 \\
         --surface-j-spacing tanh2 --surface-j-beta 5.0
 
-    # Cap quality controls:
-    python examples/visualize_geo.py --generate \\
-        --cap-pull 0.4 --cap-squareness 0.5
-
     # Visualise an existing file:
     python examples/visualize_geo.py sphere_sub0.geo
     python examples/visualize_geo.py sphere_k0.npz
     python examples/visualize_geo.py sphere_sub0.geo --screenshot out.png
+
+Cap/equator C1 seam matching
+----------------------------
+The cap k=0 layer is built by gnomonic flat-square projection (a tangent-plane
+square radially projected onto the body).  The equator pins its first/last
+meridional step to the cap's first inward step at every seam vertex, giving
+C1 spacing continuity at the seam.  This pinning is only stable when the cap
+and equator radial steps are within a factor of ~2 of each other:
+
+    theta_cap / (nc - 1)   ~   (pi - 2*theta_cap) / (ni - 1)
+
+with ``nc = nj // 4 + 1``.  If they differ by more than 2x the equator falls
+back to its unpinned i_spacing law (a UserWarning is emitted).  The default
+``--ni 40 --nj 60 --theta-cap (pi/6)`` lands inside the C1 window.
 
 For Jupyter use, see examples/visualize.ipynb.
 """
@@ -46,27 +56,25 @@ def generate_sphere(
     ds: float,
     growth: float,
     theta_cap: float | None = None,
-    cap_pull: float = 0.0,
-    cap_squareness: float = 0.0,
     smooth: float = 0.2,
     smooth_iters: int = 2,
     surface_i_spacing: str = "uniform",
     surface_i_beta: float = 3.0,
     surface_j_spacing: str = "uniform",
     surface_j_beta: float = 3.0,
-    j_cluster_lon: float | None = None,
     volume_k_spacing: str = "geometric",
     volume_k_beta: float = 3.0,
     volume_k_thickness: float | None = None,
     blend_normals_k: int = 0,
 ) -> list[Path]:
-    """Create sphere.stl, sphere_k0.npz, and 6 sphere_<label>.geo files.
+    """Create sphere.stl + 6 sphere_<label>.geo files via the gnomonic
+    cap topology.
 
     Returns list of generated .geo paths.
     """
     import trimesh
 
-    from shore.mesh import Body, CapsTopology, Mesh, Spacing1D
+    from shore.mesh import CapsTopology, Mesh, Spacing1D
 
     if volume_k_spacing in {"tanh", "tanh2"} and volume_k_thickness is None:
         print(
@@ -92,41 +100,22 @@ def generate_sphere(
     else:
         print(f"  {stl_path} already exists, skipping STL generation.")
 
-    body = Body.from_stl(stl_path)
-
-    # --- surface projection ---
-    first_geo = geo_stem.parent / f"{geo_stem.name}_sub0.geo"
-    if not npz_path.exists():
-        print(f"Projecting {ni}×{nj} unified surface -> {npz_path} ...")
-        k0, nc_cap = body.project_caps(
-            ni, nj,
-            theta_cap=theta_cap,
-            i_spacing=surface_i_spacing, i_beta=surface_i_beta,
-            j_spacing=surface_j_spacing, j_beta=surface_j_beta,
-            j_cluster_lon=j_cluster_lon,
-        )
-        Body.save_surface(k0, npz_path)
-        print(f"  Surface layer shape: {k0.shape}, nc_cap={nc_cap}.")
-    else:
-        print(f"  {npz_path} already exists, skipping projection.")
-        nc_cap = None  # will be recomputed from shape when loading
-
     # --- march ---
     labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
     geo_paths = [geo_stem.parent / f"{geo_stem.name}_{lbl}.geo" for lbl in labels]
+    first_geo = geo_paths[0]
 
     if not first_geo.exists():
-        print(f"Generating 6-block caps topology ({nk} layers) ...")
-        k0 = Body.load_surface(npz_path)
-
-        if nc_cap is None:
-            # Derive nc_cap from the unified surface shape: ni_total = ni + 2*(nc_cap-1)
-            ni_total = k0.shape[0]
-            nc_cap = (ni_total - ni) // 2 + 1
-
-        topo = CapsTopology(cap_pull=cap_pull, cap_squareness=cap_squareness)
-        blocks = topo.build(k0, nk, nc_cap=nc_cap, spacing_k=spacing_k, mesh=body.mesh)
-        m = Mesh(body=body, blocks=blocks, topology=topo)
+        print(f"Generating 6-block caps topology ({ni}×{nj}, {nk} layers) ...")
+        m = Mesh.from_stl(
+            stl_path,
+            topology=CapsTopology(),
+            ni=ni, nj=nj, nk=nk,
+            theta_cap=theta_cap,
+            i_spacing=surface_i_spacing, i_beta=surface_i_beta,
+            j_spacing=surface_j_spacing, j_beta=surface_j_beta,
+            spacing_k=spacing_k,
+        )
 
         steps = spacing_k.build_steps(nk)
 
@@ -140,6 +129,13 @@ def generate_sphere(
             blend_normals_k=blend_normals_k,
         )
         print()
+
+        # Save the k=0 cap surface as a quick reference (single block).
+        if not npz_path.exists():
+            from shore.mesh import Body
+            Body.save_surface(m.blocks[4].nodes[:, :, 0, :], npz_path)
+            print(f"  k=0 cap_north surface saved → {npz_path}")
+
         m.write_geo(geo_stem)
         for p, blk in zip(geo_paths, m.blocks, strict=True):
             print(f"  {p} written -- shape {blk.nodes.shape[:3]}.")
@@ -196,8 +192,9 @@ def main() -> None:
     gen.add_argument("--surface-j-spacing", default="uniform",
                      choices=["uniform", "tanh2"], help="Longitude spacing law")
     gen.add_argument("--surface-j-beta", type=float, default=3.0)
+    # Deprecated: gnomonic cap is symmetric in 4 quadrants, no cluster_lon.
     gen.add_argument("--j-cluster-lon", type=float, default=None,
-                     help="Longitude to cluster toward (radians, tanh2 only)")
+                     help=argparse.SUPPRESS)
 
     gen.add_argument("--volume-k-spacing", default="geometric",
                      choices=["geometric", "tanh", "tanh2"], help="Wall-normal spacing law")
@@ -207,14 +204,19 @@ def main() -> None:
 
     theta_grp = gen.add_mutually_exclusive_group()
     theta_grp.add_argument("--theta-cap",     type=float, default=None, metavar="RAD",
-                            help="Polar exclusion angle in radians (default 0.05*pi ≈ 9°)")
+                            help="Polar exclusion angle in radians "
+                                 "(default pi/6 = 30 deg). For C1 seam "
+                                 "matching, choose ni so that "
+                                 "theta_cap/(nc-1) is within a factor of 2 "
+                                 "of (pi-2*theta_cap)/(ni-1).")
     theta_grp.add_argument("--theta-cap-deg", type=float, default=None, metavar="DEG",
                             help="Polar exclusion angle in degrees")
 
-    gen.add_argument("--cap-pull",       type=float, default=0.0,
-                     help="Dome factor [0,1) for cap interior toward pole")
-    gen.add_argument("--cap-squareness", type=float, default=0.0,
-                     help="Straighten cap boundary edges toward geodesic chord [0,1]")
+    # Deprecated cap-quality knobs: accepted for backwards-compat, ignored.
+    gen.add_argument("--cap-squareness", type=float, default=None,
+                     help=argparse.SUPPRESS)
+    gen.add_argument("--cap-pull", type=float, default=None,
+                     help=argparse.SUPPRESS)
     gen.add_argument("--blend-normals-k", type=int, default=0,
                      help="Layers over which to blend STL surface normals (0 = off)")
 
@@ -232,14 +234,41 @@ def main() -> None:
 
     import numpy as np
 
+    if args.cap_pull is not None:
+        import warnings as _warn
+        _warn.warn(
+            "--cap-pull is deprecated and ignored.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if args.cap_squareness is not None:
+        import warnings as _warn
+        _warn.warn(
+            "--cap-squareness is deprecated and ignored: cap k=0 is now built "
+            "by gnomonic flat-square projection.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if args.j_cluster_lon is not None:
+        import warnings as _warn
+        _warn.warn(
+            "--j-cluster-lon is deprecated and ignored.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     # --- generation ---
     geo_paths: list[Path] = []
     if args.generate:
-        theta_cap: float | None = None
+        # Default theta_cap = pi/6 (30 deg).  Combined with the default
+        # ni=40/nj=60 this lands inside the cap/equator C1 pinning window
+        # (cap radial step ~2 deg, equator step ~3 deg, ratio 1.5x).
         if args.theta_cap_deg is not None:
-            theta_cap = np.deg2rad(args.theta_cap_deg)
+            theta_cap: float = float(np.deg2rad(args.theta_cap_deg))
         elif args.theta_cap is not None:
-            theta_cap = args.theta_cap
+            theta_cap = float(args.theta_cap)
+        else:
+            theta_cap = float(np.pi / 6.0)
 
         geo_paths = generate_sphere(
             stl_path=Path("sphere.stl"),
@@ -248,15 +277,12 @@ def main() -> None:
             ni=args.ni, nj=args.nj, nk=args.nk,
             ds=args.ds, growth=args.growth,
             theta_cap=theta_cap,
-            cap_pull=args.cap_pull,
-            cap_squareness=args.cap_squareness,
             smooth=args.smooth,
             smooth_iters=args.smooth_iters,
             surface_i_spacing=args.surface_i_spacing,
             surface_i_beta=args.surface_i_beta,
             surface_j_spacing=args.surface_j_spacing,
             surface_j_beta=args.surface_j_beta,
-            j_cluster_lon=args.j_cluster_lon,
             volume_k_spacing=args.volume_k_spacing,
             volume_k_beta=args.volume_k_beta,
             volume_k_thickness=args.volume_k_thickness,

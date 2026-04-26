@@ -42,6 +42,7 @@ from shore.volume.jacobian import _jacobian_field_open
 # Step 1 — nj validation and equatorial block splitting
 # ---------------------------------------------------------------------------
 
+
 def _adjust_nj(nj: int) -> int:
     """Round nj down to the nearest multiple of 4, warning if adjusted."""
     if nj % 4 != 0:
@@ -89,20 +90,21 @@ def _overwrite_cap_boundaries(
         ``'north'`` or ``'south'`` — selects the edge mapping.
     """
     if pole == "north":
-        cap_layer[0,  :, :]  = eq_layers[0]           # i=0  row ← sub0
-        cap_layer[:, -1, :]  = eq_layers[1]           # j=-1 col ← sub1
-        cap_layer[-1, :, :]  = eq_layers[2][::-1]     # i=-1 row ← sub2 reversed
-        cap_layer[:,  0, :]  = eq_layers[3][::-1]     # j=0  col ← sub3 reversed
+        cap_layer[0, :, :] = eq_layers[0]  # i=0  row ← sub0
+        cap_layer[:, -1, :] = eq_layers[1]  # j=-1 col ← sub1
+        cap_layer[-1, :, :] = eq_layers[2][::-1]  # i=-1 row ← sub2 reversed
+        cap_layer[:, 0, :] = eq_layers[3][::-1]  # j=0  col ← sub3 reversed
     else:  # south cap (z≈+1 pole, face winding mirrored)
-        cap_layer[:,  0, :]  = eq_layers[0]            # j=0  col ← sub0
-        cap_layer[-1, :, :]  = eq_layers[1]            # i=-1 row ← sub1
-        cap_layer[:, -1, :]  = eq_layers[2][::-1]      # j=-1 col ← sub2 reversed
-        cap_layer[0,  :, :]  = eq_layers[3][::-1]      # i=0  row ← sub3 reversed
+        cap_layer[:, 0, :] = eq_layers[0]  # j=0  col ← sub0
+        cap_layer[-1, :, :] = eq_layers[1]  # i=-1 row ← sub1
+        cap_layer[:, -1, :] = eq_layers[2][::-1]  # j=-1 col ← sub2 reversed
+        cap_layer[0, :, :] = eq_layers[3][::-1]  # i=0  row ← sub3 reversed
 
 
 # ---------------------------------------------------------------------------
 # Step 5-6 — Simultaneous marching
 # ---------------------------------------------------------------------------
+
 
 def _march_one_layer(
     layer: np.ndarray,
@@ -111,6 +113,7 @@ def _march_one_layer(
     smooth_iters: int,
     periodic: tuple[bool, bool],
     normals_override: np.ndarray | None = None,
+    ghost_rows: dict[str, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Advance one layer by hyperbolic extrusion + smoothing.
 
@@ -119,11 +122,14 @@ def _march_one_layer(
     normals_override :
         When provided, replaces the grid-computed normals for this step.
         Shape must match ``(ni, nj, 3)``.  Used for STL-normal blending.
+    ghost_rows :
+        Optional virtual neighbour rows (per-face) for centred-difference
+        normals at multi-block seams; see ``_compute_normals``.
     """
     if normals_override is not None:
         normals = normals_override
     else:
-        normals = _compute_normals(layer, periodic=periodic)
+        normals = _compute_normals(layer, periodic=periodic, ghost_rows=ghost_rows)
     new_layer = layer + step * normals
     for _ in range(smooth_iters):
         new_layer = _laplacian_smooth(new_layer, smooth_strength, periodic=periodic)
@@ -138,6 +144,7 @@ def _march_cap_layer(
     eq_rows: list[np.ndarray],
     pole: str = "north",
     normals_override: np.ndarray | None = None,
+    ghost_rows: dict[str, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Advance one cap layer with Dirichlet boundary pinning.
 
@@ -170,7 +177,7 @@ def _march_cap_layer(
     if normals_override is not None:
         normals = normals_override
     else:
-        normals = _compute_normals(layer, periodic=(False, False))
+        normals = _compute_normals(layer, periodic=(False, False), ghost_rows=ghost_rows)
     new_layer = layer + step * normals
 
     # 2. Laplacian smoothing passes (same as equatorial blocks).
@@ -213,6 +220,7 @@ def _check_jacobian(
     two = np.stack([layer, new_layer], axis=2)
     if periodic_j:
         from shore.volume.jacobian import jacobian_field
+
         jac = jacobian_field(two)
     else:
         jac = _jacobian_field_open(two)
@@ -220,9 +228,9 @@ def _check_jacobian(
     if exclude_corners:
         ni_c, nj_c = jac.shape[0], jac.shape[1]
         mask = np.ones(jac.shape[:2], dtype=bool)
-        mask[0,        0       ] = False
-        mask[0,        nj_c - 1] = False
-        mask[ni_c - 1, 0       ] = False
+        mask[0, 0] = False
+        mask[0, nj_c - 1] = False
+        mask[ni_c - 1, 0] = False
         mask[ni_c - 1, nj_c - 1] = False
         jmin = float(jac[mask].min())
     else:
@@ -230,8 +238,7 @@ def _check_jacobian(
 
     if jmin < tol:
         raise MarchingError(
-            f"Negative Jacobian ({jmin:.3e}) in {label} at layer k={k+1}. "
+            f"Negative Jacobian ({jmin:.3e}) in {label} at layer k={k + 1}. "
             "Reduce ds, growth ratio, or increase smooth_strength."
         )
     return jmin
-

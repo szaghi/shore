@@ -1,14 +1,31 @@
 # O-grid topology
 
-An O-grid (also called *O-type grid* or *O-mesh*) is a structured grid topology that wraps completely around a body, forming a closed loop in one parametric direction. The name comes from the shape of the grid lines around a cross-section, which resemble the letter O.
+An O-grid (also called *O-type grid* or *O-mesh*) is a structured grid
+topology that wraps completely around a body, forming a closed loop in
+one parametric direction. The name comes from the shape of the grid
+lines around a cross-section, which resemble the letter O.
+
+::: tip Single-block O-grid vs caps topology
+The single-block O-grid described here is the *conceptual* foundation.
+SHORE's production topology is the [6-block caps
+topology](/concepts/sphere-cap), which closes the polar singularities
+with two gnomonic-square cap blocks plus four equatorial sub-blocks.
+The single-block view is still useful for understanding the equatorial
+band's geometry — the sub-blocks behave as 90° azimuthal slices of the
+single-block O-grid.
+:::
 
 ## Topology
 
-In SHORE's implementation:
+In SHORE's single-block model:
 
 - The **i-direction** spans from one pole to the other (latitude, open, not periodic)
 - The **j-direction** wraps completely around the body (longitude, periodic: `j=0` is adjacent to `j=nj-1`)
 - The **k-direction** goes wall-normal from body surface (k=0) to far field (k=nk-1)
+
+In the caps topology the j-direction is split into 4 sub-blocks (each
+spanning 90°) plus 2 cap blocks; the periodic j-wrap of the single-block
+view is realised as a SHARED-memory sub3↔sub0 seam.
 
 ```
           k=nk-1 (far field)

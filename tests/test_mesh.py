@@ -12,11 +12,11 @@ from shore.mesh import (
     Mesh,
     Spacing1D,
 )
-from tests.conftest import sphere_layer
 
 # ---------------------------------------------------------------------------
 # Spacing1D
 # ---------------------------------------------------------------------------
+
 
 class TestSpacing1D:
     def test_uniform_endpoints(self):
@@ -44,6 +44,7 @@ class TestSpacing1D:
 
     def test_geometric_requires_ds(self):
         from shore.exceptions import ParameterError
+
         sp = Spacing1D(law="geometric")
         with pytest.raises(ParameterError):
             sp.build_steps(5)
@@ -52,6 +53,7 @@ class TestSpacing1D:
 # ---------------------------------------------------------------------------
 # HexBlock construction
 # ---------------------------------------------------------------------------
+
 
 class TestHexBlock:
     def _make_block(self, ni=5, nj=8, nk=4) -> HexBlock:
@@ -97,9 +99,9 @@ class TestHexBlock:
 
     def test_edge_nodes_shape(self):
         blk = self._make_block(ni=5, nj=8, nk=4)
-        assert blk.edge("j_lo_k_lo").nodes(blk).shape == (5, 3)   # along i
-        assert blk.edge("i_lo_k_lo").nodes(blk).shape == (8, 3)   # along j
-        assert blk.edge("i_lo_j_lo").nodes(blk).shape == (4, 3)   # along k
+        assert blk.edge("j_lo_k_lo").nodes(blk).shape == (5, 3)  # along i
+        assert blk.edge("i_lo_k_lo").nodes(blk).shape == (8, 3)  # along j
+        assert blk.edge("i_lo_j_lo").nodes(blk).shape == (4, 3)  # along k
 
     def test_vertex_coords(self):
         nodes = np.arange(5 * 8 * 4 * 3, dtype=float).reshape(5, 8, 4, 3)
@@ -112,47 +114,48 @@ class TestHexBlock:
 # CapsTopology.build()
 # ---------------------------------------------------------------------------
 
-class TestCapsTopology:
-    def _surface(self, ni=9, nj=16) -> np.ndarray:
-        return sphere_layer(ni, nj)
 
-    def test_returns_six_blocks(self):
-        topo = CapsTopology()
-        blocks = topo.build(self._surface(), nk=4)
+class TestCapsTopology:
+    def _build(self, sphere_stl, ni=8, nj=16, nk=4):
+        return Mesh.from_stl(
+            sphere_stl,
+            topology=CapsTopology(),
+            ni=ni,
+            nj=nj,
+            nk=nk,
+        ).blocks
+
+    def test_returns_six_blocks(self, sphere_stl):
+        blocks = self._build(sphere_stl)
         assert len(blocks) == 6
 
-    def test_block_labels(self):
-        topo = CapsTopology()
-        blocks = topo.build(self._surface(), nk=4)
+    def test_block_labels(self, sphere_stl):
+        blocks = self._build(sphere_stl)
         labels = [b.label for b in blocks]
         assert labels == ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
 
-    def test_sub_block_shape(self):
-        ni, nj, nk = 9, 16, 4
-        topo = CapsTopology()
-        blocks = topo.build(sphere_layer(ni, nj), nk=nk)
+    def test_sub_block_shape(self, sphere_stl):
+        ni, nj, nk = 8, 16, 4
+        blocks = self._build(sphere_stl, ni=ni, nj=nj, nk=nk)
         nc = nj // 4 + 1
         for q in range(4):
             assert blocks[q].nodes.shape == (ni, nc, nk, 3)
 
-    def test_cap_block_shape(self):
-        ni, nj, nk = 9, 16, 4
-        topo = CapsTopology()
-        blocks = topo.build(sphere_layer(ni, nj), nk=nk)
+    def test_cap_block_shape(self, sphere_stl):
+        ni, nj, nk = 8, 16, 4
+        blocks = self._build(sphere_stl, ni=ni, nj=nj, nk=nk)
         nc = nj // 4 + 1
         assert blocks[4].nodes.shape == (nc, nc, nk, 3)
         assert blocks[5].nodes.shape == (nc, nc, nk, 3)
 
-    def test_shared_views(self):
+    def test_shared_views(self, sphere_stl):
         """Adjacent sub-block shared columns share memory for q=0..2.
 
         The ring allocation gives views for sub0↔sub1, sub1↔sub2, sub2↔sub3.
         The periodic seam sub3↔sub0 uses a separate wrap column and is
         explicitly re-stitched rather than view-shared.
         """
-        topo = CapsTopology()
-        blocks = topo.build(self._surface(), nk=4)
-        # q=0,1,2: true numpy views into the same ring memory
+        blocks = self._build(sphere_stl)
         for q in range(3):
             q_next = q + 1
             assert np.shares_memory(
@@ -165,24 +168,21 @@ class TestCapsTopology:
             blocks[0].nodes[:, 0, 0, :],
         )
 
-    def test_shared_face_bc(self):
-        topo = CapsTopology()
-        blocks = topo.build(self._surface(), nk=4)
+    def test_shared_face_bc(self, sphere_stl):
+        blocks = self._build(sphere_stl)
         for q in range(4):
             assert blocks[q].face("j_hi").bc == FaceBC.SHARED
             assert blocks[q].face("j_lo").bc == FaceBC.SHARED
 
-    def test_dirichlet_face_bc_on_caps(self):
-        topo = CapsTopology()
-        blocks = topo.build(self._surface(), nk=4)
+    def test_dirichlet_face_bc_on_caps(self, sphere_stl):
+        blocks = self._build(sphere_stl)
         for name in ("i_lo", "i_hi", "j_lo", "j_hi"):
             assert blocks[4].face(name).bc == FaceBC.DIRICHLET
             assert blocks[5].face(name).bc == FaceBC.DIRICHLET
 
-    def test_k0_conformity(self):
+    def test_k0_conformity(self, sphere_stl):
         """Shared j-columns must be identical at k=0 after build."""
-        topo = CapsTopology()
-        blocks = topo.build(self._surface(), nk=4)
+        blocks = self._build(sphere_stl)
         for q in range(4):
             q_next = (q + 1) % 4
             np.testing.assert_array_equal(
@@ -195,12 +195,15 @@ class TestCapsTopology:
 # Mesh.from_stl + march
 # ---------------------------------------------------------------------------
 
+
 class TestMeshMarch:
     def test_march_expands_radius(self, sphere_stl):
         topo = Mesh.from_stl(
             sphere_stl,
             topology=CapsTopology(),
-            ni=9, nj=16, nk=5,
+            ni=9,
+            nj=16,
+            nk=5,
             spacing_k=Spacing1D(law="geometric", ds=0.05, growth=1.1),
         )
         topo.march(ds=0.05, growth=1.1, smooth_strength=0.2, smooth_iters=2)
@@ -215,7 +218,9 @@ class TestMeshMarch:
         m = Mesh.from_stl(
             sphere_stl,
             topology=CapsTopology(),
-            ni=9, nj=16, nk=5,
+            ni=9,
+            nj=16,
+            nk=5,
         )
         m.march(ds=0.05, growth=1.1)
 
@@ -223,7 +228,9 @@ class TestMeshMarch:
         m = Mesh.from_stl(
             sphere_stl,
             topology=CapsTopology(),
-            ni=9, nj=16, nk=5,
+            ni=9,
+            nj=16,
+            nk=5,
         )
         m.march(ds=0.05, growth=1.1)
         m.write_geo(tmp_path / "test")
@@ -235,7 +242,9 @@ class TestMeshMarch:
         m = Mesh.from_stl(
             sphere_stl,
             topology=CapsTopology(),
-            ni=9, nj=16, nk=5,
+            ni=9,
+            nj=16,
+            nk=5,
         )
         for blk in m.blocks:
             # march was NOT called, so inner layers are uninitialised;
@@ -265,9 +274,11 @@ class TestMeshMarch:
 
         with patch.object(_proj_module.Projector, "__init__", counting_init):
             body = Body.from_stl(sphere_stl)
-            surface, nc_cap = body.project_caps(ni=9, nj=16)
             CapsTopology().build(
-                surface, nk=3, nc_cap=nc_cap,
+                surface=None,
+                nk=3,
+                ni=9,
+                nj=16,
                 projector=body.projector,
             )
 

@@ -40,20 +40,20 @@ app = typer.Typer(
 )
 
 _console = Console()
-_err     = Console(stderr=True)
+_err = Console(stderr=True)
 
 
 # ---------------------------------------------------------------------------
 # Shared option aliases
 # ---------------------------------------------------------------------------
 
-_NI      = Annotated[int,   typer.Option(help="Latitude resolution of the O-grid surface.")]
-_NJ      = Annotated[int,   typer.Option(help="Longitude resolution of the O-grid surface.")]
-_NK      = Annotated[int,   typer.Option(help="Number of wall-normal layers (includes k=0).")]
-_DS      = Annotated[float, typer.Option(help="First-layer thickness (same units as the STL).")]
-_GROWTH  = Annotated[float, typer.Option(help="Geometric growth ratio between successive layers.")]
-_SMOOTH  = Annotated[float, typer.Option(help="Laplacian smooth strength per layer [0-1].")]
-_SITERS  = Annotated[int,   typer.Option(help="Laplacian sweeps per layer.")]
+_NI = Annotated[int, typer.Option(help="Latitude resolution of the O-grid surface.")]
+_NJ = Annotated[int, typer.Option(help="Longitude resolution of the O-grid surface.")]
+_NK = Annotated[int, typer.Option(help="Number of wall-normal layers (includes k=0).")]
+_DS = Annotated[float, typer.Option(help="First-layer thickness (same units as the STL).")]
+_GROWTH = Annotated[float, typer.Option(help="Geometric growth ratio between successive layers.")]
+_SMOOTH = Annotated[float, typer.Option(help="Laplacian smooth strength per layer [0-1].")]
+_SITERS = Annotated[int, typer.Option(help="Laplacian sweeps per layer.")]
 _BLEND_K = Annotated[
     int,
     typer.Option(
@@ -61,24 +61,27 @@ _BLEND_K = Annotated[
         help="Layers over which to blend STL surface normals into grid normals (0 = off).",
     ),
 ]
-_VERBOSE = Annotated[bool,  typer.Option("--verbose", "-v", help="Show rich progress bar.")]
+_VERBOSE = Annotated[bool, typer.Option("--verbose", "-v", help="Show rich progress bar.")]
 
 _THETA_CAP = Annotated[
     float | None,
-    typer.Option("--theta-cap",
-                 help="Polar exclusion angle in radians [default 0.05*pi (~9 deg)]."),
+    typer.Option(
+        "--theta-cap", help="Polar exclusion angle in radians [default 0.05*pi (~9 deg)]."
+    ),
 ]
 _THETA_CAP_DEG = Annotated[
     float | None,
-    typer.Option("--theta-cap-deg",
-                 help="Polar exclusion angle in degrees. Mutually exclusive with --theta-cap."),
+    typer.Option(
+        "--theta-cap-deg",
+        help="Polar exclusion angle in degrees. Mutually exclusive with --theta-cap.",
+    ),
 ]
 _CAP_PULL = Annotated[
     float | None,
     typer.Option(
         "--cap-pull",
         help="[DEPRECATED, Phase 4] Ignored — cap interior is now built by "
-             "Shirley + stereographic projection with C1 seam continuity.",
+        "Shirley + stereographic projection with C1 seam continuity.",
         hidden=True,
     ),
 ]
@@ -86,8 +89,8 @@ _CAP_SQUARENESS = Annotated[
     float | None,
     typer.Option(
         "--cap-squareness",
-        help="[DEPRECATED, Phase 4] Ignored — cap boundary is always the "
-             "equator seam (no squareness blending needed).",
+        help="[DEPRECATED] Ignored — cap k=0 is now built by gnomonic "
+        "flat-square projection, which produces square cells by construction.",
         hidden=True,
     ),
 ]
@@ -154,6 +157,7 @@ _VOLUME_K_THICKNESS = Annotated[
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _progress() -> Progress:
     return Progress(
         SpinnerColumn(),
@@ -210,6 +214,7 @@ def _build_spacing_k(
 # shore mesh
 # ---------------------------------------------------------------------------
 
+
 @app.command()
 def mesh(
     input: Annotated[Path, typer.Argument(help="Input STL file.")],
@@ -217,27 +222,27 @@ def mesh(
         Path | None,
         typer.Option("-o", "--output", help="Output stem for .geo files."),
     ] = None,
-    ni:           _NI      = 40,
-    nj:           _NJ      = 60,
-    nk:           _NK      = 30,
-    ds:           _DS      = 1e-3,
-    growth:       _GROWTH  = 1.15,
-    smooth:       _SMOOTH  = 0.2,
-    smooth_iters: _SITERS  = 2,
-    theta_cap:     _THETA_CAP     = None,
+    ni: _NI = 40,
+    nj: _NJ = 60,
+    nk: _NK = 30,
+    ds: _DS = 1e-3,
+    growth: _GROWTH = 1.15,
+    smooth: _SMOOTH = 0.2,
+    smooth_iters: _SITERS = 2,
+    theta_cap: _THETA_CAP = None,
     theta_cap_deg: _THETA_CAP_DEG = None,
-    cap_pull:        _CAP_PULL        = None,
-    cap_squareness:  _CAP_SQUARENESS  = None,
+    cap_pull: _CAP_PULL = None,
+    cap_squareness: _CAP_SQUARENESS = None,
     surface_i_spacing: _SURFACE_I_SPACING = "uniform",
-    surface_i_beta:    _SURFACE_I_BETA    = 3.0,
+    surface_i_beta: _SURFACE_I_BETA = 3.0,
     surface_j_spacing: _SURFACE_J_SPACING = "uniform",
-    surface_j_beta:    _SURFACE_J_BETA    = 3.0,
-    j_cluster_lon:     _J_CLUSTER_LON     = None,
-    volume_k_spacing:   _VOLUME_K_SPACING   = "geometric",
-    volume_k_beta:      _VOLUME_K_BETA      = 3.0,
+    surface_j_beta: _SURFACE_J_BETA = 3.0,
+    j_cluster_lon: _J_CLUSTER_LON = None,
+    volume_k_spacing: _VOLUME_K_SPACING = "geometric",
+    volume_k_beta: _VOLUME_K_BETA = 3.0,
     volume_k_thickness: _VOLUME_K_THICKNESS = None,
-    blend_normals_k:    _BLEND_K            = 0,
-    verbose:      _VERBOSE = False,
+    blend_normals_k: _BLEND_K = 0,
+    verbose: _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL → 6-block sphere O-grid volume → geo files."""
     if not input.exists():
@@ -246,17 +251,31 @@ def mesh(
 
     if cap_pull is not None:
         import warnings as _warn
+
         _warn.warn(
             "--cap-pull is deprecated (Phase 4): cap interior is now built by "
             "Shirley concentric + stereographic projection and the flag is ignored.",
             DeprecationWarning,
             stacklevel=2,
         )
+
     if cap_squareness is not None:
         import warnings as _warn
+
         _warn.warn(
-            "--cap-squareness is deprecated (Phase 4): cap boundary is always the "
-            "equator seam and the flag is ignored.",
+            "--cap-squareness is deprecated and ignored: cap k=0 is now built "
+            "by gnomonic flat-square projection.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    if j_cluster_lon is not None:
+        import warnings as _warn
+
+        _warn.warn(
+            "--j-cluster-lon is deprecated and ignored: gnomonic cap projection "
+            "is symmetric in the 4 quadrants; use --surface-j-spacing tanh2 to "
+            "cluster nodes near the cap-corner longitudes.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -267,42 +286,33 @@ def mesh(
     )
     out_stem = output or _default_output(input, "")
 
-    # --- load + project ---
+    # --- load body ---
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Loading STL   ", total=1, info="")
             body = Body.from_stl(input)
             prog.update(t, advance=1, info=f"{len(body.mesh.faces)} triangles")
-
-        with _progress() as prog:
-            t = prog.add_task("Projecting    ", total=1, info="")
-            surface, nc_cap = body.project_caps(
-                ni, nj,
-                theta_cap=theta,
-                i_spacing=surface_i_spacing, i_beta=surface_i_beta,
-                j_spacing=surface_j_spacing, j_beta=surface_j_beta,
-                j_cluster_lon=j_cluster_lon,
-            )
-            prog.update(t, advance=1, info=f"({surface.shape[0]}x{nj}) unified surface")
     else:
         body = Body.from_stl(input)
-        surface, nc_cap = body.project_caps(
-            ni, nj,
-            theta_cap=theta,
-            i_spacing=surface_i_spacing, i_beta=surface_i_beta,
-            j_spacing=surface_j_spacing, j_beta=surface_j_beta,
-            j_cluster_lon=j_cluster_lon,
-        )
 
     # --- build topology + march ---
+    # Gnomonic algorithm projects the surface inside topology.build through
+    # the cached BVH; no separate body.project_caps call is needed.
     _theta_topo = theta if theta is not None else 0.05 * np.pi
     topo = CapsTopology()
     try:
         blocks = topo.build(
-            surface, nk, nc_cap=nc_cap, spacing_k=spacing_k,
+            surface=None,
+            nk=nk,
+            ni=ni,
+            nj=nj,
+            spacing_k=spacing_k,
             projector=body.projector,
             theta_cap=_theta_topo,
-            i_spacing=surface_i_spacing, i_beta=surface_i_beta,
+            i_spacing=surface_i_spacing,
+            i_beta=surface_i_beta,
+            j_spacing=surface_j_spacing,
+            j_beta=surface_j_beta,
         )
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {exc}")
@@ -320,17 +330,28 @@ def mesh(
                 prog.update(t, advance=1, info=f"jmin={jmin:.2e}")
 
             try:
-                m.march(ds=ds, growth=growth, smooth_strength=smooth,
-                        smooth_iters=smooth_iters, steps=steps,
-                        layer_callback=_cb, blend_normals_k=blend_normals_k)
+                m.march(
+                    ds=ds,
+                    growth=growth,
+                    smooth_strength=smooth,
+                    smooth_iters=smooth_iters,
+                    steps=steps,
+                    layer_callback=_cb,
+                    blend_normals_k=blend_normals_k,
+                )
             except Exception as exc:
                 _err.print(f"[red]Error:[/red] {exc}")
                 raise typer.Exit(1) from None
     else:
         try:
-            m.march(ds=ds, growth=growth, smooth_strength=smooth,
-                    smooth_iters=smooth_iters, steps=steps,
-                    blend_normals_k=blend_normals_k)
+            m.march(
+                ds=ds,
+                growth=growth,
+                smooth_strength=smooth,
+                smooth_iters=smooth_iters,
+                steps=steps,
+                blend_normals_k=blend_normals_k,
+            )
         except Exception as exc:
             _err.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(1) from None
@@ -341,14 +362,14 @@ def mesh(
     if verbose:
         nc = nj // 4 + 1
         _console.print(
-            f"[green]✓[/green] Wrote 6 .geo files  "
-            f"(sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
+            f"[green]✓[/green] Wrote 6 .geo files  (sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
         )
 
 
 # ---------------------------------------------------------------------------
 # shore project
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def project(
@@ -357,16 +378,16 @@ def project(
         Path | None,
         typer.Option("-o", "--output", help="Output .npz file."),
     ] = None,
-    ni:            _NI            = 40,
-    nj:            _NJ            = 60,
-    theta_cap:     _THETA_CAP     = None,
+    ni: _NI = 40,
+    nj: _NJ = 60,
+    theta_cap: _THETA_CAP = None,
     theta_cap_deg: _THETA_CAP_DEG = None,
     surface_i_spacing: _SURFACE_I_SPACING = "uniform",
-    surface_i_beta:    _SURFACE_I_BETA    = 3.0,
+    surface_i_beta: _SURFACE_I_BETA = 3.0,
     surface_j_spacing: _SURFACE_J_SPACING = "uniform",
-    surface_j_beta:    _SURFACE_J_BETA    = 3.0,
-    j_cluster_lon:     _J_CLUSTER_LON     = None,
-    verbose:       _VERBOSE       = False,
+    surface_j_beta: _SURFACE_J_BETA = 3.0,
+    j_cluster_lon: _J_CLUSTER_LON = None,
+    verbose: _VERBOSE = False,
 ) -> None:
     """Project a structured sphere grid onto an STL surface (k=0 layer only)."""
     if not input.exists():
@@ -374,7 +395,7 @@ def project(
         raise typer.Exit(1) from None
 
     theta = _resolve_theta(theta_cap, theta_cap_deg)
-    out   = output or _default_output(input, "_k0.npz")
+    out = output or _default_output(input, "_k0.npz")
 
     if verbose:
         with _progress() as prog:
@@ -385,18 +406,26 @@ def project(
         with _progress() as prog:
             t = prog.add_task("Projecting    ", total=1, info="")
             k0 = body.project(
-                ni, nj, theta_cap=theta,
-                i_spacing=surface_i_spacing, i_beta=surface_i_beta,
-                j_spacing=surface_j_spacing, j_beta=surface_j_beta,
+                ni,
+                nj,
+                theta_cap=theta,
+                i_spacing=surface_i_spacing,
+                i_beta=surface_i_beta,
+                j_spacing=surface_j_spacing,
+                j_beta=surface_j_beta,
                 j_cluster_lon=j_cluster_lon,
             )
             prog.update(t, advance=1, info=f"({ni}x{nj}) surface layer")
     else:
         body = Body.from_stl(input)
-        k0   = body.project(
-            ni, nj, theta_cap=theta,
-            i_spacing=surface_i_spacing, i_beta=surface_i_beta,
-            j_spacing=surface_j_spacing, j_beta=surface_j_beta,
+        k0 = body.project(
+            ni,
+            nj,
+            theta_cap=theta,
+            i_spacing=surface_i_spacing,
+            i_beta=surface_i_beta,
+            j_spacing=surface_j_spacing,
+            j_beta=surface_j_beta,
             j_cluster_lon=j_cluster_lon,
         )
 
@@ -409,6 +438,7 @@ def project(
 # ---------------------------------------------------------------------------
 # shore info
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def info(
@@ -429,7 +459,7 @@ def info(
         table.add_column("Value")
         table.add_row("Dimensions", f"ni={ni}  nj={nj}  nk={nk}")
         table.add_row("Points", f"{data['n_points']:,}")
-        table.add_row("Cells",  f"{data['n_cells']:,}")
+        table.add_row("Cells", f"{data['n_cells']:,}")
         lo, hi = data["xyz_min"], data["xyz_max"]
         for ax, lo_val, hi_val in zip("xyz", lo, hi, strict=True):
             table.add_row(f"{ax} bounds", f"[{lo_val:.6g},  {hi_val:.6g}]")
@@ -449,15 +479,14 @@ def info(
         _console.print(table)
 
     else:
-        _err.print(
-            f"[red]Error:[/red] unsupported extension '{suffix}'. Expected .geo or .npz."
-        )
+        _err.print(f"[red]Error:[/red] unsupported extension '{suffix}'. Expected .geo or .npz.")
         raise typer.Exit(1) from None
 
 
 # ---------------------------------------------------------------------------
 # shore check
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def check(
@@ -479,7 +508,7 @@ def check(
 
     table = Table(title=f"Jacobian check — {input}", show_header=True, header_style="bold cyan")
     table.add_column("Layer", justify="right", style="dim")
-    table.add_column("jmin",  justify="right")
+    table.add_column("jmin", justify="right")
     table.add_column("Status")
 
     for k, jmin in enumerate(result["jmins"]):
@@ -503,6 +532,7 @@ def check(
 # ---------------------------------------------------------------------------
 # shore export
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def export(
@@ -541,6 +571,7 @@ def export(
 # shore view
 # ---------------------------------------------------------------------------
 
+
 @app.command()
 def view(
     input: Annotated[Path, typer.Argument(help="Input .geo or .npz file.")],
@@ -548,8 +579,8 @@ def view(
         str,
         typer.Option(help="Colour field: 'Jacobian' (geo) or 'radius' (npz) or 'none'."),
     ] = "",
-    no_edges: Annotated[bool,  typer.Option("--no-edges", help="Hide cell edges.")] = False,
-    opacity:  Annotated[float, typer.Option(help="Grid opacity [0-1] (geo only).")] = 0.6,
+    no_edges: Annotated[bool, typer.Option("--no-edges", help="Hide cell edges.")] = False,
+    opacity: Annotated[float, typer.Option(help="Grid opacity [0-1] (geo only).")] = 0.6,
 ) -> None:
     """Open an interactive PyVista window to inspect a .geo or .npz file."""
     if not input.exists():
