@@ -139,7 +139,7 @@ shore mesh body.stl --ni 40 --nj 60 \
     -o body
 ```
 
-See [Spacing laws](/concepts/spacing) for the full explanation of each
+See [Spacing laws](/algorithm/spacing-laws) for the full explanation of each
 law, what physical region it clusters toward, and how to choose $\beta$.
 
 ::: warning Star-shaped constraint

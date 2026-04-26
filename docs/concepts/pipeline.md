@@ -1,124 +1,136 @@
 # Pipeline overview
 
-SHORE's pipeline transforms a raw triangulated surface into a structured volume block in two stages. Each stage is independent and can be run, inspected, and re-run separately.
+SHORE turns a triangulated STL surface into a structured body-fitted
+volume mesh through a fixed pipeline. This page is the high-level map;
+the [Algorithm](/algorithm/) section drills into each stage, and the
+[Topologies](/topologies/) section catalogues how the stages are
+assembled into block layouts.
+
+![Pipeline](/figures/pipeline.png)
 
 ## Stages
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Input: body.stl  (unstructured triangles, any complexity)      │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-                 ┌─────────────▼─────────────┐
-                 │   Stage 1 — Projection    │  shore project
-                 │                           │
-                 │  Build a (ni×nj) lat-lon  │
-                 │  sphere around centroid.  │
-                 │  Redistribute angles     │
-                 │  with spacing law.       │
-                 │  Cast ni×nj rays inward.  │
-                 │  Intersect with STL BVH.  │
-                 └─────────────┬─────────────┘
-                               │  k=0 layer: (ni, nj, 3)
-                 ┌─────────────▼─────────────┐
-                 │   Stage 2 — Marching      │  shore march
-                 │                           │
-                 │  For k = 0 … nk-2:        │
-                 │    compute normals(k)     │
-                 │    advance k+1 by step[k] │
-                 │    smooth k+1             │
-                 │    check Jacobian(k, k+1) │
-                 └─────────────┬─────────────┘
-                               │  volume: (ni, nj, nk, 3)
-                 ┌─────────────▼─────────────┐
-                 │   Output: body.geo        │  write_geo
-                 │   Xall_GPU format         │
-                 └───────────────────────────┘
-                               │
-              ┌────────────────┴────────────────┐
-              │                                 │
-┌─────────────▼─────────────┐   ┌──────────────▼──────────────┐
-│  ParaView export          │   │  Interactive viewer         │
-│  shore export body.geo    │   │  shore view body.geo        │
-│  → body.vts (.vts format) │   │  → PyVista window / Jupyter │
-└───────────────────────────┘   └─────────────────────────────┘
-```
-
-## Data shapes
-
-| Quantity | Shape | Description |
+| Stage | Output | Algorithm reference |
 |---|---|---|
-| k=0 surface layer | `(ni, nj, 3)` | Structured surface on the body (x, y, z per node) |
-| Volume grid | `(ni, nj, nk, 3)` | Full O-grid block |
-| Geo file on disk | — | ASCII: header `ni nj nk`, then all x, all y, all z in Fortran order |
+| 1. Surface projection | `(N, 3)` k=0 surface nodes | [projection](/algorithm/projection) |
+| 2. k=0 mesh construction | 6-block surface (caps topology) | [k0-construction](/algorithm/k0-construction) |
+| 3. Hyperbolic marching | 6-block volume `(ni, nj, nk, 3)` per block | [hyperbolic-marching](/algorithm/hyperbolic-marching) |
+| 4. Seam-aware refinement | Continuous spacing across multi-block seams at every layer | [seam-aware-normals](/algorithm/seam-aware-normals) |
 
-The j-index is periodic (O-grid topology): `j=nj-1` and `j=0` are adjacent neighbours.
+Stages 1 and 2 produce the **k=0 layer** — the body-conforming
+surface mesh from which the volume is extruded. Stage 3 is the
+hyperbolic extrusion. Stage 4 is integrated into stage 3: it changes
+how each block's normals are computed at multi-block seams so that
+spacing continuity is preserved layer by layer.
 
-## Intermediate format
+## Topology
 
-Stage 1 saves its output as a compressed NumPy file (`.npz`):
+The pipeline above is run **per topology**. The topology determines
+the block layout and how stages 2 and 3 stitch the blocks together.
+SHORE's production topology is the [caps topology](/topologies/caps)
+(6 blocks); the `shore mesh` CLI builds it unconditionally.
 
-```python
-np.savez_compressed("body_k0.npz", k0=surface_layer)
-# Load:
-k0 = np.load("body_k0.npz")["k0"]   # shape (ni, nj, 3)
+The catalogue of topologies — including the conceptual primitive
+[O-grid](/topologies/o-grid) and the legacy
+[Yin-Yang](/topologies/yin-yang) — lives in the
+[Topologies](/topologies/) section.
+
+## Inputs
+
+| | |
+|---|---|
+| **STL** | A single watertight `trimesh.Trimesh`. The body must be **star-shaped from the anchor** (default centroid). See [Surface projection](/algorithm/projection#failure-modes) for the failure modes. |
+| **Resolution** | `ni` (equator meridional), `nj` (longitude), `nk` (wall-normal layers including k=0). |
+| **Cap angle** | `theta_cap` (default $\pi/6$) — the colatitude of the cap-equator junction parallel. |
+| **Spacing laws** | `i_spacing`, `j_spacing`, `volume_k_spacing` — see [Spacing laws](/algorithm/spacing-laws). |
+
+## Outputs
+
+The CLI writes 6 `.geo` files (one per block) plus optionally a
+ParaView `.vtm` MultiBlock if `shore export` is used:
+
+```
+<stem>_sub0.geo .. <stem>_sub3.geo   # 4 equatorial sub-blocks
+<stem>_cap_north.geo                 # north polar cap
+<stem>_cap_south.geo                 # south polar cap
 ```
 
-This allows inspecting the surface projection before committing to a full march, and re-running stage 2 with different parameters without repeating stage 1. Surface spacing (the angular distribution of rays) is baked into the `.npz` at stage 1 and cannot be changed at stage 2. Volume spacing (the wall-normal step-size distribution) is chosen independently at stage 2. See [Spacing laws](/concepts/spacing) for details.
+The `.geo` format is Xall_GPU compatible: ASCII header `ni nj nk`,
+then x, y, z arrays in Fortran column-major order.
 
 ## Visualization
 
-Two independent visualization paths are available after the volume is generated.
+Two independent paths after the volume is generated:
 
 ### ParaView (VTK export)
 
 ```bash
-shore export body.geo        # writes body.vts
-paraview body.vts
+# Per-block .vts
+shore export sphere_sub0.geo
+
+# Combined MultiBlock for the 6-block caps topology
+python -c "
+from shore.io.geo import read_geo
+from shore.io.vtk import write_caps_vtm
+labels = ['sub0', 'sub1', 'sub2', 'sub3', 'cap_north', 'cap_south']
+blocks = [read_geo(f'sphere_{lbl}.geo') for lbl in labels]
+write_caps_vtm('sphere.vtm', blocks, with_jacobian=True)
+"
+paraview sphere.vtm
 ```
 
-`shore export` converts the O-grid to a VTK StructuredGrid and attaches a `Jacobian` cell-data array. The j-direction is closed (`nj → nj+1`) because VTK has no concept of periodic connectivity.
+`shore export` attaches a `Jacobian` cell-data array; the
+`write_caps_vtm` helper bundles all 6 blocks under one MultiBlock
+with the same metadata.
 
 ### PyVista (interactive / Jupyter)
 
 ```bash
-shore view body.geo          # desktop window
+shore view sphere_sub0.geo   # desktop window
 ```
 
 From Python or Jupyter:
 
 ```python
-from shore.vis import view_geo
+import pyvista as pv
 from shore.io.geo import read_geo
+from shore.io.vtk import open_to_pyvista
 
-grid = read_geo("body.geo")
-view_geo(grid, jupyter=True).show()
+grid = read_geo("sphere_sub0.geo")
+sg = open_to_pyvista(grid, with_jacobian=True)
+pl = pv.Plotter()
+pl.add_mesh(sg, scalars="Jacobian", cmap="RdYlGn", show_edges=True, opacity=0.7)
+pl.show()
 ```
-
-The wall layer is highlighted separately and the outer layers are coloured by Jacobian magnitude.
 
 ## Limitations
 
 ### Star-shaped constraint
 
-Stage 1 requires that every ray from the body centroid hits the STL surface exactly once. This is called the **star-shaped** (or star-convex) property. It is satisfied by:
-
-- Spheres, ellipsoids, cylinders
-- Fuselages, nacelles, bluff bodies
-- Wings and airfoils (approximately, if the centroid is inside the section)
-
-It fails for:
-
-- Bodies with re-entrant cavities (e.g. engine inlets seen from outside)
-- Multi-component geometries (wing + fuselage as a single mesh)
-- Surfaces with holes (non-watertight STL)
-
-When the constraint fails, `project_sphere_to_surface` raises `ValueError` with a count of the rays that missed or double-hit. The fix is either to repair the STL (fill holes, split components) or to shift the projection centroid manually.
+The surface projection requires that every ray from the body anchor
+hits the STL exactly once. Bodies with re-entrant cavities, holes,
+or multiple disconnected components must be repaired or decomposed
+first. See [Surface projection](/algorithm/projection#failure-modes).
 
 ### No smooth far field
 
-The outer boundary of the volume (k=nk-1) currently inherits the shape of the sphere projection template — it is not morphed to a box or matched to the Xall_GPU background grid. Box morphing is the next planned feature.
+The outer boundary of the volume (k=nk-1) currently inherits the
+shape of the cap-equator seam topology — it is not morphed to a box
+or matched to the Xall_GPU background grid. Far-field morphing is
+the next planned feature.
 
-### Single block
+### Cap-equator size compatibility
 
-SHORE currently generates one `(ni, nj, nk)` block per invocation. Multi-block decomposition for complex surfaces is on the roadmap.
+The C1 cap-equator seam pin (per-j first-step matching) requires
+`(ni, nj, theta_cap)` to land in a compatibility window. Out of
+window, the equator falls back to its unpinned `i_spacing` law and
+emits one `UserWarning` per build. See
+[k=0 mesh construction](/algorithm/k0-construction#compatibility-window-and-fallback)
+for the rule of thumb.
+
+## See also
+
+- [Algorithm overview](/algorithm/)
+- [Topology catalogue](/topologies/)
+- [Quick start](/guide/quickstart) — worked CLI examples
+- [Chimera context](/concepts/chimera) — overset mesh generation

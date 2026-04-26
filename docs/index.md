@@ -18,33 +18,33 @@ hero:
 
 features:
   - icon: 📐
-    title: STL → structured volume in one command
-    details: Feed any raw triangulated STL — SHORE projects it onto a structured sphere template, marches layers outward along smooth vertex normals, and writes a Xall_GPU-compatible geo file with a single `shore mesh` call.
+    title: STL → 6-block structured volume in one command
+    details: Feed any star-shaped triangulated STL — SHORE builds the 6-block caps topology with a single `shore mesh` call. Gnomonic flat-square cap k=0 seed, great-circle equator, C1 spacing match at every cap-equator seam vertex, six Xall_GPU-compatible .geo files out.
     link: /guide/quickstart
     linkText: Quick start
   - icon: 🌊
-    title: Hyperbolic marching kernel
-    details: Each wall-normal layer is advanced by a geometric step along area-weighted vertex normals, with per-layer Laplacian smoothing and a Jacobian guard that aborts immediately on cell inversion — no silent bad meshes.
-    link: /concepts/hyperbolic-marching
+    title: Seam-aware hyperbolic marching
+    details: Each wall-normal layer advances along outward normals computed with centred differences across multi-block seams (ghost rows from partner blocks). Spacing continuity across block edges holds layer by layer; per-layer Laplacian smoothing + Jacobian guard catch any cell inversion immediately.
+    link: /algorithm/hyperbolic-marching
     linkText: Algorithm
+  - icon: 🧩
+    title: Topology catalogue
+    details: The production caps topology coexists with the conceptual O-grid primitive and the legacy Yin-Yang option. Each topology is one page; new topologies (C-grid, H-grid) plug into the same algorithm pipeline.
+    link: /topologies/
+    linkText: Topologies
   - icon: 🔍
-    title: Pipeline-aware CLI
-    details: Five focused commands — mesh, project, march, info, check — let you inspect and re-run any individual stage. A Rich progress bar shows layer count, minimum Jacobian, and step thickness in real time.
+    title: Focused CLI
+    details: Six commands — mesh, project, info, check, export, view — let you generate, inspect, validate, and visualise. A Rich progress bar shows per-layer Jacobians during marching.
     link: /reference/mesh
     linkText: CLI reference
   - icon: 🏗️
     title: Chimera-ready output
-    details: Writes single-block structured grids in the Xall_GPU geo format (ni, nj, nk header + Fortran-ordered x, y, z arrays). Multi-block output and block decomposition are on the roadmap.
+    details: Writes a 6-block structured volume per body in the Xall_GPU .geo format. The conforming SHARED + DIRICHLET seams between sub-blocks and caps slot directly into a downstream Chimera (overset) workflow.
     link: /concepts/chimera
     linkText: Chimera meshing
-  - icon: ✅
-    title: Fully tested pipeline
-    details: 35 pytest tests cover every CLI command, geometric correctness, Jacobian inversion detection, and geo round-trip fidelity. The synthetic sphere fixture runs the full pipeline in under 300 ms.
-    link: /guide/contributing
-    linkText: Contributing
   - icon: 🆓
     title: Free and open source
-    details: Released under the MIT license. Pure Python — depends only on NumPy, trimesh, SciPy, Typer, and Rich. No compiled extensions, no C++ meshing backends.
+    details: Released under the MIT license. Pure Python — depends only on NumPy, trimesh, Typer, and Rich. No compiled extensions, no C++ meshing backends.
 ---
 
 ## What is SHORE?
@@ -98,7 +98,7 @@ Spacing continuity is enforced at two levels:
   partner blocks), so the spacing stays continuous on the outer surface
   layer-by-layer.
 
-See [Caps topology](concepts/sphere-cap.md) for the full algorithm.
+See [Caps topology](topologies/caps.md) for the full algorithm.
 
 ## Author
 

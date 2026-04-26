@@ -75,7 +75,7 @@ $$J_{i,j} = (\mathbf{e}_2 \times \mathbf{e}_1) \cdot \mathbf{e}_3$$
 
 where $\mathbf{e}_1$, $\mathbf{e}_2$, $\mathbf{e}_3$ are the three edge vectors of the cell (j-tangent, i-tangent, wall-normal). The reported `jmin` per layer is the minimum over all $(i, j)$ cells in that layer interval.
 
-See [Hyperbolic marching — Jacobian check](/concepts/hyperbolic-marching#jacobian-check) for the full derivation.
+See [Hyperbolic marching — Jacobian check](/algorithm/hyperbolic-marching#jacobian-check) for the full derivation.
 
 ## Examples
 
@@ -105,4 +105,4 @@ echo "Grid $OUTPUT validated."
 ## See also
 
 - [`shore mesh`](mesh) — generate the grid
-- [Hyperbolic marching](/concepts/hyperbolic-marching) — why Jacobians matter
+- [Hyperbolic marching](/algorithm/hyperbolic-marching) — why Jacobians matter

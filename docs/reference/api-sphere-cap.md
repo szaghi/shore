@@ -1,6 +1,6 @@
 # shore.topology.sphere_cap
 
-Marching primitives shared by the [caps topology](/concepts/sphere-cap):
+Marching primitives shared by the [caps topology](/topologies/caps):
 single-layer hyperbolic step + Laplacian smooth, cap boundary pinning,
 and Jacobian guard. The high-level orchestration lives in
 `shore.mesh.Mesh._march_caps`; the cap k=0 seed and the equator k=0
@@ -83,7 +83,7 @@ Advance a single block one wall-normal layer:
    `{'i_lo', 'i_hi', 'j_lo', 'j_hi'}`), the corresponding boundary tangent
    uses a centred difference against the ghost row instead of a one-sided
    fallback. This is what makes block-seam spacing continuous during
-   marching (see [seam-aware normals](/concepts/sphere-cap#hyperbolic-marching-with-seam-aware-normals)).
+   marching (see [seam-aware normals](/topologies/caps#hyperbolic-marching-with-seam-aware-normals)).
 2. Add `step * normals` to the layer.
 3. Apply `smooth_iters` Laplacian sweeps with blend factor
    `smooth_strength`; non-periodic boundary rows/columns are clamped.
@@ -176,7 +176,7 @@ under names `sub0`, `sub1`, `sub2`, `sub3`, `cap_north`, `cap_south`.
 
 ## See also
 
-- [Caps topology](/concepts/sphere-cap) — conceptual overview
+- [Caps topology](/topologies/caps) — conceptual overview
 - [`shore.volume.hyperbolic`](api-hyperbolic) — `_compute_normals`,
   `_laplacian_smooth`, `_stl_normals` (with `ghost_rows` support)
 - [`shore.volume.jacobian`](api-jacobian) — `jacobian_field`,

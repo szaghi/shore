@@ -5,7 +5,7 @@ Per-cell Jacobian computation for structured O-grids.
 ::: tip O-grid vs open topology
 `jacobian_field` and `jacobian_per_layer` assume a **periodic** j-direction
 (O-grid). For open (non-periodic) blocks — such as the equatorial sub-blocks
-and cap blocks of the [sphere-cap topology](/concepts/sphere-cap) — use
+and cap blocks of the [sphere-cap topology](/topologies/caps) — use
 `_jacobian_field_open` instead. `min_jacobian_two_layers` accepts a
 `periodic_j` flag to select the correct behaviour automatically.
 :::
@@ -143,7 +143,7 @@ in j rather than `nj`.
 
 `numpy.ndarray` of shape `(ni-1, nj-1, nk-1)`.
 
-Used by the [sphere-cap topology](/concepts/sphere-cap) for equatorial
+Used by the [sphere-cap topology](/topologies/caps) for equatorial
 sub-blocks and cap blocks, which have open boundaries in both i and j.
 
 ## Notes
@@ -166,4 +166,4 @@ For a sphere O-grid with rays cast outward from the centroid, the lat-lon direct
 
 - [`shore.volume.hyperbolic`](api-hyperbolic) — marching kernel that uses these functions
 - [`shore check`](check) — CLI command built on `jacobian_per_layer`
-- [Hyperbolic marching — Jacobian check](/concepts/hyperbolic-marching#jacobian-check) — conceptual explanation
+- [Hyperbolic marching — Jacobian check](/algorithm/hyperbolic-marching#jacobian-check) — conceptual explanation

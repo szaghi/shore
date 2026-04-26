@@ -137,7 +137,7 @@ gives a physically larger cap face and a shorter equatorial band.
 
 ## See also
 
-- [Caps topology](/concepts/sphere-cap) — the production 6-block path
+- [Caps topology](/topologies/caps) — the production 6-block path
   (uses `shore.surface.cap.build_cap_k0` and
   `shore.surface.equator.build_equator`, not the functions on this page)
 - [`shore.topology.sphere_cap`](/reference/api-sphere-cap) — marching

@@ -77,7 +77,7 @@ cap-edge first cell at the corresponding seam vertex (per-j), giving C1
 spacing continuity at every seam node when the cap and equator radial
 step sizes are within ~2x of each other. The chosen `i_spacing` law
 shapes the interior `ni − 2` cells between the two pinned endpoints. See
-the [caps topology page](/concepts/sphere-cap) for the compatibility
+the [caps topology page](/topologies/caps) for the compatibility
 window and fallback behaviour.
 :::
 
@@ -208,6 +208,8 @@ k_steps = build_k_steps(40, ds=0.01, spacing="tanh2", beta=4.0, total_thickness=
 ## See also
 
 - [`shore mesh`](/reference/mesh) — full pipeline with all spacing flags
-- [Caps topology](/concepts/sphere-cap) — how cap and equator spacing
-  interact at the seam
-- [Hyperbolic marching](/concepts/hyperbolic-marching) — the extrusion algorithm
+- [k=0 mesh construction](k0-construction) — how `j_spacing` and
+  `i_spacing` interact at the cap-equator seam
+- [Hyperbolic marching](hyperbolic-marching) — where `volume_k_spacing`
+  controls the wall-normal step sizes
+- [Caps topology](/topologies/caps) — full pipeline view

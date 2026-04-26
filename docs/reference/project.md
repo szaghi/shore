@@ -142,12 +142,12 @@ See [Pipeline overview — Stage 1](/concepts/pipeline) for a full description o
 
 The projection uses trimesh's `RayMeshIntersector` with `multiple_hits=False` — only the first intersection along each ray (closest to the centroid) is recorded. Ray origins are all placed at the body centroid; directions are the unit vectors of a lat-lon sphere grid.
 
-When surface spacing is non-uniform, the lat-lon directions are redistributed using the selected spacing law before ray casting. See [Spacing laws](/concepts/spacing) for details.
+When surface spacing is non-uniform, the lat-lon directions are redistributed using the selected spacing law before ray casting. See [Spacing laws](/algorithm/spacing-laws) for details.
 
 ## See also
 
 - [`shore mesh`](mesh) — full STL → 6-block caps mesh pipeline
-- [Caps topology](/concepts/sphere-cap) — the 6-block topology that
+- [Caps topology](/topologies/caps) — the 6-block topology that
   `shore mesh` builds (does not consume `.npz` from `shore project`)
-- [Spacing laws](/concepts/spacing) — clustering distributions explained
+- [Spacing laws](/algorithm/spacing-laws) — clustering distributions explained
 - [Pipeline overview](/concepts/pipeline)

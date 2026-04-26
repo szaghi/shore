@@ -2,7 +2,7 @@
 
 Full pipeline: STL → 6-block O-grid volume → geo files.
 
-The `mesh` command always builds the [caps topology](/concepts/sphere-cap)
+The `mesh` command always builds the [caps topology](/topologies/caps)
 (4 equatorial sub-blocks + 2 polar caps, 6 `.geo` files written). The cap
 k=0 face is a gnomonic flat-square projection; the equator is built from
 the cap seam rings with C1 spacing match at every seam vertex; marching
@@ -177,7 +177,7 @@ shore mesh airfoil.stl \
   so the equatorial band can be split into 4 equal sectors).
 - The outer boundary (k=nk-1) is currently sphere-shaped after marching.
   Use `shore check` to verify the per-block Jacobians.
-- See [Spacing laws](/concepts/spacing) for a detailed explanation of each
+- See [Spacing laws](/algorithm/spacing-laws) for a detailed explanation of each
   distribution and when to use it.
 
 ## See also
@@ -186,7 +186,7 @@ shore mesh airfoil.stl \
   legacy `body.project` path; not the caps topology)
 - [`shore check`](check) — validate Jacobians on existing `.geo` files
 - [`shore export`](export) — convert `.geo` to VTK MultiBlock for ParaView
-- [Caps topology](/concepts/sphere-cap) — block layout, cap construction,
+- [Caps topology](/topologies/caps) — block layout, cap construction,
   seam matching
-- [Spacing laws](/concepts/spacing) — clustering distributions
-- [Hyperbolic marching](/concepts/hyperbolic-marching) — algorithm details
+- [Spacing laws](/algorithm/spacing-laws) — clustering distributions
+- [Hyperbolic marching](/algorithm/hyperbolic-marching) — algorithm details

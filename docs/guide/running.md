@@ -75,7 +75,7 @@ python examples/visualize_geo.py --generate \
   --surface-j-spacing tanh2 --surface-j-beta 5.0
 ```
 
-See [Spacing laws](/concepts/spacing) for an explanation of each
+See [Spacing laws](/algorithm/spacing-laws) for an explanation of each
 distribution and what physical region it clusters toward.
 
 Visualise an existing `.geo` or `.npz` file directly:

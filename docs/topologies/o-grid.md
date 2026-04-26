@@ -7,12 +7,11 @@ lines around a cross-section, which resemble the letter O.
 
 ::: tip Single-block O-grid vs caps topology
 The single-block O-grid described here is the *conceptual* foundation.
-SHORE's production topology is the [6-block caps
-topology](/concepts/sphere-cap), which closes the polar singularities
-with two gnomonic-square cap blocks plus four equatorial sub-blocks.
-The single-block view is still useful for understanding the equatorial
-band's geometry — the sub-blocks behave as 90° azimuthal slices of the
-single-block O-grid.
+SHORE's production topology is the [6-block caps topology](caps),
+which closes the polar singularities with two gnomonic-square cap
+blocks plus four equatorial sub-blocks. The single-block view is
+still useful for understanding the equatorial band's geometry — the
+sub-blocks behave as 90° azimuthal slices of the single-block O-grid.
 :::
 
 ## Topology
@@ -111,3 +110,14 @@ sg.points = points
 
 sg.plot(show_edges=True, opacity=0.5)
 ```
+
+## See also
+
+- [Caps topology](caps) — the production 6-block extension that closes
+  the polar singularity
+- [Yin-Yang topology](yin-yang) — alternative pole-singularity-free
+  approach using two overlapping single-block O-grids
+- [Surface projection](/algorithm/projection) — how the body STL is
+  ray-cast onto the structured i × j sphere template
+- [Hyperbolic marching](/algorithm/hyperbolic-marching) — how the
+  k-layers are extruded

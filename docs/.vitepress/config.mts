@@ -21,9 +21,10 @@ export default defineConfig({
           { text: 'Contributing', link: '/guide/contributing' },
         ],
       },
-      { text: 'Concepts', link: '/concepts/pipeline' },
-      { text: 'Reference', link: '/reference/mesh' },
-      { text: 'GitHub', link: 'https://github.com/szaghi/shore' },
+      { text: 'Algorithm',  link: '/algorithm/' },
+      { text: 'Topologies', link: '/topologies/' },
+      { text: 'Reference',  link: '/reference/mesh' },
+      { text: 'GitHub',     link: 'https://github.com/szaghi/shore' },
     ],
 
     sidebar: {
@@ -50,12 +51,41 @@ export default defineConfig({
         {
           text: 'Concepts',
           items: [
-            { text: 'Pipeline overview',      link: '/concepts/pipeline' },
-            { text: 'Hyperbolic marching',     link: '/concepts/hyperbolic-marching' },
-            { text: 'Spacing laws',            link: '/concepts/spacing' },
-            { text: 'O-grid topology',         link: '/concepts/o-grid' },
-            { text: 'Sphere polar cap',        link: '/concepts/sphere-cap' },
-            { text: 'Chimera mesh generation', link: '/concepts/chimera' },
+            { text: 'Pipeline overview', link: '/concepts/pipeline' },
+            { text: 'Chimera context',   link: '/concepts/chimera' },
+          ],
+        },
+        {
+          text: 'See also',
+          items: [
+            { text: 'Algorithm details',  link: '/algorithm/' },
+            { text: 'Topology catalogue', link: '/topologies/' },
+          ],
+        },
+      ],
+
+      '/algorithm/': [
+        {
+          text: 'Algorithm',
+          items: [
+            { text: 'Overview',             link: '/algorithm/' },
+            { text: 'Surface projection',   link: '/algorithm/projection' },
+            { text: 'k=0 mesh construction',link: '/algorithm/k0-construction' },
+            { text: 'Hyperbolic marching',  link: '/algorithm/hyperbolic-marching' },
+            { text: 'Seam-aware normals',   link: '/algorithm/seam-aware-normals' },
+            { text: 'Spacing laws',         link: '/algorithm/spacing-laws' },
+          ],
+        },
+      ],
+
+      '/topologies/': [
+        {
+          text: 'Topologies',
+          items: [
+            { text: 'Overview & taxonomy', link: '/topologies/' },
+            { text: 'O-grid (primitive)',  link: '/topologies/o-grid' },
+            { text: 'Caps (6-block)',      link: '/topologies/caps' },
+            { text: 'Yin-Yang (legacy)',   link: '/topologies/yin-yang' },
           ],
         },
       ],
@@ -79,7 +109,6 @@ export default defineConfig({
             { text: 'surface.remesh',         link: '/reference/api-surface-remesh' },
             { text: 'volume.hyperbolic',      link: '/reference/api-hyperbolic' },
             { text: 'volume.jacobian',        link: '/reference/api-jacobian' },
-            { text: 'volume.spacing',         link: '/reference/api-spacing' },
             { text: 'topology.sphere_cap',    link: '/reference/api-sphere-cap' },
             { text: 'io.geo',                 link: '/reference/api-geo' },
             { text: 'io.vtk',                 link: '/reference/api-vtk' },
