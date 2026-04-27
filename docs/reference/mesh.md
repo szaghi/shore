@@ -1,13 +1,16 @@
 # shore mesh
 
-Full pipeline: STL → 6-block O-grid volume → geo files.
+Full pipeline: STL → structured volume → geo files.
 
-The `mesh` command always builds the [cubed-sphere topology](/topologies/cubed-sphere)
-(4 equatorial sub-blocks + 2 polar caps, 6 `.geo` files written). The cap
-k=0 face is a gnomonic flat-square projection; the equator is built from
-the cap seam rings with C1 spacing match at every seam vertex; marching
-uses seam-aware normals so multi-block edge spacing stays continuous
-across all layers.
+Two topologies are supported, selected via `--topology`:
+
+- **[`cubed_sphere`](/topologies/cubed-sphere)** (default): 6-block
+  decomposition (4 equatorial sub-blocks + 2 polar caps), gnomonic
+  flat-square cap k=0, C1 cap–equator seam pin, seam-aware normals.
+  Writes six `<stem>_<label>.geo` files.
+- **[`ogrid`](/topologies/o-grid)**: single-block lat-lon grid,
+  j-periodic. Writes one `<stem>.geo` file. Polar singular axis at
+  `i = 0` and `i = ni - 1`.
 
 ## Synopsis
 
@@ -76,12 +79,18 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 | `--smooth-iters INTEGER` | 2 | Laplacian sweeps applied after each layer |
 | `--blend-normals-k INTEGER` | 0 | Number of layers over which to blend STL surface normals into the grid-computed normals (0 = off; useful for sharp-feature bodies) |
 
+### Topology
+
+| Option | Default | Description |
+|---|---|---|
+| `--topology TEXT` | `cubed_sphere` | One of `cubed_sphere` (6 blocks) or `ogrid` (1 block, j-periodic). |
+
 ### I/O and display
 
 | Option | Default | Description |
 |---|---|---|
 | `-c` / `--config PATH` | — | Read parameter values from a TOML file (see [Config files](config)). Explicit CLI flags still override the file. |
-| `-o` / `--output PATH` | `<INPUT stem>` | Output stem; writes `<stem>_sub0.geo` ... `<stem>_cap_south.geo` (6 files) |
+| `-o` / `--output PATH` | `<INPUT stem>` | Output stem. For `cubed_sphere`: writes `<stem>_sub0.geo` ... `<stem>_cap_south.geo` (6 files). For `ogrid`: writes one `<stem>.geo`. |
 | `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats |
 | `--help` | — | Show this help and exit |
 
@@ -170,6 +179,15 @@ shore mesh airfoil.stl \
   --ni 40 --nj 60 --nk 30 \
   --blend-normals-k 5 \
   -o airfoil
+```
+
+Single-block O-grid (one `.geo` file, j-periodic):
+
+```bash
+shore mesh sphere.stl --topology ogrid \
+  --ni 40 --nj 60 --nk 30 --ds 0.02 --growth 1.1 \
+  -o sphere
+# → sphere.geo  (40 x 60 x 30, j-periodic)
 ```
 
 Drive the full pipeline from a TOML config (see [Config files](config)):

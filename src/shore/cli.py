@@ -31,6 +31,7 @@ from shore.mesh import (
     Body,
     CubedSphereTopology,
     Mesh,
+    OGridTopology,
     Spacing1D,
     check_geo,
     export_geo,
@@ -296,9 +297,23 @@ def mesh(
     volume_k_beta: _VOLUME_K_BETA = 3.0,
     volume_k_thickness: _VOLUME_K_THICKNESS = None,
     blend_normals_k: _BLEND_K = 0,
+    topology: Annotated[
+        str,
+        typer.Option(
+            "--topology",
+            help="Topology to build: 'cubed_sphere' (6 blocks, default) or 'ogrid' (1 block).",
+        ),
+    ] = "cubed_sphere",
     verbose: _VERBOSE = False,
 ) -> None:
-    """Full pipeline: STL → 6-block sphere O-grid volume → geo files.
+    """Full pipeline: STL → structured volume → geo files.
+
+    Two topologies are supported:
+
+    - ``cubed_sphere`` (default): 6-block decomposition (4 equatorial
+      sub-blocks + 2 polar caps); writes 6 ``<stem>_<label>.geo`` files.
+    - ``ogrid``: single-block lat-lon grid, j-periodic; writes one
+      ``<stem>.geo`` file.
 
     Parameter precedence (highest first): explicit CLI flag → config file → built-in default.
     """
@@ -352,6 +367,13 @@ def mesh(
     volume_k_thickness = _pick(
         "volume_k_thickness", volume_k_thickness, cfg.volume.k_thickness if cfg else None
     )
+    topology = _pick("topology", topology, cfg.grid.topology if cfg else None)
+    if topology not in ("cubed_sphere", "ogrid"):
+        _err.print(
+            f"[red]Error:[/red] unknown --topology {topology!r}; "
+            "expected 'cubed_sphere' or 'ogrid'."
+        )
+        raise typer.Exit(1) from None
 
     # theta_cap is special: CLI exposes two flags (--theta-cap and
     # --theta-cap-deg) but the config has a single resolved radian
@@ -410,10 +432,11 @@ def mesh(
         body = Body.from_stl(input)
 
     # --- build topology + march ---
-    # Gnomonic algorithm projects the surface inside topology.build through
-    # the cached BVH; no separate body.project_caps call is needed.
     _theta_topo = theta if theta is not None else 0.05 * np.pi
-    topo = CubedSphereTopology()
+    if topology == "cubed_sphere":
+        topo: CubedSphereTopology | OGridTopology = CubedSphereTopology()
+    else:
+        topo = OGridTopology()
     try:
         blocks = topo.build(
             surface=None,
@@ -438,7 +461,7 @@ def mesh(
 
     if verbose:
         with _progress() as prog:
-            t = prog.add_task("Marching caps ", total=nk - 1, info="")
+            t = prog.add_task("Marching      ", total=nk - 1, info="")
 
             def _cb(k: int, jmin: float) -> None:
                 prog.update(t, advance=1, info=f"jmin={jmin:.2e}")
@@ -471,13 +494,26 @@ def mesh(
             raise typer.Exit(1) from None
 
     # --- write ---
-    m.write_geo(out_stem)
+    if topology == "cubed_sphere":
+        m.write_geo(out_stem)
+        if verbose:
+            nc = nj // 4 + 1
+            _console.print(
+                f"[green]✓[/green] Wrote 6 .geo files  "
+                f"(sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
+            )
+    else:
+        # Single-block O-grid: write one ``<stem>.geo`` (no _<label>).
+        from shore.io.geo import write_geo
 
-    if verbose:
-        nc = nj // 4 + 1
-        _console.print(
-            f"[green]✓[/green] Wrote 6 .geo files  (sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
+        single_path = (
+            out_stem if out_stem.suffix == ".geo" else out_stem.with_suffix(".geo")
         )
+        write_geo(single_path, m.blocks[0].nodes)
+        if verbose:
+            _console.print(
+                f"[green]✓[/green] Wrote {single_path}  ({ni}x{nj}x{nk})"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +557,10 @@ def config_cmd(
             raise typer.Exit(1) from None
         _console.print(f"[green]✓[/green] {path} parses cleanly")
         _console.print(f"  input         = {cfg.input}")
-        _console.print(f"  grid          ni={cfg.grid.ni} nj={cfg.grid.nj} nk={cfg.grid.nk}")
+        _console.print(
+            f"  grid          ni={cfg.grid.ni} nj={cfg.grid.nj} nk={cfg.grid.nk} "
+            f"topology={cfg.grid.topology!r}"
+        )
         _console.print(
             f"  march         ds={cfg.march.ds} growth={cfg.march.growth} "
             f"smooth={cfg.march.smooth}/{cfg.march.smooth_iters}"

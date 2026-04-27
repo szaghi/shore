@@ -1,4 +1,4 @@
-"""Topology ABC and CubedSphereTopology: block wiring from a k=0 surface."""
+"""Topology ABC and concrete topologies (cubed-sphere, O-grid)."""
 
 from __future__ import annotations
 
@@ -278,6 +278,133 @@ class CubedSphereTopology(Topology):
             cap_south_blk._set_face_bc(name, FaceBC.DIRICHLET)
 
         return [*sub_blocks, cap_north_blk, cap_south_blk]
+
+
+class OGridTopology(Topology):
+    """Single-block lat-lon O-grid topology.
+
+    A single hexahedral block with shape ``(ni, nj, nk, 3)``, j-periodic
+    (the longitude direction wraps), and polar singularities at ``i = 0``
+    (south pole at colatitude ``theta_cap``) and ``i = ni - 1`` (north
+    pole at colatitude ``pi - theta_cap``).  This is the simpler and
+    older sphere covering — useful as a Chimera background or in
+    downstream tools that expect a single periodic-j block — and it
+    coexists with :class:`CubedSphereTopology` as a peer, not a
+    component.
+
+    The k=0 surface is built by ray-cast from the body's anchor through
+    a structured lat-lon sphere template.  The same ``i_spacing`` /
+    ``j_spacing`` flags as the cubed sphere apply, with the same
+    semantics: ``i`` controls the meridional distribution, ``j`` the
+    longitude.
+    """
+
+    def build(
+        self,
+        surface: np.ndarray | None,
+        nk: int,
+        ni: int | None = None,
+        nj: int | None = None,
+        spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
+        projector: object | None = None,
+        theta_cap: float = 0.05 * np.pi,
+        i_spacing: str = "uniform",
+        i_beta: float = 3.0,
+        j_spacing: str = "uniform",
+        j_beta: float = 3.0,
+        **kwargs,
+    ) -> list[HexBlock]:
+        """Build a single-block O-grid topology from the body's STL.
+
+        Parameters
+        ----------
+        surface :
+            Optional pre-projected k=0 surface, shape ``(ni, nj, 3)``.
+            When supplied, *ni* and *nj* are derived from the array
+            and no ray-cast is performed.  When ``None``, the surface
+            is built by ray-cast through *projector* (or *mesh*).
+        nk :
+            Total number of wall-normal layers (including k=0).
+        ni, nj :
+            Latitude (meridional) and longitude (azimuthal) resolution.
+            Ignored when *surface* is supplied.
+        spacing_k :
+            Wall-normal spacing law.  Defaults to
+            ``Spacing1D(law='geometric', ds=1e-3)``.
+        mesh :
+            ``trimesh.Trimesh`` instance.  Legacy alternative to
+            *projector*.
+        projector :
+            Pre-built ``Projector`` instance.  Required when *surface*
+            is None and *mesh* is not supplied.
+        theta_cap :
+            Polar exclusion angle in radians.  ``i = 0`` sits at
+            colatitude *theta_cap*, ``i = ni - 1`` at
+            ``pi - theta_cap``.
+        i_spacing, j_spacing :
+            Surface spacing laws.  ``i_spacing`` controls the
+            meridional distribution; ``j_spacing`` controls the
+            longitude distribution (only ``"uniform"`` and ``"tanh2"``
+            are valid for j when the j direction is periodic).
+        i_beta, j_beta :
+            Clustering strengths for tanh / tanh2.
+
+        Returns
+        -------
+        list[HexBlock]
+            Single-element list containing the O-grid block.
+        """
+        # Resolve the k=0 surface -------------------------------------
+        if surface is None:
+            from shore.surface.remesh import sphere_latlon_directions
+
+            if ni is None or nj is None:
+                raise ValueError(
+                    "OGridTopology.build needs ni and nj when no surface is supplied."
+                )
+            proj = (
+                projector
+                if projector is not None
+                else (_projector_from_mesh(mesh) if mesh is not None else None)
+            )
+            if proj is None:
+                raise ValueError(
+                    "OGridTopology.build requires a Projector "
+                    "(pass projector= or mesh=) when surface is None."
+                )
+            dirs = sphere_latlon_directions(
+                ni,
+                nj,
+                theta_cap=theta_cap,
+                i_spacing=i_spacing,
+                i_beta=i_beta,
+                j_spacing=j_spacing,
+                j_beta=j_beta,
+            )
+            result = proj.project(dirs.reshape(-1, 3))  # type: ignore[union-attr]
+            surface = result.locations.reshape(ni, nj, 3)
+        else:
+            ni = int(surface.shape[0])
+            nj = int(surface.shape[1])
+
+        _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
+
+        # Allocate (ni, nj, nk, 3) and fill k=0 ------------------------
+        nodes = np.empty((ni, nj, nk, 3), dtype=np.float64)
+        nodes[:, :, 0, :] = surface
+
+        block = HexBlock(
+            label="ogrid",
+            nodes=nodes,
+            periodic_i=False,
+            periodic_j=True,
+            spacing_k=_sp_k,
+        )
+
+        # No multi-block seams to wire; non-periodic i boundaries are
+        # left at their default DIRICHLET BC, j is periodic.
+        return [block]
 
 
 def _projector_from_mesh(mesh: object) -> object:

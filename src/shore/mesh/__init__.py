@@ -15,7 +15,7 @@ from shore.mesh.inspect import (
 )
 from shore.mesh.mesh import Mesh
 from shore.mesh.spacing import Spacing1D
-from shore.mesh.topology import CubedSphereTopology, Topology
+from shore.mesh.topology import CubedSphereTopology, OGridTopology, Topology
 from shore.mesh.vertex import Vertex
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "FaceBC",
     "HexBlock",
     "Mesh",
+    "OGridTopology",
     "Spacing1D",
     "Topology",
     "Vertex",

@@ -185,11 +185,11 @@ class Mesh:
         else:
             _theta = float(0.05 * np.pi)
 
-        from shore.mesh.topology import CubedSphereTopology
+        from shore.mesh.topology import CubedSphereTopology, OGridTopology
 
-        if isinstance(topology, CubedSphereTopology):
-            # Gnomonic algorithm builds the surface inside topology.build by
-            # projecting through the cached BVH; we only need ni, nj here.
+        if isinstance(topology, (CubedSphereTopology, OGridTopology)):
+            # Both topologies project through the cached BVH inside
+            # ``topology.build`` — single ray-cast pass.
             blocks = topology.build(
                 surface=None,
                 nk=nk,
@@ -261,21 +261,34 @@ class Mesh:
         MarchingError
             If a negative-Jacobian cell is detected.
         NotImplementedError
-            If the topology is not ``CubedSphereTopology``.
+            If the topology has no registered marcher.
         """
-        from shore.mesh.topology import CubedSphereTopology
+        from shore.mesh.topology import CubedSphereTopology, OGridTopology
 
-        if not isinstance(self.topology, CubedSphereTopology):
-            raise NotImplementedError("Mesh.march() currently only supports CubedSphereTopology.")
-        self._march_caps(
-            ds=ds,
-            growth=growth,
-            smooth_strength=smooth_strength,
-            smooth_iters=smooth_iters,
-            steps=steps,
-            layer_callback=layer_callback,
-            blend_normals_k=blend_normals_k,
-        )
+        if isinstance(self.topology, CubedSphereTopology):
+            self._march_caps(
+                ds=ds,
+                growth=growth,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                steps=steps,
+                layer_callback=layer_callback,
+                blend_normals_k=blend_normals_k,
+            )
+        elif isinstance(self.topology, OGridTopology):
+            self._march_ogrid(
+                ds=ds,
+                growth=growth,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                steps=steps,
+                layer_callback=layer_callback,
+                blend_normals_k=blend_normals_k,
+            )
+        else:
+            raise NotImplementedError(
+                f"Mesh.march(): no marcher registered for {type(self.topology).__name__}."
+            )
 
     def _march_caps(
         self,
@@ -471,6 +484,74 @@ class Mesh:
 
             if layer_callback is not None:
                 layer_callback(k + 1, jmin_global)
+
+    def _march_ogrid(
+        self,
+        ds: float,
+        growth: float,
+        smooth_strength: float,
+        smooth_iters: int,
+        steps: np.ndarray | None,
+        layer_callback: Callable[[int, float], None] | None,
+        blend_normals_k: int = 0,
+    ) -> None:
+        """Single-block hyperbolic march for ``OGridTopology``.
+
+        The j-direction is periodic; the i-boundaries (south / north
+        polar singular axis rows) are clamped during Laplacian
+        smoothing.  Optional STL-normal blending applies the same
+        alpha-weighted blend as the cubed-sphere marcher.
+        """
+        block = self.blocks[0]
+        nk = block.nodes.shape[2]
+        _steps = steps if steps is not None else build_k_steps(nk, ds, growth)
+
+        do_blend = blend_normals_k > 0
+        if do_blend:
+            from shore.volume.hyperbolic import _stl_normals
+
+            trimesh_obj = self.body.mesh
+
+        ni, nj, _, _ = block.nodes.shape
+        periodic = (False, True)
+
+        for k in range(nk - 1):
+            step = float(_steps[k])
+            layer = block.nodes[:, :, k, :]
+
+            normals_override = None
+            if do_blend and k < blend_normals_k:
+                alpha = 1.0 - k / blend_normals_k
+                grid_n = _compute_normals(layer, periodic=periodic)
+                stl_n = _stl_normals(trimesh_obj, layer.reshape(-1, 3)).reshape(ni, nj, 3)
+                normals_override = alpha * stl_n + (1.0 - alpha) * grid_n
+                normals_override /= np.linalg.norm(
+                    normals_override, axis=-1, keepdims=True
+                )
+
+            new_layer = _march_one_layer(
+                layer,
+                step=step,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                periodic=periodic,
+                normals_override=normals_override,
+            )
+
+            jmin = _check_jacobian(
+                layer=layer,
+                new_layer=new_layer,
+                periodic_j=True,
+                label="ogrid",
+                k=k,
+                exclude_corners=False,
+                tol=-1e-6,
+            )
+
+            block.nodes[:, :, k + 1, :] = new_layer
+
+            if layer_callback is not None:
+                layer_callback(k + 1, jmin)
 
     # ------------------------------------------------------------------
     # I/O

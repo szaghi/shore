@@ -5,14 +5,54 @@ topology that wraps completely around a body, forming a closed loop in
 one parametric direction. The name comes from the shape of the grid
 lines around a cross-section, which resemble the letter O.
 
-::: tip Single-block O-grid vs cubed-sphere topology
-The single-block O-grid described here is the *conceptual* foundation.
-SHORE's production topology is the [6-block cubed-sphere topology](cubed-sphere),
-which closes the polar singularities with two gnomonic-square cap
-blocks plus four equatorial sub-blocks. The single-block view is
-still useful for understanding the equatorial band's geometry — the
-sub-blocks behave as 90° azimuthal slices of the single-block O-grid.
-:::
+The single-block O-grid is a **first-class topology** in SHORE: it
+can be built and marched directly through the CLI with
+`shore mesh --topology ogrid` (or `topology = "ogrid"` in a TOML
+config), producing a single ``.geo`` file. It coexists with the
+default [cubed-sphere topology](cubed-sphere) as a peer — the two
+topologies are structurally independent and pick different
+trade-offs:
+
+| | O-grid | Cubed sphere |
+|---|---|---|
+| Blocks | 1 | 6 (4 sub + 2 caps) |
+| Polar coverage | singular axis at i=0, i=ni-1 | non-singular gnomonic caps |
+| j direction | periodic | conforming SHARED seams |
+| Output | one `<stem>.geo` | six `<stem>_<label>.geo` |
+| Best for | Chimera background, downstream tools that expect a periodic-j block | production near-body meshing |
+
+## Building from the CLI
+
+```bash
+# Default invocation: uniform spacing, theta_cap=9 deg.
+shore mesh sphere.stl --topology ogrid -o sphere
+
+# With a TOML config (`[grid] topology = "ogrid"`):
+shore mesh -c ogrid.toml
+```
+
+The output is one `<stem>.geo` file with shape `(ni, nj, nk, 3)` and
+j-periodic. All ``shore mesh`` flags apply equally — `--ni`, `--nj`,
+`--nk`, `--ds`, `--growth`, `--smooth`, `--smooth-iters`, the spacing
+laws, `--blend-normals-k`, `--theta-cap` / `--theta-cap-deg`. The
+cap-specific flags (`--cap-pull`, `--cap-squareness`, `--j-cluster-lon`)
+are deprecated for both topologies and silently ignored.
+
+The Python API is the symmetric of the cubed sphere's:
+
+```python
+from shore.mesh import Mesh, OGridTopology, Spacing1D
+
+m = Mesh.from_stl(
+    "sphere.stl",
+    topology=OGridTopology(),
+    ni=40, nj=60, nk=30,
+    theta_cap_deg=9.0,
+    spacing_k=Spacing1D(law="geometric", ds=0.02, growth=1.1),
+)
+m.march(ds=0.02, growth=1.1)
+m.write_geo("sphere")  # → sphere_ogrid.geo (with the auto-suffix writer)
+```
 
 ## Topology
 
@@ -77,7 +117,9 @@ $$\Delta s = \frac{\Delta y^+ \, \nu}{u_\tau}$$
 | **C-grid** | Open C-shape, wake cut | Airfoils and wings with sharp trailing edges |
 | **H-grid** | Rectangular with body cut-out | Bluff bodies, internal flows |
 
-SHORE currently implements the O-grid only. C-grid and H-grid topologies require different surface parametrisation strategies and are on the roadmap.
+SHORE implements the O-grid (this page) and the cubed sphere as
+peers. C-grid and H-grid topologies require different surface
+parametrisation strategies and are on the roadmap.
 
 ## Periodicity in j
 

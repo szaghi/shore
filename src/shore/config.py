@@ -58,7 +58,8 @@ CONFIG_VERSION = 1
 # Closed schema: keys allowed in each TOML table.  A key not listed
 # here triggers ``ParameterError`` at load time.
 _TOP_KEYS = frozenset({"version", "kind", "input", "output", "grid", "march", "surface", "volume"})
-_GRID_KEYS = frozenset({"ni", "nj", "nk", "theta_cap_deg", "theta_cap"})
+_GRID_KEYS = frozenset({"ni", "nj", "nk", "theta_cap_deg", "theta_cap", "topology"})
+_MESH_TOPOLOGIES = frozenset({"cubed_sphere", "ogrid"})
 _MARCH_KEYS = frozenset({"ds", "growth", "smooth", "smooth_iters", "blend_normals_k"})
 _SURFACE_KEYS = frozenset({"i_spacing", "i_beta", "j_spacing", "j_beta"})
 _VOLUME_KEYS = frozenset({"k_spacing", "k_beta", "k_thickness"})
@@ -92,6 +93,7 @@ class GridConfig:
     nj: int = 60
     nk: int = 30
     theta_cap: float | None = None  # radians; resolved from theta_cap_deg if given
+    topology: str = "cubed_sphere"  # 'cubed_sphere' (6 blocks) or 'ogrid' (1 block)
 
 
 @dataclass
@@ -258,11 +260,18 @@ def load_config(path: str | Path) -> MeshConfig:
             raise ParameterError(
                 f"{p}:[grid]: 'theta_cap' and 'theta_cap_deg' are mutually exclusive"
             )
+        topology = g.get("topology", cfg.grid.topology)
+        if topology not in _MESH_TOPOLOGIES:
+            raise ParameterError(
+                f"{p}:[grid]: unknown topology {topology!r}; "
+                f"expected one of {sorted(_MESH_TOPOLOGIES)!r}"
+            )
         cfg.grid = GridConfig(
             ni=g.get("ni", cfg.grid.ni),
             nj=g.get("nj", cfg.grid.nj),
             nk=g.get("nk", cfg.grid.nk),
             theta_cap=_resolve_theta(g),
+            topology=topology,
         )
 
     if "march" in raw:

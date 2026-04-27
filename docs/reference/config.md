@@ -68,6 +68,7 @@ nj            = 60                   # longitude (multiple of 4)
 nk            = 30                   # wall-normal layers
 theta_cap_deg = 30.0                 # polar exclusion (degrees)
 # theta_cap   = 0.5236               # alternative: in radians (mutually exclusive)
+topology      = "cubed_sphere"       # 'cubed_sphere' (default) or 'ogrid'
 
 [march]
 ds              = 1.0e-3             # first-layer thickness (geometric)
@@ -138,6 +139,7 @@ just the alias map.
 | `grid.nk` | `--nk` |
 | `grid.theta_cap` | `--theta-cap` |
 | `grid.theta_cap_deg` | `--theta-cap-deg` |
+| `grid.topology` | `--topology` |
 | `march.ds` | `--ds` |
 | `march.growth` | `--growth` |
 | `march.smooth` | `--smooth` |

@@ -12,8 +12,8 @@ them.
 
 | Topology | Status | Blocks | Use case |
 |---|---|---|---|
-| [O-grid](o-grid) | conceptual primitive, Python-API only | 1 (single) | Pedagogy + downstream tools that expect a single periodic-j block; reachable via `Body.project()` and `shore project` |
-| [Cubed sphere (6-block)](cubed-sphere) | **production default** | 6 (4 sub-blocks + 2 caps) | The `shore mesh` CLI; clean polar coverage with no singular axis |
+| [O-grid](o-grid) | first-class | 1 (single, j-periodic) | `shore mesh --topology ogrid`; Chimera background, downstream tools that expect a single periodic-j block |
+| [Cubed sphere (6-block)](cubed-sphere) | **production default** | 6 (4 sub-blocks + 2 caps) | `shore mesh` (default); clean polar coverage with no singular axis |
 | [Yin-Yang](yin-yang) | Python-API only | 2 (overlapping) | Specialised; not wired to the CLI |
 
 Future topologies that fit naturally into this framework:
@@ -26,15 +26,20 @@ Each new topology gets one page here; the algorithm pages stay shared.
 
 ## How to choose
 
-The CLI builds the **cubed-sphere topology** unconditionally. The other
-topologies are documented because:
+The CLI defaults to the **cubed-sphere topology** because it has no
+singular axis and produces conforming SHARED seams across all 6 blocks
+— the right choice for production near-body meshing. The two other
+topologies cover specific use cases:
 
-1. The **O-grid** is the simpler, single-block sphere covering — useful
-   pedagogically and as a fallback for downstream tools that expect a
-   single periodic-j block. The cubed-sphere topology is structurally
-   independent (it does not wrap an O-grid in caps), but the two
-   topologies share the same underlying spacing-law primitives.
-2. The **Yin-Yang** is still in the Python API for users who want a
+1. The **O-grid** is the simpler, single-block sphere covering. Pick
+   it (`--topology ogrid`) when you need a single periodic-j block —
+   typically as a Chimera background, or as input to a downstream
+   tool that doesn't grok multi-block. Note the polar singular axis:
+   `i = 0` and `i = ni - 1` are degenerate point rows. The
+   cubed-sphere topology is structurally independent of the O-grid
+   (it does not wrap an O-grid in caps); the two share only the
+   underlying spacing-law primitives.
+2. The **Yin-Yang** is in the Python API for users who want a
    pole-singularity-free single-block alternative; it requires a
    downstream Chimera-capable solver to handle the overlap.
 
