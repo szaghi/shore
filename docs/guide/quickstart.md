@@ -2,7 +2,7 @@
 
 ## Your first O-grid
 
-Given a body surface `sphere.stl`, generate a 6-block caps-topology
+Given a body surface `sphere.stl`, generate a 6-block cubed-sphere-topology
 volume grid with 40 equator latitude points, 60 longitude points, and
 30 wall-normal layers:
 
@@ -78,7 +78,7 @@ shore check sphere_sub0.geo
 
 ## Cap / equator compatibility
 
-The caps topology pins the equator's first/last meridional step to the
+The cubed-sphere topology pins the equator's first/last meridional step to the
 cap-edge first cell at every seam vertex (C1 spacing match). For the
 pinning to be active, the cap radial step and the equator's natural
 radial step should be within ~2× of each other:

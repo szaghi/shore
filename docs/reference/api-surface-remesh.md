@@ -3,8 +3,8 @@
 Unstructured STL surface → structured `(ni, nj)` quad grid via lat-lon
 sphere projection (single-block path).
 
-::: tip Caps topology uses different modules
-The 6-block caps topology built by `shore mesh` does **not** use the
+::: tip Cubed-sphere topology uses different modules
+The 6-block cubed-sphere topology built by `shore mesh` does **not** use the
 functions on this page. It uses `shore.surface.cap.build_cap_k0`
 (gnomonic flat-square cap seed) and `shore.surface.equator.build_equator`
 (great-circle meridian equator with C1 seam pinning). The functions
@@ -137,10 +137,10 @@ gives a physically larger cap face and a shorter equatorial band.
 
 ## See also
 
-- [Caps topology](/topologies/caps) — the production 6-block path
+- [Cubed-sphere topology](/topologies/cubed-sphere) — the production 6-block path
   (uses `shore.surface.cap.build_cap_k0` and
   `shore.surface.equator.build_equator`, not the functions on this page)
 - [`shore.topology.sphere_cap`](/reference/api-sphere-cap) — marching
-  primitives shared by the caps topology
+  primitives shared by the cubed-sphere topology
 - `shore.surface.cap.build_cap_k0` — gnomonic flat-square cap k=0 seed
 - `shore.surface.equator.build_equator` — equator k=0 from cap seam rings

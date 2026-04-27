@@ -54,7 +54,7 @@ raises `MeshInputError` if any ray is non-`HIT`; pass `"warn"` or
 ## Direction vectors
 
 The projector itself is topology-agnostic — it casts whatever
-directions you give it. The directions for the **caps topology** come
+directions you give it. The directions for the **cubed-sphere topology** come
 from two places:
 
 1. The cap k=0 builder (`shore.surface.cap.build_cap_k0`) computes
@@ -91,6 +91,6 @@ dominant cost on first use, ~30 ms for the same triangle count.
 ## See also
 
 - [k=0 mesh construction](k0-construction) — how the projected nodes
-  are arranged into the 6-block caps topology
+  are arranged into the 6-block cubed-sphere topology
 - [`shore.surface.projector`](/reference/api-surface-remesh) (Python API)
-- [Caps topology](/topologies/caps) — full pipeline view
+- [Cubed-sphere topology](/topologies/cubed-sphere) — full pipeline view

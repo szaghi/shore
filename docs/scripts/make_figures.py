@@ -409,7 +409,7 @@ def fig_caps_topology_blocks() -> None:
                     line_width=0.6)
     pl.camera_position = [(2.4, -2.4, 1.6), (0, 0, 0.1), (0, 0, 1)]
     pl.add_axes()
-    out = FIG / "caps-topology-blocks.png"
+    out = FIG / "cubed-sphere-topology-blocks.png"
     pl.screenshot(str(out))
     pl.close()
     print(f"  wrote {out.relative_to(ROOT)}")
@@ -429,7 +429,7 @@ def fig_caps_topology_topdown() -> None:
                     line_width=0.7)
     pl.camera_position = [(0, 0, 4), (0, 0, 0), (0, 1, 0)]
     pl.add_axes()
-    out = FIG / "caps-topology-topdown.png"
+    out = FIG / "cubed-sphere-topology-topdown.png"
     pl.screenshot(str(out))
     pl.close()
     print(f"  wrote {out.relative_to(ROOT)}")

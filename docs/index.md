@@ -19,7 +19,7 @@ hero:
 features:
   - icon: 📐
     title: STL → 6-block structured volume in one command
-    details: Feed any star-shaped triangulated STL — SHORE builds the 6-block caps topology with a single `shore mesh` call. Gnomonic flat-square cap k=0 seed, great-circle equator, C1 spacing match at every cap-equator seam vertex, six Xall_GPU-compatible .geo files out.
+    details: Feed any star-shaped triangulated STL — SHORE builds the 6-block cubed-sphere topology with a single `shore mesh` call. Gnomonic flat-square cap k=0 seed, great-circle equator, C1 spacing match at every cap-equator seam vertex, six Xall_GPU-compatible .geo files out.
     link: /guide/quickstart
     linkText: Quick start
   - icon: 🌊
@@ -29,7 +29,7 @@ features:
     linkText: Algorithm
   - icon: 🧩
     title: Topology catalogue
-    details: The production caps topology coexists with the conceptual O-grid primitive and the legacy Yin-Yang option. Each topology is one page; new topologies (C-grid, H-grid) plug into the same algorithm pipeline.
+    details: The production cubed-sphere topology coexists with the simpler single-block O-grid. Each topology is one page; new topologies (C-grid, H-grid) plug into the same algorithm pipeline.
     link: /topologies/
     linkText: Topologies
   - icon: 🔍
@@ -79,7 +79,7 @@ STL (raw triangles)
 
 ## Topology
 
-`shore mesh` builds a **6-block caps topology**: 4 equatorial sub-blocks
+`shore mesh` builds a **6-block cubed-sphere topology**: 4 equatorial sub-blocks
 plus 2 polar cap blocks, all conforming through SHARED-memory seams
 (sub-sub) and DIRICHLET pinning (cap-equator). Cap k=0 seeds use
 **gnomonic flat-square projection**: a flat diamond in the tangent plane
@@ -101,7 +101,7 @@ Spacing continuity is enforced at two levels:
   partner blocks), so the spacing stays continuous on the outer surface
   layer-by-layer.
 
-See [Caps topology](topologies/caps.md) for the full algorithm.
+See [Cubed-sphere topology](topologies/cubed-sphere.md) for the full algorithm.
 
 ## Author
 

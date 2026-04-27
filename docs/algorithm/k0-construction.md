@@ -1,7 +1,7 @@
 # k=0 mesh construction
 
 The k=0 layer is the body-conforming surface from which the volume is
-extruded. In the **caps topology** it is assembled in two stages:
+extruded. In the **cubed-sphere topology** it is assembled in two stages:
 
 1. **Cap k=0 seed** — gnomonic projection of a flat square at each pole.
 2. **Equator k=0** — great-circle meridians from south seam to north
@@ -161,9 +161,9 @@ boundaries are bound to the sub-block pole rows via DIRICHLET face BCs;
 `_overwrite_cap_boundaries` writes the sub-block pole rows into the cap
 edges at every layer, keeping cap-equator conformity exact.
 
-![6-block caps surface](/figures/caps-topology-blocks.png)
+![6-block cubed-sphere surface](/figures/cubed-sphere-topology-blocks.png)
 
-![Top-down view of cap and equator junctions](/figures/caps-topology-topdown.png)
+![Top-down view of cap and equator junctions](/figures/cubed-sphere-topology-topdown.png)
 
 ## See also
 
@@ -171,6 +171,6 @@ edges at every layer, keeping cap-equator conformity exact.
 - [Hyperbolic marching](hyperbolic-marching) — what happens after k=0
 - [Seam-aware normals](seam-aware-normals) — keeping spacing continuous
   during marching
-- [Caps topology](/topologies/caps) — block layout + connectivity
+- [Cubed-sphere topology](/topologies/cubed-sphere) — block layout + connectivity
 - [`shore.surface.cap`](/reference/api-sphere-cap) and
   [`shore.surface.equator`](/reference/api-sphere-cap) (Python API)

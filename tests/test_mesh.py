@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from shore.mesh import (
-    CapsTopology,
+    CubedSphereTopology,
     FaceBC,
     HexBlock,
     Mesh,
@@ -111,15 +111,15 @@ class TestHexBlock:
 
 
 # ---------------------------------------------------------------------------
-# CapsTopology.build()
+# CubedSphereTopology.build()
 # ---------------------------------------------------------------------------
 
 
-class TestCapsTopology:
+class TestCubedSphereTopology:
     def _build(self, sphere_stl, ni=8, nj=16, nk=4):
         return Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=ni,
             nj=nj,
             nk=nk,
@@ -200,7 +200,7 @@ class TestMeshMarch:
     def test_march_expands_radius(self, sphere_stl):
         topo = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=9,
             nj=16,
             nk=5,
@@ -217,7 +217,7 @@ class TestMeshMarch:
         """March should complete without raising MarchingError."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=9,
             nj=16,
             nk=5,
@@ -227,7 +227,7 @@ class TestMeshMarch:
     def test_write_geo(self, sphere_stl, tmp_path):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=9,
             nj=16,
             nk=5,
@@ -241,7 +241,7 @@ class TestMeshMarch:
         """from_stl must not fill volume layers — only k=0 is set."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=9,
             nj=16,
             nk=5,
@@ -257,7 +257,7 @@ class TestMeshMarch:
         Body._projector is a cached_property: the Projector (and its embedded
         RayMeshIntersector / BVH) is built on first access and reused for all
         subsequent calls — including the cap interior projection inside
-        CapsTopology.build when projector= is passed.
+        CubedSphereTopology.build when projector= is passed.
         """
         from unittest.mock import patch
 
@@ -274,7 +274,7 @@ class TestMeshMarch:
 
         with patch.object(_proj_module.Projector, "__init__", counting_init):
             body = Body.from_stl(sphere_stl)
-            CapsTopology().build(
+            CubedSphereTopology().build(
                 surface=None,
                 nk=3,
                 ni=9,
@@ -285,5 +285,5 @@ class TestMeshMarch:
         assert build_count == 1, (
             f"Expected exactly 1 Projector build, got {build_count}.  "
             "Check that Body._projector is a cached_property and that "
-            "CapsTopology.build uses projector= instead of building its own."
+            "CubedSphereTopology.build uses projector= instead of building its own."
         )

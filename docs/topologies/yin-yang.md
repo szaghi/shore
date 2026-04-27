@@ -8,7 +8,7 @@ covered region.
 
 ::: warning Status: Python-API only
 The Yin-Yang topology is **not wired to the `shore mesh` CLI** in the
-current release — the CLI builds the [caps topology](caps)
+current release — the CLI builds the [cubed-sphere topology](cubed-sphere)
 unconditionally. The Yin-Yang building blocks remain in the Python
 API (`shore.surface.yinyang`) for users who want to construct the
 topology manually or experiment with downstream Chimera-style
@@ -55,7 +55,7 @@ minimum for full coverage.
 | Suited for | Chimera-capable solvers that interpolate the overlap | Single-grid solvers; downstream Chimera between body and far-field |
 | Cell count | Higher (overlap is duplicated) | Lower (no duplication) |
 
-For SHORE's overset CFD context the **caps topology** is the better
+For SHORE's overset CFD context the **cubed-sphere topology** is the better
 default — the conforming 6-block layout matches the downstream
 Chimera-between-bodies pattern without an extra Yin-Yang
 interpolation step inside each body's near-field.
@@ -87,5 +87,5 @@ that applies the rotation and casts the rays.
 
 - [O-grid topology](o-grid) — the single-block primitive Yin-Yang
   duplicates
-- [Caps topology](caps) — SHORE's production alternative
+- [Cubed-sphere topology](cubed-sphere) — SHORE's production alternative
 - [Chimera context](/concepts/chimera) — overset mesh generation

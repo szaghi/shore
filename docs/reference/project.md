@@ -5,10 +5,10 @@ surface, producing the k=0 layer only as an `.npz` file.
 
 ::: warning Independent of `shore mesh`
 The `.npz` produced here is a **single-block** surface (`(ni, nj, 3)` lat-lon
-grid; not the 6-block caps topology). It is meant for inspection, custom
+grid; not the 6-block cubed-sphere topology). It is meant for inspection, custom
 post-processing, or downstream tools that consume the raw projected
 surface. The `shore mesh` command does **not** read this `.npz` —
-the caps topology projects directly through the cached BVH inside
+the cubed-sphere topology projects directly through the cached BVH inside
 `Mesh.from_stl`.
 :::
 
@@ -146,8 +146,8 @@ When surface spacing is non-uniform, the lat-lon directions are redistributed us
 
 ## See also
 
-- [`shore mesh`](mesh) — full STL → 6-block caps mesh pipeline
-- [Caps topology](/topologies/caps) — the 6-block topology that
+- [`shore mesh`](mesh) — full STL → 6-block cubed-sphere mesh pipeline
+- [Cubed-sphere topology](/topologies/cubed-sphere) — the 6-block topology that
   `shore mesh` builds (does not consume `.npz` from `shore project`)
 - [Spacing laws](/algorithm/spacing-laws) — clustering distributions explained
 - [Pipeline overview](/concepts/pipeline)

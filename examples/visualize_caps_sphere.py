@@ -87,7 +87,7 @@ def generate_sphere(
     """
     import trimesh
 
-    from shore.mesh import CapsTopology, Mesh, Spacing1D
+    from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
 
     if volume_k_spacing in {"tanh", "tanh2"} and volume_k_thickness is None:
         print(
@@ -119,10 +119,10 @@ def generate_sphere(
     first_geo = geo_paths[0]
 
     if not first_geo.exists():
-        print(f"Generating 6-block caps topology ({ni}×{nj}, {nk} layers) ...")
+        print(f"Generating 6-block cubed-sphere topology ({ni}x{nj}, {nk} layers) ...")
         m = Mesh.from_stl(
             stl_path,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=ni, nj=nj, nk=nk,
             theta_cap=theta_cap,
             i_spacing=surface_i_spacing, i_beta=surface_i_beta,

@@ -1,6 +1,6 @@
 # Seam-aware normals
 
-When SHORE marches the 6 blocks of the caps topology outward, each
+When SHORE marches the 6 blocks of the cubed-sphere topology outward, each
 block computes its own outward normals from its own grid. At a
 **multi-block seam** — a column or row shared between two blocks —
 the two blocks' boundary tangents disagree if each uses a one-sided

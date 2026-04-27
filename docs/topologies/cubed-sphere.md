@@ -1,11 +1,20 @@
-# Caps topology (6-block)
+# Cubed-sphere topology (6-block)
 
-The **caps topology** is SHORE's production topology and the one the
-`shore mesh` CLI builds. It closes the two polar holes of a lat-lon
-[O-grid](o-grid) with **two hexahedral cap blocks**, one per pole,
-producing a watertight 6-block structured grid with no singular axis.
+The **cubed-sphere topology** is SHORE's production topology and the
+one the `shore mesh` CLI builds. It is the standard cubed-sphere
+construction from atmospheric and planetary CFD (Sadourny 1972;
+Ronchi, Iacono & Paolucci 1996): the body surface is decomposed into
+6 conforming hexahedral blocks — 4 equatorial sub-blocks plus 2 polar
+caps — corresponding to the 6 faces of a cube projected outward onto
+the body. There is no singular axis, all seams are conforming, and
+each cap is a regular structured block in its own right.
 
-![Caps topology — perspective view](/figures/caps-topology-blocks.png)
+It is **not** a wrapped O-grid: the cubed sphere does not extend the
+single-block [O-grid](o-grid) by augmenting it with caps. They are
+two distinct constructions that share only the underlying spacing
+primitives.
+
+![Cubed-sphere topology — perspective view](/figures/cubed-sphere-topology-blocks.png)
 
 This page describes the topology — the block layout, the multi-block
 connectivity, and the boundary conditions. The algorithmic details
@@ -52,7 +61,7 @@ blocks at the colatitude-`theta_cap` parallel. The four cap corners
 sit on that parallel; cap edges dip slightly poleward at midpoints
 (intrinsic to the gnomonic-square geometry):
 
-![Top-down view](/figures/caps-topology-topdown.png)
+![Top-down view](/figures/cubed-sphere-topology-topdown.png)
 
 ## Multi-block connectivity
 

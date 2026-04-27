@@ -2,7 +2,7 @@
 
 Full pipeline: STL → 6-block O-grid volume → geo files.
 
-The `mesh` command always builds the [caps topology](/topologies/caps)
+The `mesh` command always builds the [cubed-sphere topology](/topologies/cubed-sphere)
 (4 equatorial sub-blocks + 2 polar caps, 6 `.geo` files written). The cap
 k=0 face is a gnomonic flat-square projection; the equator is built from
 the cap seam rings with C1 spacing match at every seam vertex; marching
@@ -195,10 +195,10 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
 
 - [Config files](config) — drive `shore mesh` from a TOML file (`-c`)
 - [`shore project`](project) — generate the k=0 surface only (single-block,
-  legacy `body.project` path; not the caps topology)
+  legacy `body.project` path; not the cubed-sphere topology)
 - [`shore check`](check) — validate Jacobians on existing `.geo` files
 - [`shore export`](export) — convert `.geo` to VTK MultiBlock for ParaView
-- [Caps topology](/topologies/caps) — block layout, cap construction,
+- [Cubed-sphere topology](/topologies/cubed-sphere) — block layout, cap construction,
   seam matching
 - [Spacing laws](/algorithm/spacing-laws) — clustering distributions
 - [Hyperbolic marching](/algorithm/hyperbolic-marching) — algorithm details

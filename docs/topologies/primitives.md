@@ -107,7 +107,7 @@ The size of the central square is controlled by `--inner-frac`
 | Value | Effect |
 |---|---|
 | Small (e.g. 0.2) | Tiny central square, large sub-blocks. Useful when most of the disk should be radially structured. |
-| 0.5 (default) | Central square corners at half-radius — visually balanced, matches the caps-topology look. |
+| 0.5 (default) | Central square corners at half-radius — visually balanced, matches the cubed-sphere-topology look. |
 | Large (e.g. 0.8) | Big central square, thin sub-blocks. Useful when most of the disk should be Cartesian. |
 
 #### C1 first-step continuity at the central / sub-block seam
@@ -117,7 +117,7 @@ first radial cell at each j-column equals the central square's local
 tangential cell at that column. This gives **aspect-ratio-1 cells at
 the seam** on both sides — even when `--c-spacing` clusters the central
 distribution non-uniformly. Per-j pinning, same discipline as the
-caps topology's per-meridian C1 pin in `surface/equator.py`. When
+cubed-sphere topology's per-meridian C1 pin in `surface/equator.py`. When
 the chosen `ni`, `nc`, and `inner_frac` make the pin geometrically
 incompatible with the chosen `--i-spacing` (first step would exceed
 or be much smaller than the natural radial cell size), SHORE falls
@@ -220,5 +220,5 @@ CLI flags override config values exactly as for `shore mesh`. See
 ## See also
 
 - [`shore primitive` reference](/reference/primitive) — full CLI / TOML schema
-- [Caps topology](/topologies/caps) — body-fitted near-body mesh
+- [Cubed-sphere topology](/topologies/cubed-sphere) — body-fitted near-body mesh
 - [Config files](/reference/config) — TOML schema and precedence

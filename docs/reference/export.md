@@ -93,7 +93,7 @@ a single ParaView-friendly `.vtm` MultiBlock. Block keys inside the
 `.vtm` come from each file's stem.
 
 ```bash
-# 6-block caps topology — sphere_<label>.geo  →  sphere.vtm
+# 6-block cubed-sphere topology — sphere_<label>.geo  →  sphere.vtm
 shore export sphere_*.geo -o sphere.vtm
 paraview sphere.vtm
 

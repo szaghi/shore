@@ -6,7 +6,7 @@ layer advanced along the local outward normal direction. The
 governing equations are hyperbolic in the wall-normal direction —
 hence the name.
 
-In SHORE the marcher operates on all 6 blocks of the caps topology
+In SHORE the marcher operates on all 6 blocks of the cubed-sphere topology
 **simultaneously** with seam-aware normals at multi-block boundaries
 so that block-to-block spacing continuity is preserved at every layer.
 
@@ -86,7 +86,7 @@ $$
 $$
 
 In the legacy single-block O-grid the j-direction is periodic, so the
-boundary at `j = 0` wraps to `j = nj − 1`. In the caps topology both i
+boundary at `j = 0` wraps to `j = nj − 1`. In the cubed-sphere topology both i
 and j are non-periodic — the boundary tangent uses centred differences
 against ghost rows from the partner block, see
 [Seam-aware normals](seam-aware-normals).
@@ -120,7 +120,7 @@ $\mathbf{e}_k = \mathbf{P}^{k+1}_{i,j} - \mathbf{P}^{k}_{i,j}$. A
 positive value indicates a valid cell; a negative or zero value means
 the cell has inverted.
 
-In the caps topology all 6 blocks have open boundaries, so the marcher
+In the cubed-sphere topology all 6 blocks have open boundaries, so the marcher
 uses `_jacobian_field_open` (no periodic wrap). The four **corner
 cells** of each cap (where 4 sub-blocks meet at one node) are excluded
 from the check: those cells have near-zero signed volume by
@@ -218,4 +218,4 @@ single-sweep cost is orders of magnitude lower than iterative methods.
 - [Spacing laws](spacing-laws) — `Δs_k` formulas
 - [`shore.volume.hyperbolic`](/reference/api-hyperbolic) and
   [`shore.topology.sphere_cap`](/reference/api-sphere-cap) (Python API)
-- [Caps topology](/topologies/caps) — block layout + connectivity
+- [Cubed-sphere topology](/topologies/cubed-sphere) — block layout + connectivity

@@ -1,4 +1,4 @@
-"""Topology ABC and CapsTopology: block wiring from a k=0 surface."""
+"""Topology ABC and CubedSphereTopology: block wiring from a k=0 surface."""
 
 from __future__ import annotations
 
@@ -46,8 +46,13 @@ class Topology(ABC):
         """
 
 
-class CapsTopology(Topology):
-    """6-block O-grid with polar caps, gnomonic flat-square cap projection.
+class CubedSphereTopology(Topology):
+    """6-block cubed-sphere topology (Sadourny 1972 / Ronchi-Iacono-Paolucci 1996).
+
+    A six-block decomposition of the body surface: 4 equatorial sub-blocks
+    plus 2 polar caps.  Each cap k=0 face is built by gnomonic flat-square
+    projection (a tangent-plane square radially projected onto the body),
+    matching the construction of cubed-sphere atmospheric models.
 
     Layout: ``[sub0, sub1, sub2, sub3, cap_north, cap_south]``
 
@@ -86,7 +91,7 @@ class CapsTopology(Topology):
         ----------
         surface :
             Ignored — preserved as the first positional for backwards-compat
-            with the old CapsTopology.build(surface, nk, ...) signature.  The
+            with the old CubedSphereTopology.build(surface, nk, ...) signature.  The
             new construction projects directly through the cached Projector,
             so a pre-projected surface array is not used.  When ``ni`` or
             ``nj`` are missing, they are derived from ``surface.shape``.
@@ -133,7 +138,8 @@ class CapsTopology(Topology):
         if ni is None or nj is None:
             if surface is None:
                 raise ValueError(
-                    "CapsTopology.build needs ni and nj (or a surface array to derive them from)."
+                    "CubedSphereTopology.build needs ni and nj "
+                    "(or a surface array to derive them from)."
                 )
             ni = ni if ni is not None else int(surface.shape[0])
             nj = nj if nj is not None else int(surface.shape[1])
@@ -149,7 +155,10 @@ class CapsTopology(Topology):
             else (_projector_from_mesh(mesh) if mesh is not None else None)
         )
         if cap_proj is None:
-            raise ValueError("CapsTopology.build requires a Projector (pass projector= or mesh=).")
+            raise ValueError(
+                "CubedSphereTopology.build requires a Projector "
+                "(pass projector= or mesh=)."
+            )
 
         _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from shore.mesh import CapsTopology, Mesh, Spacing1D
+from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
 from shore.surface.cap import build_cap_k0
 
 
@@ -109,7 +109,7 @@ class TestCapCellQuality:
         """
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=20,
             nj=32,
             nk=3,
@@ -128,7 +128,7 @@ class TestCapCellQuality:
         """
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=20,
             nj=32,
             nk=3,
@@ -156,7 +156,7 @@ class TestSeamConformity:
     def test_north_seam_c0(self, sphere_stl):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=12,
             nj=20,
             nk=3,
@@ -185,7 +185,7 @@ class TestSeamConformity:
     def test_south_seam_c0(self, sphere_stl):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=12,
             nj=20,
             nk=3,
@@ -225,7 +225,7 @@ class TestEquatorMonotone:
         monotonically as i runs 0 → ni-1 along each meridian."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=20,
             nj=32,
             nk=3,
@@ -304,7 +304,7 @@ class TestSeamStepMatching:
             _w.simplefilter("error")  # any fallback would be a UserWarning
             m = Mesh.from_stl(
                 sphere_stl,
-                topology=CapsTopology(),
+                topology=CubedSphereTopology(),
                 ni=60,
                 nj=60,
                 nk=3,
@@ -333,7 +333,7 @@ class TestSeamStepMatching:
         with pytest.warns(UserWarning, match="incompatible"):
             Mesh.from_stl(
                 sphere_stl,
-                topology=CapsTopology(),
+                topology=CubedSphereTopology(),
                 # Cap step ~ tan(9 deg)/3 ~ 3 deg; equator natural step
                 # (uniform) ~ 162/9 ~ 18 deg.  Ratio ~6x = incompatible.
                 ni=10,
@@ -360,7 +360,7 @@ class TestVolumeSeamContinuity:
         at every k layer."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=60,
             nj=60,
             nk=20,
@@ -479,7 +479,7 @@ class TestBlendNormalsK_C1SeamSurvives:
         machine-precision C1.
         """
         common = {
-            "topology": CapsTopology(),
+            "topology": CubedSphereTopology(),
             "ni": 60,
             "nj": 60,
             "nk": 10,
@@ -530,7 +530,7 @@ class TestBlendNormalsK_C1SeamSurvives:
         implementation produced ~0.55 deg blend-induced excess at k=5.
         """
         common = {
-            "topology": CapsTopology(),
+            "topology": CubedSphereTopology(),
             "ni": 60,
             "nj": 60,
             "nk": 10,
@@ -569,7 +569,7 @@ class TestMarchingNoNegativeJacobian:
     def test_march(self, sphere_stl, nk):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=CapsTopology(),
+            topology=CubedSphereTopology(),
             ni=20,
             nj=32,
             nk=nk,

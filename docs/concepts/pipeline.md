@@ -13,7 +13,7 @@ assembled into block layouts.
 | Stage | Output | Algorithm reference |
 |---|---|---|
 | 1. Surface projection | `(N, 3)` k=0 surface nodes | [projection](/algorithm/projection) |
-| 2. k=0 mesh construction | 6-block surface (caps topology) | [k0-construction](/algorithm/k0-construction) |
+| 2. k=0 mesh construction | 6-block surface (cubed-sphere topology) | [k0-construction](/algorithm/k0-construction) |
 | 3. Hyperbolic marching | 6-block volume `(ni, nj, nk, 3)` per block | [hyperbolic-marching](/algorithm/hyperbolic-marching) |
 | 4. Seam-aware refinement | Continuous spacing across multi-block seams at every layer | [seam-aware-normals](/algorithm/seam-aware-normals) |
 
@@ -27,7 +27,7 @@ spacing continuity is preserved layer by layer.
 
 The pipeline above is run **per topology**. The topology determines
 the block layout and how stages 2 and 3 stitch the blocks together.
-SHORE's production topology is the [caps topology](/topologies/caps)
+SHORE's production topology is the [cubed-sphere topology](/topologies/cubed-sphere)
 (6 blocks); the `shore mesh` CLI builds it unconditionally.
 
 The catalogue of topologies — including the conceptual primitive
@@ -68,7 +68,7 @@ Two independent paths after the volume is generated:
 # Per-block .vts
 shore export sphere_sub0.geo
 
-# Combined MultiBlock for the 6-block caps topology
+# Combined MultiBlock for the 6-block cubed-sphere topology
 python -c "
 from shore.io.geo import read_geo
 from shore.io.vtk import write_caps_vtm

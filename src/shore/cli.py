@@ -29,7 +29,7 @@ from shore.config import (
 )
 from shore.mesh import (
     Body,
-    CapsTopology,
+    CubedSphereTopology,
     Mesh,
     Spacing1D,
     check_geo,
@@ -413,7 +413,7 @@ def mesh(
     # Gnomonic algorithm projects the surface inside topology.build through
     # the cached BVH; no separate body.project_caps call is needed.
     _theta_topo = theta if theta is not None else 0.05 * np.pi
-    topo = CapsTopology()
+    topo = CubedSphereTopology()
     try:
         blocks = topo.build(
             surface=None,

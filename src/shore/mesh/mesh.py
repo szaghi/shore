@@ -160,7 +160,7 @@ class Mesh:
         path :
             Path to the STL file.
         topology :
-            Wired topology builder (e.g. ``CapsTopology()``).
+            Wired topology builder (e.g. ``CubedSphereTopology()``).
         ni, nj :
             Surface resolution.
         nk :
@@ -185,9 +185,9 @@ class Mesh:
         else:
             _theta = float(0.05 * np.pi)
 
-        from shore.mesh.topology import CapsTopology
+        from shore.mesh.topology import CubedSphereTopology
 
-        if isinstance(topology, CapsTopology):
+        if isinstance(topology, CubedSphereTopology):
             # Gnomonic algorithm builds the surface inside topology.build by
             # projecting through the cached BVH; we only need ni, nj here.
             blocks = topology.build(
@@ -261,12 +261,12 @@ class Mesh:
         MarchingError
             If a negative-Jacobian cell is detected.
         NotImplementedError
-            If the topology is not ``CapsTopology``.
+            If the topology is not ``CubedSphereTopology``.
         """
-        from shore.mesh.topology import CapsTopology
+        from shore.mesh.topology import CubedSphereTopology
 
-        if not isinstance(self.topology, CapsTopology):
-            raise NotImplementedError("Mesh.march() currently only supports CapsTopology.")
+        if not isinstance(self.topology, CubedSphereTopology):
+            raise NotImplementedError("Mesh.march() currently only supports CubedSphereTopology.")
         self._march_caps(
             ds=ds,
             growth=growth,
@@ -287,7 +287,7 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
     ) -> None:
-        """Simultaneous marching for the 6-block CapsTopology."""
+        """Simultaneous marching for the 6-block CubedSphereTopology."""
         sub_blocks = self.blocks[:4]
         cap_north = self.blocks[4]
         cap_south = self.blocks[5]

@@ -14,7 +14,7 @@ The four algorithm pages, in order of execution:
    single anchor point to obtain a structured `(ni, nj, 3)` array of
    k=0 surface nodes. Pure geometric kernel; topology-agnostic.
 2. [**k=0 mesh construction**](k0-construction) — combine the projected
-   nodes into the 6-block caps topology: gnomonic flat-square cap k=0
+   nodes into the 6-block cubed-sphere topology: gnomonic flat-square cap k=0
    seed + great-circle meridian equator with C1 seam-step pinning.
 3. [**Hyperbolic marching**](hyperbolic-marching) — extrude all 6 blocks
    simultaneously layer by layer along outward normals, with Laplacian

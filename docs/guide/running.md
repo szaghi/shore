@@ -18,10 +18,10 @@ make dev    # pip install -e ".[dev,vis]"
 SHORE ships a set of standalone example scripts and a Jupyter
 notebook that serve as both documentation and sanity checks.
 
-### `examples/visualize_caps_sphere.py` — caps topology around a sphere
+### `examples/visualize_caps_sphere.py` — cubed-sphere topology around a sphere
 
 The script generates a unit-sphere body-fitted test case (always
-6-block caps topology) and optionally visualises it.  When called
+6-block cubed-sphere topology) and optionally visualises it.  When called
 *without* `--generate`, it acts as a generic `.geo` / `.npz` viewer.
 
 ```bash

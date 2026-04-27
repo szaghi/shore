@@ -5,7 +5,7 @@ Per-cell Jacobian computation for structured O-grids.
 ::: tip O-grid vs open topology
 `jacobian_field` and `jacobian_per_layer` assume a **periodic** j-direction
 (O-grid). For open (non-periodic) blocks — such as the equatorial sub-blocks
-and cap blocks of the [sphere-cap topology](/topologies/caps) — use
+and cap blocks of the [cubed-sphere topology](/topologies/cubed-sphere) — use
 `_jacobian_field_open` instead. `min_jacobian_two_layers` accepts a
 `periodic_j` flag to select the correct behaviour automatically.
 :::
@@ -143,7 +143,7 @@ in j rather than `nj`.
 
 `numpy.ndarray` of shape `(ni-1, nj-1, nk-1)`.
 
-Used by the [sphere-cap topology](/topologies/caps) for equatorial
+Used by the [cubed-sphere topology](/topologies/cubed-sphere) for equatorial
 sub-blocks and cap blocks, which have open boundaries in both i and j.
 
 ## Notes

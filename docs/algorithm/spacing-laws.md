@@ -77,7 +77,7 @@ cap-edge first cell at the corresponding seam vertex (per-j), giving C1
 spacing continuity at every seam node when the cap and equator radial
 step sizes are within ~2x of each other. The chosen `i_spacing` law
 shapes the interior `ni − 2` cells between the two pinned endpoints. See
-the [caps topology page](/topologies/caps) for the compatibility
+the [cubed-sphere topology page](/topologies/cubed-sphere) for the compatibility
 window and fallback behaviour.
 :::
 
@@ -171,7 +171,7 @@ shore mesh body.stl \
   -o body.geo
 ```
 
-### Caps topology with meridional refinement
+### Cubed-sphere topology with meridional refinement
 
 Concentrate equator cells near both cap seams using tanh i-spacing,
 combined with tanh wall-normal clustering.
@@ -212,4 +212,4 @@ k_steps = build_k_steps(40, ds=0.01, spacing="tanh2", beta=4.0, total_thickness=
   `i_spacing` interact at the cap-equator seam
 - [Hyperbolic marching](hyperbolic-marching) — where `volume_k_spacing`
   controls the wall-normal step sizes
-- [Caps topology](/topologies/caps) — full pipeline view
+- [Cubed-sphere topology](/topologies/cubed-sphere) — full pipeline view

@@ -5,9 +5,9 @@ topology that wraps completely around a body, forming a closed loop in
 one parametric direction. The name comes from the shape of the grid
 lines around a cross-section, which resemble the letter O.
 
-::: tip Single-block O-grid vs caps topology
+::: tip Single-block O-grid vs cubed-sphere topology
 The single-block O-grid described here is the *conceptual* foundation.
-SHORE's production topology is the [6-block caps topology](caps),
+SHORE's production topology is the [6-block cubed-sphere topology](cubed-sphere),
 which closes the polar singularities with two gnomonic-square cap
 blocks plus four equatorial sub-blocks. The single-block view is
 still useful for understanding the equatorial band's geometry — the
@@ -22,7 +22,7 @@ In SHORE's single-block model:
 - The **j-direction** wraps completely around the body (longitude, periodic: `j=0` is adjacent to `j=nj-1`)
 - The **k-direction** goes wall-normal from body surface (k=0) to far field (k=nk-1)
 
-In the caps topology the j-direction is split into 4 sub-blocks (each
+In the cubed-sphere topology the j-direction is split into 4 sub-blocks (each
 spanning 90°) plus 2 cap blocks; the periodic j-wrap of the single-block
 view is realised as a SHARED-memory sub3↔sub0 seam.
 
@@ -113,7 +113,7 @@ sg.plot(show_edges=True, opacity=0.5)
 
 ## See also
 
-- [Caps topology](caps) — the production 6-block extension that closes
+- [Cubed-sphere topology](cubed-sphere) — the production 6-block extension that closes
   the polar singularity
 - [Yin-Yang topology](yin-yang) — alternative pole-singularity-free
   approach using two overlapping single-block O-grids
