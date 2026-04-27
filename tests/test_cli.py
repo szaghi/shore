@@ -27,7 +27,7 @@ runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 _SMALL = ["--ni", "10", "--nj", "12", "--nk", "6", "--ds", "0.05", "--growth", "1.1"]
-_PROJ  = ["--ni", "10", "--nj", "12"]
+_PROJ = ["--ni", "10", "--nj", "12"]
 
 _LABELS = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
 
@@ -44,6 +44,7 @@ def _geo_files(stem: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 # shore mesh
 # ---------------------------------------------------------------------------
+
 
 class TestMesh:
     def test_exit_code_ok(self, sphere_stl, tmp_path):
@@ -78,7 +79,7 @@ class TestMesh:
         _invoke("mesh", str(sphere_stl), *_SMALL, "-o", str(out))
         for label in _LABELS:
             grid = read_geo(tmp_path / f"sphere_{label}.geo")
-            r_inner = np.linalg.norm(grid[:, :, 0,  :], axis=-1)
+            r_inner = np.linalg.norm(grid[:, :, 0, :], axis=-1)
             r_outer = np.linalg.norm(grid[:, :, -1, :], axis=-1)
             assert np.all(r_outer > r_inner), f"{label}: outer not larger than inner"
 
@@ -95,6 +96,7 @@ class TestMesh:
 # ---------------------------------------------------------------------------
 # shore project
 # ---------------------------------------------------------------------------
+
 
 class TestProject:
     def test_exit_code_ok(self, sphere_stl, tmp_path):
@@ -130,6 +132,7 @@ class TestProject:
 # shore info
 # ---------------------------------------------------------------------------
 
+
 class TestInfo:
     @pytest.fixture
     def small_geo(self, tmp_path) -> Path:
@@ -162,7 +165,7 @@ class TestInfo:
 
     def test_geo_shows_point_count(self, small_geo):
         r = _invoke("info", str(small_geo))
-        assert "60" in r.output   # 4*5*3
+        assert "60" in r.output  # 4*5*3
 
     def test_npz_exit_code_ok(self, small_npz):
         r = _invoke("info", str(small_npz))
@@ -188,6 +191,7 @@ class TestInfo:
 # shore check
 # ---------------------------------------------------------------------------
 
+
 class TestCheck:
     @pytest.fixture
     def valid_geo(self, sphere_stl, tmp_path) -> Path:
@@ -202,7 +206,7 @@ class TestCheck:
         grid = np.empty((ni, nj, nk, 3))
         grid[:, :, 0, :] = surface
         grid[:, :, 1, :] = surface * 1.1
-        grid[:, :, 2, :] = surface * 0.5   # collapsed inward → inversion
+        grid[:, :, 2, :] = surface * 0.5  # collapsed inward → inversion
         p = tmp_path / "inverted.geo"
         write_geo(p, grid)
         return p
@@ -231,6 +235,7 @@ class TestCheck:
 # ---------------------------------------------------------------------------
 # shore export
 # ---------------------------------------------------------------------------
+
 
 class TestExport:
     @pytest.fixture
@@ -272,3 +277,37 @@ class TestExport:
         p.write_text("nothing")
         r = _invoke("export", str(p))
         assert r.exit_code == 1
+
+    @pytest.fixture
+    def valid_geo_set(self, sphere_stl, tmp_path) -> list[Path]:
+        """Six .geo files from a single ``shore mesh`` run."""
+        _invoke("mesh", str(sphere_stl), *_SMALL, "-o", str(tmp_path / "sphere"))
+        return [tmp_path / f"sphere_{lbl}.geo" for lbl in _LABELS]
+
+    def test_multi_geo_creates_vtm(self, valid_geo_set, tmp_path):
+        out = tmp_path / "sphere.vtm"
+        r = _invoke("export", *[str(p) for p in valid_geo_set], "-o", str(out))
+        assert r.exit_code == 0, r.output
+        assert out.exists()
+        assert out.stat().st_size > 0
+        # The user-visible message should list one block per input.
+        for lbl in _LABELS:
+            assert f"sphere_{lbl}" in r.output
+
+    def test_multi_geo_default_output_is_first_stem_dot_vtm(self, valid_geo_set, tmp_path):
+        r = _invoke("export", *[str(p) for p in valid_geo_set])
+        assert r.exit_code == 0, r.output
+        # Default .vtm path: first input's stem with .vtm suffix.
+        expected = valid_geo_set[0].with_suffix(".vtm")
+        assert expected.exists()
+
+    def test_multi_input_rejects_npz(self, valid_geo_set, valid_npz, tmp_path):
+        r = _invoke("export", str(valid_geo_set[0]), str(valid_npz), "-o", str(tmp_path / "x.vtm"))
+        assert r.exit_code != 0
+        assert ".geo only" in r.output
+
+    def test_multi_input_missing_file_exits_1(self, valid_geo_set, tmp_path):
+        ghost = tmp_path / "missing.geo"
+        r = _invoke("export", str(valid_geo_set[0]), str(ghost), "-o", str(tmp_path / "x.vtm"))
+        assert r.exit_code == 1
+        assert "file not found" in r.output

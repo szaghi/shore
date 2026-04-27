@@ -88,18 +88,25 @@ export default defineConfig({
             { text: 'Yin-Yang (legacy)',   link: '/topologies/yin-yang' },
           ],
         },
+        {
+          text: 'Primitives',
+          items: [
+            { text: 'Box / annulus / flat-caps', link: '/topologies/primitives' },
+          ],
+        },
       ],
 
       '/reference/': [
         {
           text: 'Commands',
           items: [
-            { text: 'shore mesh',    link: '/reference/mesh' },
-            { text: 'shore project', link: '/reference/project' },
-            { text: 'shore info',    link: '/reference/info' },
-            { text: 'shore check',   link: '/reference/check' },
-            { text: 'shore export',  link: '/reference/export' },
-            { text: 'shore view',    link: '/reference/view' },
+            { text: 'shore mesh',      link: '/reference/mesh' },
+            { text: 'shore primitive', link: '/reference/primitive' },
+            { text: 'shore project',   link: '/reference/project' },
+            { text: 'shore info',      link: '/reference/info' },
+            { text: 'shore check',     link: '/reference/check' },
+            { text: 'shore export',    link: '/reference/export' },
+            { text: 'shore view',      link: '/reference/view' },
           ],
         },
         {

@@ -1,26 +1,39 @@
-"""Standalone visualisation script for SHORE outputs.
+"""Standalone example: 6-block caps O-grid around a unit sphere.
+
+When ``--generate`` is given, this script runs the full SHORE
+body-fitted pipeline against an internally-built unit icosphere:
+``shore mesh`` over the gnomonic-cap topology, writing all 6 ``.geo``
+blocks (``sphere_sub0..3.geo`` + ``sphere_cap_north/south.geo``) and
+optionally a ``.vtm`` MultiBlock for ParaView.  The cap and equator
+spacing flags below are specific to this topology — see
+``examples/visualize_box.py`` / ``visualize_annulus.py`` /
+``visualize_flat_caps.py`` for the parametric primitives.
+
+When called *without* ``--generate``, the script is a generic
+``.geo`` / ``.npz`` PyVista viewer — it will read and display any
+structured grid produced by SHORE, regardless of topology.
 
 Run from the project root after activating .venv:
 
     # Generate a unit-sphere caps mesh and open the viewer:
-    python examples/visualize_geo.py --generate
+    python examples/visualize_caps_sphere.py --generate
 
     # Generate and export all 6 blocks to VTK MultiBlock:
-    python examples/visualize_geo.py --generate --vtk
+    python examples/visualize_caps_sphere.py --generate --vtk
 
     # Tanh-spaced boundary layer with fixed total thickness:
-    python examples/visualize_geo.py --generate \\
+    python examples/visualize_caps_sphere.py --generate \\
         --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
 
     # Latitude clustering (toward cap boundary) + longitude clustering:
-    python examples/visualize_geo.py --generate \\
+    python examples/visualize_caps_sphere.py --generate \\
         --surface-i-spacing tanh --surface-i-beta 4.0 \\
         --surface-j-spacing tanh2 --surface-j-beta 5.0
 
-    # Visualise an existing file:
-    python examples/visualize_geo.py sphere_sub0.geo
-    python examples/visualize_geo.py sphere_k0.npz
-    python examples/visualize_geo.py sphere_sub0.geo --screenshot out.png
+    # Visualise an existing file (any topology):
+    python examples/visualize_caps_sphere.py sphere_sub0.geo
+    python examples/visualize_caps_sphere.py sphere_k0.npz
+    python examples/visualize_caps_sphere.py sphere_sub0.geo --screenshot out.png
 
 Cap/equator C1 seam matching
 ----------------------------

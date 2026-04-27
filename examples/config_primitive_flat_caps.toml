@@ -1,0 +1,71 @@
+# SHORE primitive config — flat-caps cylinder background
+# =======================================================
+#
+# Scenario: a near-body sphere mesh produced by `shore mesh` lives at
+# the origin with outer radius ~1.5.  This config builds the
+# Chimera-free *cylindrical background* around it: a 5-block flat-caps
+# cylinder whose disk radius is large enough to contain the sphere
+# mesh comfortably and whose axial extent gives the simulation enough
+# upstream and downstream room.
+#
+# Five .geo files come out:
+#
+#     bg_center.geo
+#     bg_sub_e.geo  bg_sub_n.geo  bg_sub_w.geo  bg_sub_s.geo
+#
+# Run with:
+#
+#     shore primitive flat-caps -c examples/config_primitive_flat_caps.toml -o bg
+
+version = 1
+kind    = "primitive"
+
+# ----------------------------------------------------------------------
+# Geometry
+# ----------------------------------------------------------------------
+# r_out is chosen so the cylinder comfortably contains a near-body
+# sphere mesh of outer radius ~1.5; z0/z1 give 4 body-lengths
+# upstream and 6 downstream of the body.
+[geometry]
+type       = "flat_caps"
+r_out      = 5.0
+z0         = -4.0
+z1         =  6.0
+axis       = "z"               # change to "x" if your flow is x-aligned
+center     = [0.0, 0.0, 0.0]
+inner_frac = 0.5               # central square corner radius / r_out (in (0, 1))
+                                # 0.5 → square corners at r = 2.5; sub-blocks
+                                # span the radial annulus 2.5..5.0 with their
+                                # first cell pinned to the central first cell.
+
+# ----------------------------------------------------------------------
+# Resolution
+# ----------------------------------------------------------------------
+# In the flat_caps schema:
+#   ni   → radial node count for each sub-block (square edge → circle)
+#   nj   → side node count of the central square (shared with sub-blocks)
+#   nk   → axial node count
+#
+[grid]
+ni = 24
+nj = 32
+nk = 50
+
+# ----------------------------------------------------------------------
+# Spacing
+# ----------------------------------------------------------------------
+# i: radial direction.  Coarser cells in the sub-block interior is
+#    fine — overset interpolation (or conforming SHARED seams when
+#    using flat_caps as a Chimera-free background) handles the
+#    transition with the near-body mesh.
+# j: central-square / arc direction.  Uniform keeps cells square-ish.
+# k: axial.  `tanh2` clusters at both inflow and outflow — good for
+#    Dirichlet boundary conditions at z=z0, z=z1.
+#
+[spacing]
+i_law  = "uniform"
+i_beta = 3.0
+j_law  = "uniform"
+j_beta = 3.0
+k_law  = "tanh2"
+k_beta = 3.0

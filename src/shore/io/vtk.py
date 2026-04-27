@@ -37,6 +37,7 @@ from shore.volume.jacobian import _jacobian_field_open, jacobian_field
 # Conversion helpers
 # ---------------------------------------------------------------------------
 
+
 def _close_j(grid: np.ndarray) -> np.ndarray:
     """Close the periodic j-direction by appending j=0 at the end.
 
@@ -64,11 +65,13 @@ def _grid_points(grid: np.ndarray) -> np.ndarray:
     -------
     numpy.ndarray, shape (ni*nj*nk, 3)
     """
-    return np.column_stack([
-        grid[:, :, :, 0].ravel(order="F"),
-        grid[:, :, :, 1].ravel(order="F"),
-        grid[:, :, :, 2].ravel(order="F"),
-    ])
+    return np.column_stack(
+        [
+            grid[:, :, :, 0].ravel(order="F"),
+            grid[:, :, :, 1].ravel(order="F"),
+            grid[:, :, :, 2].ravel(order="F"),
+        ]
+    )
 
 
 def geo_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> pv.StructuredGrid:
@@ -89,8 +92,8 @@ def geo_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> pv.Structure
     -------
     pyvista.StructuredGrid
     """
-    closed = _close_j(grid)              # (ni, nj+1, nk, 3)
-    ni, njc, nk, _ = closed.shape       # njc = nj+1
+    closed = _close_j(grid)  # (ni, nj+1, nk, 3)
+    ni, njc, nk, _ = closed.shape  # njc = nj+1
 
     sg = pv.StructuredGrid()
     sg.dimensions = (ni, njc, nk)
@@ -129,6 +132,7 @@ def surface_to_pyvista(k0: np.ndarray) -> pv.StructuredGrid:
 # ---------------------------------------------------------------------------
 # Writers
 # ---------------------------------------------------------------------------
+
 
 def write_vts(path: str | Path, grid: np.ndarray, with_jacobian: bool = True) -> None:
     """Export a volume grid to VTK XML StructuredGrid format (.vts).
@@ -200,28 +204,38 @@ def write_caps_vtm(
     path: str | Path,
     blocks: list[np.ndarray],
     with_jacobian: bool = True,
+    labels: list[str] | None = None,
 ) -> None:
-    """Export a 6-block sphere-cap topology as a PyVista MultiBlock (.vtm).
+    """Export a list of structured grids as a PyVista MultiBlock (.vtm).
 
-    The 6 blocks are: sub0, sub1, sub2, sub3 (equatorial), cap_north, cap_south.
-    All are open (non-periodic) structured grids.
+    Originally written for the 6-block caps topology — when *labels* is
+    None and *blocks* has exactly 6 entries, the legacy caps labels
+    (``sub0..sub3``, ``cap_north``, ``cap_south``) are used.  Otherwise
+    *labels* must be provided with one entry per block.
 
     Parameters
     ----------
     path :
         Output path. The ``.vtm`` extension is used if no extension given.
     blocks :
-        List of 6 volume grids, each shape (ni, nj, nk, 3).
+        List of volume grids, each shape ``(ni, nj, nk, 3)``.
     with_jacobian :
         Attach per-cell Jacobian as CellData on each block.
+    labels :
+        Optional list of block labels (used as the keys of the resulting
+        ``MultiBlock``).  Must match ``len(blocks)`` when given.
     """
     path = Path(path)
     if path.suffix not in {".vtm", ".vtmb"}:
         path = path.with_suffix(".vtm")
-    labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
+    if labels is None:
+        if len(blocks) == 6:
+            labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
+        else:
+            labels = [f"block_{i}" for i in range(len(blocks))]
+    if len(labels) != len(blocks):
+        raise ValueError(f"write_caps_vtm: got {len(blocks)} blocks but {len(labels)} labels")
     mb = pv.MultiBlock()
     for label, block in zip(labels, blocks, strict=True):
         mb[label] = open_to_pyvista(block, with_jacobian=with_jacobian)
     mb.save(str(path))
-
-

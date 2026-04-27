@@ -57,11 +57,33 @@ CONFIG_VERSION = 1
 
 # Closed schema: keys allowed in each TOML table.  A key not listed
 # here triggers ``ParameterError`` at load time.
-_TOP_KEYS = frozenset({"version", "input", "output", "grid", "march", "surface", "volume"})
+_TOP_KEYS = frozenset({"version", "kind", "input", "output", "grid", "march", "surface", "volume"})
 _GRID_KEYS = frozenset({"ni", "nj", "nk", "theta_cap_deg", "theta_cap"})
 _MARCH_KEYS = frozenset({"ds", "growth", "smooth", "smooth_iters", "blend_normals_k"})
 _SURFACE_KEYS = frozenset({"i_spacing", "i_beta", "j_spacing", "j_beta"})
 _VOLUME_KEYS = frozenset({"k_spacing", "k_beta", "k_thickness"})
+
+# Primitive schema (kind = "primitive")
+_PRIM_TOP_KEYS = frozenset({"version", "kind", "output", "geometry", "grid", "spacing"})
+_GEOMETRY_KEYS = frozenset(
+    {
+        "type",
+        "vmin",
+        "vmax",  # box
+        "axis",
+        "center",
+        "z0",
+        "z1",  # annulus / flat_caps
+        "r_in",
+        "r_out",  # annulus
+        "theta_start",
+        "theta_end",  # annulus sector
+        "inner_frac",  # flat_caps
+    }
+)
+_PRIM_GRID_KEYS = frozenset({"ni", "nj", "nk"})
+_PRIM_SPACING_KEYS = frozenset({"i_law", "j_law", "k_law", "i_beta", "j_beta", "k_beta"})
+_PRIM_TYPES = frozenset({"box", "annulus", "flat_caps"})
 
 
 @dataclass
@@ -94,6 +116,73 @@ class VolumeConfig:
     k_spacing: str = "geometric"
     k_beta: float = 3.0
     k_thickness: float | None = None
+
+
+@dataclass
+class GeometryConfig:
+    """Geometric inputs for a primitive.
+
+    The ``type`` field selects which primitive: ``"box"``, ``"annulus"``,
+    or ``"flat_caps"``.  Only the keys relevant to that primitive are
+    consulted; the rest are ignored *but still validated* against the
+    closed schema (typos surface).
+    """
+
+    type: str = "box"
+    # box
+    vmin: tuple[float, float, float] | None = None
+    vmax: tuple[float, float, float] | None = None
+    # annulus / flat_caps shared
+    axis: str | tuple[float, float, float] = "z"
+    center: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    z0: float | None = None
+    z1: float | None = None
+    # annulus
+    r_in: float | None = None
+    r_out: float | None = None
+    theta_start: float = 0.0
+    theta_end: float | None = None
+    # flat_caps: ``r_out`` / ``z0`` / ``z1`` from above; inner_frac
+    # controls the central square's corner radius as a fraction of
+    # r_out (default 0.5 in FlatCapsCylinder.build when None).
+    inner_frac: float | None = None
+
+
+@dataclass
+class PrimSpacingConfig:
+    """Per-axis spacing laws for primitives.
+
+    Box / annulus / flat_caps share the same three axes (i, j, k for
+    box and annulus; i, c, k for flat_caps where ``c`` maps to the
+    central-square / arc direction — written as ``j`` in the config
+    for visual consistency with the other primitives).
+    """
+
+    i_law: str = "uniform"
+    j_law: str = "uniform"
+    k_law: str = "uniform"
+    i_beta: float = 3.0
+    j_beta: float = 3.0
+    k_beta: float = 3.0
+
+
+@dataclass
+class PrimGridConfig:
+    """Node counts for primitives."""
+
+    ni: int = 40
+    nj: int = 40
+    nk: int = 30
+
+
+@dataclass
+class PrimitiveConfig:
+    """Resolved configuration for a single ``shore primitive`` invocation."""
+
+    output: Path | None = None
+    geometry: GeometryConfig = field(default_factory=GeometryConfig)
+    grid: PrimGridConfig = field(default_factory=PrimGridConfig)
+    spacing: PrimSpacingConfig = field(default_factory=PrimSpacingConfig)
 
 
 @dataclass
@@ -149,6 +238,10 @@ def load_config(path: str | Path) -> MeshConfig:
         raise ParameterError(
             f"{p}: unsupported config version {version!r} (this build supports {CONFIG_VERSION})"
         )
+
+    kind = raw.get("kind", "mesh")
+    if kind != "mesh":
+        raise ParameterError(f"{p}: kind={kind!r} is not a mesh config (use load_primitive_config)")
 
     if "input" not in raw:
         raise ParameterError(f"{p}: missing required key 'input'")
@@ -274,3 +367,196 @@ def dump_template(stream=None) -> None:
             emit("# k_thickness = 5.0       # required when k_spacing is 'tanh' or 'tanh2'")
             continue
         emit(f"{f.name} = {getattr(v, f.name)!r}")
+
+
+# ---------------------------------------------------------------------------
+# Primitive config loader
+# ---------------------------------------------------------------------------
+
+
+def _coerce_axis(value: object) -> str | tuple[float, float, float]:
+    """Validate an axis spec coming out of TOML.
+
+    TOML allows:
+    - a string ``"x"`` / ``"y"`` / ``"z"``
+    - a string ``"1.0 0.0 0.0"`` (whitespace-separated triple)
+    - an array ``[1.0, 0.0, 0.0]``
+
+    The string forms are passed through verbatim; arrays are returned
+    as 3-tuples for ``resolve_axis`` to consume.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)) and len(value) == 3:
+        try:
+            return (float(value[0]), float(value[1]), float(value[2]))
+        except (TypeError, ValueError) as exc:
+            raise ParameterError(f"axis: cannot parse {value!r} as a 3-vector") from exc
+    raise ParameterError(f"axis: expected 'x'/'y'/'z' or 3-component array, got {value!r}")
+
+
+def _coerce_3vec(value: object, name: str) -> tuple[float, float, float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise ParameterError(f"{name}: expected 3-component array, got {value!r}")
+    try:
+        return (float(value[0]), float(value[1]), float(value[2]))
+    except (TypeError, ValueError) as exc:
+        raise ParameterError(f"{name}: components must be numeric, got {value!r}") from exc
+
+
+def load_primitive_config(path: str | Path) -> PrimitiveConfig:
+    """Load and validate a SHORE TOML primitive config.
+
+    A primitive config is identified by ``kind = "primitive"`` at the
+    top level.  Mesh and primitive configs share the same versioning
+    but otherwise have disjoint schemas.
+
+    Parameters
+    ----------
+    path :
+        Path to the ``.toml`` file.
+
+    Returns
+    -------
+    PrimitiveConfig
+        Fully populated config; missing keys take their dataclass defaults.
+
+    Raises
+    ------
+    ParameterError
+        On file-not-found, malformed TOML, missing required keys,
+        unknown keys, version mismatch, or unknown geometry type.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise ParameterError(f"Config file not found: {p}")
+
+    try:
+        with p.open("rb") as f:
+            raw = tomllib.load(f)
+    except tomllib.TOMLDecodeError as exc:
+        raise ParameterError(f"Invalid TOML in {p}: {exc}") from exc
+
+    _reject_unknown_keys(raw, _PRIM_TOP_KEYS, where=str(p))
+
+    version = raw.get("version")
+    if version is None:
+        raise ParameterError(f"{p}: missing required key 'version' (current: {CONFIG_VERSION})")
+    if version != CONFIG_VERSION:
+        raise ParameterError(
+            f"{p}: unsupported config version {version!r} (this build supports {CONFIG_VERSION})"
+        )
+
+    kind = raw.get("kind")
+    if kind != "primitive":
+        raise ParameterError(
+            f'{p}: primitive configs require kind = "primitive" (got kind={kind!r})'
+        )
+
+    cfg = PrimitiveConfig()
+    if "output" in raw:
+        cfg.output = _resolve_path(raw["output"], base=p.parent)
+
+    if "geometry" in raw:
+        _reject_unknown_keys(raw["geometry"], _GEOMETRY_KEYS, where=f"{p}:[geometry]")
+        g = raw["geometry"]
+        gtype = g.get("type", cfg.geometry.type)
+        if gtype not in _PRIM_TYPES:
+            raise ParameterError(
+                f"{p}:[geometry]: unknown type {gtype!r}; expected one of {sorted(_PRIM_TYPES)!r}"
+            )
+        cfg.geometry = GeometryConfig(
+            type=gtype,
+            vmin=_coerce_3vec(g["vmin"], "vmin") if "vmin" in g else None,
+            vmax=_coerce_3vec(g["vmax"], "vmax") if "vmax" in g else None,
+            axis=_coerce_axis(g["axis"]) if "axis" in g else cfg.geometry.axis,
+            center=_coerce_3vec(g["center"], "center") if "center" in g else cfg.geometry.center,
+            z0=g.get("z0"),
+            z1=g.get("z1"),
+            r_in=g.get("r_in"),
+            r_out=g.get("r_out"),
+            theta_start=g.get("theta_start", cfg.geometry.theta_start),
+            theta_end=g.get("theta_end"),
+            inner_frac=g.get("inner_frac"),
+        )
+
+    if "grid" in raw:
+        _reject_unknown_keys(raw["grid"], _PRIM_GRID_KEYS, where=f"{p}:[grid]")
+        gg = raw["grid"]
+        cfg.grid = PrimGridConfig(
+            ni=gg.get("ni", cfg.grid.ni),
+            nj=gg.get("nj", cfg.grid.nj),
+            nk=gg.get("nk", cfg.grid.nk),
+        )
+
+    if "spacing" in raw:
+        _reject_unknown_keys(raw["spacing"], _PRIM_SPACING_KEYS, where=f"{p}:[spacing]")
+        sp = raw["spacing"]
+        cfg.spacing = PrimSpacingConfig(
+            i_law=sp.get("i_law", cfg.spacing.i_law),
+            j_law=sp.get("j_law", cfg.spacing.j_law),
+            k_law=sp.get("k_law", cfg.spacing.k_law),
+            i_beta=sp.get("i_beta", cfg.spacing.i_beta),
+            j_beta=sp.get("j_beta", cfg.spacing.j_beta),
+            k_beta=sp.get("k_beta", cfg.spacing.k_beta),
+        )
+
+    return cfg
+
+
+def dump_primitive_template(stream=None, type_: str = "box") -> None:
+    """Write an annotated primitive TOML template to *stream*.
+
+    *type_* is one of ``"box"``, ``"annulus"``, ``"flat_caps"`` and
+    determines which geometry block is emitted.
+    """
+    if stream is None:
+        stream = sys.stdout
+    if type_ not in _PRIM_TYPES:
+        raise ParameterError(
+            f"dump_primitive_template: unknown type {type_!r}; "
+            f"expected one of {sorted(_PRIM_TYPES)!r}"
+        )
+
+    grid, sp = PrimGridConfig(), PrimSpacingConfig()
+
+    def emit(line: str = "") -> None:
+        print(line, file=stream)
+
+    emit(f"# SHORE primitive config — version {CONFIG_VERSION}")
+    emit("# CLI flags override these values; remove a key to fall back to its built-in default.")
+    emit("")
+    emit(f"version = {CONFIG_VERSION}")
+    emit('kind    = "primitive"')
+    emit("")
+    emit('# output = "background.geo"   # optional: where to write the .geo file(s)')
+    emit("")
+    emit("[geometry]")
+    emit(f'type = "{type_}"')
+    if type_ == "box":
+        emit("vmin = [0.0, 0.0, 0.0]")
+        emit("vmax = [10.0, 5.0, 3.0]")
+    elif type_ == "annulus":
+        emit("r_in   = 0.5")
+        emit("r_out  = 2.0")
+        emit("z0     = 0.0")
+        emit("z1     = 4.0")
+        emit('axis   = "z"          # "x" / "y" / "z" or [vx, vy, vz]')
+        emit("center = [0.0, 0.0, 0.0]")
+        emit("# theta_start = 0.0          # partial-sector start (radians)")
+        emit("# theta_end   = 3.141593     # partial-sector end; omit for full annulus")
+    else:  # flat_caps
+        emit("r_out      = 2.0")
+        emit("z0         = 0.0")
+        emit("z1         = 4.0")
+        emit('axis       = "z"      # "x" / "y" / "z" or [vx, vy, vz]')
+        emit("center     = [0.0, 0.0, 0.0]")
+        emit("inner_frac = 0.5      # central square corner radius / r_out (in (0, 1))")
+    emit("")
+    emit("[grid]")
+    for f in fields(grid):
+        emit(f"{f.name} = {getattr(grid, f.name)!r}")
+    emit("")
+    emit("[spacing]")
+    for f in fields(sp):
+        emit(f"{f.name} = {getattr(sp, f.name)!r}")

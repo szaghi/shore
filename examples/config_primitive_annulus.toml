@@ -1,0 +1,66 @@
+# SHORE primitive config — annular cylinder buffer
+# =================================================
+#
+# Scenario: a buffer mesh that fits between a near-body sphere mesh
+# (outer radius ~1.5) and an outer Cartesian background.  Full
+# (periodic-j) annulus along the z-axis.  Single block; writes one
+# .geo plus a one-block .vtm MultiBlock.
+#
+# Run with:
+#
+#     shore primitive annulus -c examples/config_primitive_annulus.toml -o buffer
+#
+# or via the standalone example:
+#
+#     python examples/visualize_annulus.py --config examples/config_primitive_annulus.toml --no-view
+#
+# To make this a partial sector instead (e.g. a half-pipe), uncomment
+# `theta_end` below and set `j_law` to anything you like — partial
+# sectors accept all three spacing laws.  Full annuli are restricted
+# to `j_law = "uniform"` because the wrap-around node would otherwise
+# disagree with itself.
+
+version = 1
+kind    = "primitive"
+
+# ----------------------------------------------------------------------
+# Geometry
+# ----------------------------------------------------------------------
+[geometry]
+type   = "annulus"
+r_in   = 1.5
+r_out  = 5.0
+z0     = -2.0
+z1     =  2.0
+axis   = "z"            # "x" / "y" / "z" or [vx, vy, vz]
+center = [0.0, 0.0, 0.0]
+# Uncomment for a partial sector (j becomes non-periodic):
+# theta_start = 0.0
+# theta_end   = 3.141593
+
+# ----------------------------------------------------------------------
+# Resolution
+# ----------------------------------------------------------------------
+[grid]
+ni = 30
+nj = 64
+nk = 40
+
+# ----------------------------------------------------------------------
+# Spacing
+# ----------------------------------------------------------------------
+# i: radial.  `tanh` clusters cells near the inner radius — useful
+#    for matching the resolution of the near-body mesh that this
+#    buffer surrounds.
+# j: azimuthal.  Must be `uniform` for a full annulus (the wrap-around
+#    requires equal azimuthal cell sizes); change here only when you
+#    also enable a partial sector above.
+# k: axial.  Uniform here; switch to `tanh2` for clustering at both
+#    z0 and z1 if you need fine cells at axial Dirichlet boundaries.
+[spacing]
+i_law  = "tanh"
+i_beta = 4.0
+j_law  = "uniform"
+j_beta = 3.0
+k_law  = "uniform"
+k_beta = 3.0

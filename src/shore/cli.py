@@ -20,7 +20,13 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from shore.config import MeshConfig, dump_template, load_config
+from shore.config import (
+    MeshConfig,
+    PrimitiveConfig,
+    dump_template,
+    load_config,
+    load_primitive_config,
+)
 from shore.mesh import (
     Body,
     CapsTopology,
@@ -33,6 +39,11 @@ from shore.mesh import (
     info_surface,
     view_geo_file,
     view_surface_file,
+)
+from shore.primitive import (
+    AnnularCylinderMesh,
+    BoxMesh,
+    FlatCapsCylinder,
 )
 
 app = typer.Typer(
@@ -699,35 +710,94 @@ def check(
 
 @app.command()
 def export(
-    input: Annotated[Path, typer.Argument(help="Input .geo or .npz file.")],
-    output: Annotated[Path | None, typer.Option("-o", "--output", help="Output .vts file.")] = None,
+    inputs: Annotated[
+        list[Path],
+        typer.Argument(
+            help=(
+                "One or more input files. A single .geo writes a .vts; a "
+                "single .npz writes a .vts; multiple .geo files are bundled "
+                "into a single .vtm MultiBlock."
+            ),
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Output file (.vts for single input, .vtm for multi)."),
+    ] = None,
     no_jacobian: Annotated[
         bool,
         typer.Option("--no-jacobian", help="Skip Jacobian cell data (geo only)."),
     ] = False,
 ) -> None:
-    """Export a .geo volume or .npz surface to VTK XML (.vts) for ParaView."""
-    if not input.exists():
-        _err.print(f"[red]Error:[/red] file not found: {input}")
+    """Export .geo / .npz files to VTK XML for ParaView.
+
+    - A single ``.geo`` or ``.npz`` writes one ``.vts``.
+    - Two or more ``.geo`` files are bundled into one ``.vtm`` MultiBlock
+      (block labels are derived from each input's filename stem).
+    """
+    if not inputs:
+        _err.print("[red]Error:[/red] no input files given.")
         raise typer.Exit(1) from None
 
-    suffix = input.suffix.lower()
+    for inp in inputs:
+        if not inp.exists():
+            _err.print(f"[red]Error:[/red] file not found: {inp}")
+            raise typer.Exit(1) from None
+
+    # Single-input dispatch (preserved from the original command).
+    if len(inputs) == 1:
+        input = inputs[0]
+        suffix = input.suffix.lower()
+        try:
+            if suffix == ".geo":
+                out = export_geo(input, output, with_jacobian=not no_jacobian)
+            elif suffix == ".npz":
+                out = export_surface(input, output)
+            else:
+                _err.print(
+                    f"[red]Error:[/red] unsupported extension '{suffix}'. Expected .geo or .npz."
+                )
+                raise typer.Exit(1) from None
+        except ImportError as exc:
+            _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+            raise typer.Exit(1) from None
+        _console.print(f"[green]✓[/green] Wrote {out}")
+        return
+
+    # Multi-input: every file must be .geo; bundle into one .vtm.
+    bad = [p for p in inputs if p.suffix.lower() != ".geo"]
+    if bad:
+        _err.print(
+            "[red]Error:[/red] multi-input export accepts .geo only; got: "
+            + ", ".join(str(p) for p in bad)
+        )
+        raise typer.Exit(1) from None
+
+    out_path = output if output is not None else inputs[0].with_suffix(".vtm")
+    if out_path.suffix.lower() != ".vtm":
+        out_path = out_path.with_suffix(".vtm")
 
     try:
-        if suffix == ".geo":
-            out = export_geo(input, output, with_jacobian=not no_jacobian)
-        elif suffix == ".npz":
-            out = export_surface(input, output)
-        else:
-            _err.print(
-                f"[red]Error:[/red] unsupported extension '{suffix}'. Expected .geo or .npz."
-            )
-            raise typer.Exit(1) from None
+        from shore.io.geo import read_geo
+        from shore.io.vtk import write_caps_vtm
     except ImportError as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    _console.print(f"[green]✓[/green] Wrote {out}")
+    blocks = [read_geo(p) for p in inputs]
+    labels = [p.stem for p in inputs]
+    try:
+        write_caps_vtm(
+            out_path,
+            blocks,
+            with_jacobian=not no_jacobian,
+            labels=labels,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _console.print(f"[green]✓[/green] Wrote {out_path} ({len(blocks)} blocks: {', '.join(labels)})")
 
 
 # ---------------------------------------------------------------------------
@@ -767,3 +837,376 @@ def view(
     except ImportError as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
+
+
+# ---------------------------------------------------------------------------
+# shore primitive
+# ---------------------------------------------------------------------------
+
+
+primitive_app = typer.Typer(
+    name="primitive",
+    help="Parametric structured-grid primitives (box, annulus, flat-caps).",
+    no_args_is_help=True,
+)
+app.add_typer(primitive_app)
+
+
+_AXIS_HELP = (
+    "Cylinder axis: 'x', 'y', 'z' (case-insensitive), or three "
+    "components like '1.0 0.0 0.0' for an arbitrary direction."
+)
+
+
+def _resolve_axis_cli(spec: str | None) -> str | tuple[float, float, float] | None:
+    """CLI helper: pass-through string axis; the primitive constructor
+    handles both the label and the whitespace-separated triple form."""
+    return spec
+
+
+def _emit_primitive_writeback(
+    primitive_obj: BoxMesh | AnnularCylinderMesh | FlatCapsCylinder,
+    output: Path | None,
+    default_name: str,
+) -> None:
+    """Resolve output path and call write_geo on the primitive."""
+    out = output if output is not None else Path(f"{default_name}.geo")
+    primitive_obj.write_geo(out)
+    if isinstance(primitive_obj, FlatCapsCylinder):
+        stem = out.with_suffix("") if out.suffix == ".geo" else out
+        for blk in primitive_obj.blocks:
+            _console.print(f"[green]wrote[/green] {stem}_{blk.label}.geo")
+    else:
+        target = out if out.suffix == ".geo" else out.with_suffix(".geo")
+        _console.print(f"[green]wrote[/green] {target}")
+
+
+def _load_prim_config(path: Path | None) -> PrimitiveConfig | None:
+    if path is None:
+        return None
+    try:
+        return load_primitive_config(path)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+
+def _pick_prim(cfg: PrimitiveConfig | None):  # type: ignore[no-untyped-def]
+    """Same precedence picker as ``shore mesh``: explicit CLI > config > default."""
+
+    def pick(name: str, cli_value, cfg_value):  # type: ignore[no-untyped-def]
+        if cfg is None:
+            return cli_value
+        src = _param_source(name)
+        if src == click.core.ParameterSource.COMMANDLINE:
+            return cli_value
+        if cfg_value is not None:
+            return cfg_value
+        return cli_value
+
+    return pick
+
+
+# ----- shore primitive box ------------------------------------------------
+
+
+@primitive_app.command("box")
+def primitive_box(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "-c",
+            "--config",
+            help='TOML primitive config (kind = "primitive", type = "box").',
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Output .geo file."),
+    ] = None,
+    vmin: Annotated[
+        tuple[float, float, float],
+        typer.Option("--min", help="Minimum corner of the box (x y z)."),
+    ] = (0.0, 0.0, 0.0),
+    vmax: Annotated[
+        tuple[float, float, float],
+        typer.Option("--max", help="Maximum corner of the box (x y z)."),
+    ] = (1.0, 1.0, 1.0),
+    ni: _NI = 40,
+    nj: _NJ = 40,
+    nk: _NK = 30,
+    i_law: Annotated[
+        str, typer.Option("--i-spacing", help="Spacing along i: uniform | tanh | tanh2.")
+    ] = "uniform",
+    j_law: Annotated[
+        str, typer.Option("--j-spacing", help="Spacing along j: uniform | tanh | tanh2.")
+    ] = "uniform",
+    k_law: Annotated[
+        str, typer.Option("--k-spacing", help="Spacing along k: uniform | tanh | tanh2.")
+    ] = "uniform",
+    i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
+    j_beta: Annotated[float, typer.Option("--j-beta")] = 3.0,
+    k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+) -> None:
+    """Build a Cartesian box primitive (single block)."""
+    cfg = _load_prim_config(config)
+    if cfg is not None and cfg.geometry.type != "box":
+        _err.print(
+            f"[red]Error:[/red] config geometry.type='{cfg.geometry.type}' does not match 'box'."
+        )
+        raise typer.Exit(1) from None
+
+    pick = _pick_prim(cfg)
+    g = cfg.geometry if cfg else None
+    grid = cfg.grid if cfg else None
+    sp = cfg.spacing if cfg else None
+
+    vmin = pick("vmin", vmin, g.vmin if g else None)
+    vmax = pick("vmax", vmax, g.vmax if g else None)
+    ni = pick("ni", ni, grid.ni if grid else None)
+    nj = pick("nj", nj, grid.nj if grid else None)
+    nk = pick("nk", nk, grid.nk if grid else None)
+    i_law = pick("i_law", i_law, sp.i_law if sp else None)
+    j_law = pick("j_law", j_law, sp.j_law if sp else None)
+    k_law = pick("k_law", k_law, sp.k_law if sp else None)
+    i_beta = pick("i_beta", i_beta, sp.i_beta if sp else None)
+    j_beta = pick("j_beta", j_beta, sp.j_beta if sp else None)
+    k_beta = pick("k_beta", k_beta, sp.k_beta if sp else None)
+    output = pick("output", output, cfg.output if cfg else None)
+
+    try:
+        prim = BoxMesh.build(
+            vmin=tuple(vmin),
+            vmax=tuple(vmax),
+            ni=ni,
+            nj=nj,
+            nk=nk,
+            i_law=i_law,
+            j_law=j_law,
+            k_law=k_law,
+            i_beta=i_beta,
+            j_beta=j_beta,
+            k_beta=k_beta,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _emit_primitive_writeback(prim, output, default_name="box")
+
+
+# ----- shore primitive annulus -------------------------------------------
+
+
+@primitive_app.command("annulus")
+def primitive_annulus(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "-c",
+            "--config",
+            help='TOML primitive config (kind = "primitive", type = "annulus").',
+        ),
+    ] = None,
+    output: Annotated[Path | None, typer.Option("-o", "--output", help="Output .geo file.")] = None,
+    r_in: Annotated[float, typer.Option("--r-in", help="Inner radius.")] = 0.5,
+    r_out: Annotated[float, typer.Option("--r-out", help="Outer radius.")] = 2.0,
+    z0: Annotated[float, typer.Option("--z0", help="Axial start (along --axis).")] = 0.0,
+    z1: Annotated[float, typer.Option("--z1", help="Axial end (along --axis).")] = 1.0,
+    axis: Annotated[str, typer.Option("--axis", help=_AXIS_HELP)] = "z",
+    center: Annotated[
+        tuple[float, float, float],
+        typer.Option("--center", help="World-space anchor for the cylinder axis."),
+    ] = (0.0, 0.0, 0.0),
+    theta_start: Annotated[
+        float, typer.Option("--theta-start", help="Sector start in radians (default 0).")
+    ] = 0.0,
+    theta_end: Annotated[
+        float | None,
+        typer.Option(
+            "--theta-end",
+            help="Sector end in radians; omit for a full annulus.",
+        ),
+    ] = None,
+    ni: _NI = 20,
+    nj: _NJ = 64,
+    nk: _NK = 30,
+    i_law: Annotated[str, typer.Option("--i-spacing")] = "uniform",
+    j_law: Annotated[str, typer.Option("--j-spacing")] = "uniform",
+    k_law: Annotated[str, typer.Option("--k-spacing")] = "uniform",
+    i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
+    j_beta: Annotated[float, typer.Option("--j-beta")] = 3.0,
+    k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+) -> None:
+    """Build an annular-cylinder primitive (single block, optionally periodic-j)."""
+    cfg = _load_prim_config(config)
+    if cfg is not None and cfg.geometry.type != "annulus":
+        _err.print(
+            f"[red]Error:[/red] config geometry.type='{cfg.geometry.type}' "
+            "does not match 'annulus'."
+        )
+        raise typer.Exit(1) from None
+
+    pick = _pick_prim(cfg)
+    g = cfg.geometry if cfg else None
+    grid = cfg.grid if cfg else None
+    sp = cfg.spacing if cfg else None
+
+    r_in = pick("r_in", r_in, g.r_in if g else None)
+    r_out = pick("r_out", r_out, g.r_out if g else None)
+    z0 = pick("z0", z0, g.z0 if g else None)
+    z1 = pick("z1", z1, g.z1 if g else None)
+    axis = pick("axis", axis, g.axis if g else None)
+    center = pick("center", center, g.center if g else None)
+    theta_start = pick("theta_start", theta_start, g.theta_start if g else None)
+    theta_end = pick("theta_end", theta_end, g.theta_end if g else None)
+    ni = pick("ni", ni, grid.ni if grid else None)
+    nj = pick("nj", nj, grid.nj if grid else None)
+    nk = pick("nk", nk, grid.nk if grid else None)
+    i_law = pick("i_law", i_law, sp.i_law if sp else None)
+    j_law = pick("j_law", j_law, sp.j_law if sp else None)
+    k_law = pick("k_law", k_law, sp.k_law if sp else None)
+    i_beta = pick("i_beta", i_beta, sp.i_beta if sp else None)
+    j_beta = pick("j_beta", j_beta, sp.j_beta if sp else None)
+    k_beta = pick("k_beta", k_beta, sp.k_beta if sp else None)
+    output = pick("output", output, cfg.output if cfg else None)
+
+    try:
+        prim = AnnularCylinderMesh.build(
+            r_in=r_in,
+            r_out=r_out,
+            z0=z0,
+            z1=z1,
+            ni=ni,
+            nj=nj,
+            nk=nk,
+            theta_start=theta_start,
+            theta_end=theta_end,
+            axis=axis,
+            center=tuple(center),
+            i_law=i_law,
+            j_law=j_law,
+            k_law=k_law,
+            i_beta=i_beta,
+            j_beta=j_beta,
+            k_beta=k_beta,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _emit_primitive_writeback(prim, output, default_name="annulus")
+
+
+# ----- shore primitive flat-caps -----------------------------------------
+
+
+@primitive_app.command("flat-caps")
+def primitive_flat_caps(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "-c",
+            "--config",
+            help='TOML primitive config (kind = "primitive", type = "flat_caps").',
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "-o",
+            "--output",
+            help="Output stem; writes 5 files: <stem>_center.geo + <stem>_sub_*.geo.",
+        ),
+    ] = None,
+    r_out: Annotated[float, typer.Option("--r-out", help="Outer radius.")] = 2.0,
+    z0: Annotated[float, typer.Option("--z0", help="Axial start (along --axis).")] = 0.0,
+    z1: Annotated[float, typer.Option("--z1", help="Axial end (along --axis).")] = 1.0,
+    axis: Annotated[str, typer.Option("--axis", help=_AXIS_HELP)] = "z",
+    center: Annotated[
+        tuple[float, float, float],
+        typer.Option("--center"),
+    ] = (0.0, 0.0, 0.0),
+    inner_frac: Annotated[
+        float,
+        typer.Option(
+            "--inner-frac",
+            help=(
+                "Ratio r_inner/r_out — the central square's corner radius "
+                "as a fraction of the outer disk radius (must lie in (0, 1))."
+            ),
+        ),
+    ] = 0.5,
+    ni: Annotated[int, typer.Option("--ni", help="Radial node count for each sub-block.")] = 20,
+    nc: Annotated[
+        int, typer.Option("--nc", help="Side node count for the central square (shared).")
+    ] = 20,
+    nk: _NK = 30,
+    i_law: Annotated[str, typer.Option("--i-spacing")] = "uniform",
+    c_law: Annotated[
+        str,
+        typer.Option("--c-spacing", help="Distribution along the central-square / arc direction."),
+    ] = "uniform",
+    k_law: Annotated[str, typer.Option("--k-spacing")] = "uniform",
+    i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
+    c_beta: Annotated[float, typer.Option("--c-beta")] = 3.0,
+    k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+) -> None:
+    """Build a 5-block flat-caps cylinder (no central hole — Chimera-free background)."""
+    cfg = _load_prim_config(config)
+    if cfg is not None and cfg.geometry.type != "flat_caps":
+        _err.print(
+            f"[red]Error:[/red] config geometry.type='{cfg.geometry.type}' "
+            "does not match 'flat_caps'."
+        )
+        raise typer.Exit(1) from None
+
+    pick = _pick_prim(cfg)
+    g = cfg.geometry if cfg else None
+    grid = cfg.grid if cfg else None
+    sp = cfg.spacing if cfg else None
+
+    # In the flat_caps config the central-square direction lives in
+    # ``[grid].nj`` and ``[spacing].j_law`` for visual consistency
+    # with box / annulus.  We map them here onto the kwargs that
+    # ``FlatCapsCylinder.build`` actually expects (``nc``, ``c_law``).
+    r_out = pick("r_out", r_out, g.r_out if g else None)
+    z0 = pick("z0", z0, g.z0 if g else None)
+    z1 = pick("z1", z1, g.z1 if g else None)
+    axis = pick("axis", axis, g.axis if g else None)
+    center = pick("center", center, g.center if g else None)
+    inner_frac = pick("inner_frac", inner_frac, g.inner_frac if g else None)
+    ni = pick("ni", ni, grid.ni if grid else None)
+    nc = pick("nc", nc, grid.nj if grid else None)
+    nk = pick("nk", nk, grid.nk if grid else None)
+    i_law = pick("i_law", i_law, sp.i_law if sp else None)
+    c_law = pick("c_law", c_law, sp.j_law if sp else None)
+    k_law = pick("k_law", k_law, sp.k_law if sp else None)
+    i_beta = pick("i_beta", i_beta, sp.i_beta if sp else None)
+    c_beta = pick("c_beta", c_beta, sp.j_beta if sp else None)
+    k_beta = pick("k_beta", k_beta, sp.k_beta if sp else None)
+    output = pick("output", output, cfg.output if cfg else None)
+
+    try:
+        prim = FlatCapsCylinder.build(
+            r_out=r_out,
+            z0=z0,
+            z1=z1,
+            ni=ni,
+            nc=nc,
+            nk=nk,
+            inner_frac=inner_frac,
+            axis=axis,
+            center=tuple(center),
+            i_law=i_law,
+            c_law=c_law,
+            k_law=k_law,
+            i_beta=i_beta,
+            c_beta=c_beta,
+            k_beta=k_beta,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _emit_primitive_writeback(prim, output, default_name="flat_caps")

@@ -15,26 +15,27 @@ make dev    # pip install -e ".[dev,vis]"
 
 ## Running Examples
 
-SHORE ships a standalone example script and a Jupyter notebook that
-serve as both documentation and sanity checks.
+SHORE ships a set of standalone example scripts and a Jupyter
+notebook that serve as both documentation and sanity checks.
 
-### `examples/visualize_geo.py` — caps topology
+### `examples/visualize_caps_sphere.py` — caps topology around a sphere
 
-The script generates a unit-sphere test case (always 6-block caps
-topology) and optionally visualises it:
+The script generates a unit-sphere body-fitted test case (always
+6-block caps topology) and optionally visualises it.  When called
+*without* `--generate`, it acts as a generic `.geo` / `.npz` viewer.
 
 ```bash
 # Generate sphere.stl + 6 sphere_<label>.geo files and open the viewer
-python examples/visualize_geo.py --generate
+python examples/visualize_caps_sphere.py --generate
 
 # Generate and save a screenshot instead of opening a window
-python examples/visualize_geo.py --generate --screenshot sphere_preview.png
+python examples/visualize_caps_sphere.py --generate --screenshot sphere_preview.png
 
 # Generate only (skip the viewer)
-python examples/visualize_geo.py --generate --no-view
+python examples/visualize_caps_sphere.py --generate --no-view
 
 # Export to a single VTK MultiBlock .vtm for ParaView
-python examples/visualize_geo.py --generate --vtk
+python examples/visualize_caps_sphere.py --generate --vtk
 ```
 
 Key parameters:
@@ -63,15 +64,15 @@ Spacing examples:
 
 ```bash
 # Tanh wall-normal spacing — fixed far-field boundary
-python examples/visualize_geo.py --generate \
+python examples/visualize_caps_sphere.py --generate \
   --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
 
 # Equator meridional clustering at the cap seams
-python examples/visualize_geo.py --generate \
+python examples/visualize_caps_sphere.py --generate \
   --surface-i-spacing tanh --surface-i-beta 4.0
 
 # Cap-corner clustering (tanh2 j-spacing — inherited by equator seam)
-python examples/visualize_geo.py --generate \
+python examples/visualize_caps_sphere.py --generate \
   --surface-j-spacing tanh2 --surface-j-beta 5.0
 ```
 
@@ -81,9 +82,9 @@ distribution and what physical region it clusters toward.
 Visualise an existing `.geo` or `.npz` file directly:
 
 ```bash
-python examples/visualize_geo.py sphere_sub0.geo
-python examples/visualize_geo.py sphere_k0.npz
-python examples/visualize_geo.py sphere_sub0.geo --screenshot out.png --no-edges
+python examples/visualize_caps_sphere.py sphere_sub0.geo
+python examples/visualize_caps_sphere.py sphere_k0.npz
+python examples/visualize_caps_sphere.py sphere_sub0.geo --screenshot out.png --no-edges
 ```
 
 Output: 6 `.geo` files per run
@@ -128,6 +129,45 @@ combine in a single recipe.
 
 See the full schema and precedence rules in
 [Config files](/reference/config).
+
+### Primitive examples
+
+For the parametric primitives (box, annulus, flat-caps) there is one
+standalone script per primitive plus a matching annotated TOML config.
+Each script generates the primitive in-memory, writes a `.geo`
+(or several, for multi-block primitives) **and a `.vtm` MultiBlock**
+for ParaView, and optionally opens the PyVista viewer.
+
+| Script | Primitive | Config | Output |
+|---|---|---|---|
+| `examples/visualize_box.py` | Cartesian box | `config_primitive_box.toml` | `box.geo`, `box.vtm` |
+| `examples/visualize_annulus.py` | annular cylinder | `config_primitive_annulus.toml` | `annulus.geo`, `annulus.vtm` |
+| `examples/visualize_flat_caps.py` | 5-block flat-caps cylinder | `config_primitive_flat_caps.toml` | `flat_caps_<label>.geo` ×5, `flat_caps.vtm` |
+
+Each script accepts the same shape of options:
+
+```bash
+# Defaults — open the viewer
+python examples/visualize_box.py
+
+# Skip the viewer (CI-friendly)
+python examples/visualize_box.py --no-view
+
+# Save a screenshot instead of opening a window
+python examples/visualize_box.py --screenshot box.png
+
+# Drive the parameters from a TOML config (CLI flags still override)
+python examples/visualize_annulus.py --config examples/config_primitive_annulus.toml --no-view
+python examples/visualize_flat_caps.py --config examples/config_primitive_flat_caps.toml --no-view
+
+# Skip the .vtm export (only .geo is written)
+python examples/visualize_box.py --no-vtk --no-view
+```
+
+The `.vtm` file is a small XML manifest pointing at one `.vts` per
+block stored under a sister directory (`box/`, `annulus/`, or
+`flat_caps/`).  Open the `.vtm` in ParaView; it pulls in every block
+automatically.
 
 ### `examples/visualize.ipynb` — Jupyter Notebook
 
@@ -278,7 +318,7 @@ export DISPLAY=
 make test
 
 # Smoke-generate the example mesh
-python examples/visualize_geo.py --generate --no-view
+python examples/visualize_caps_sphere.py --generate --no-view
 shore check sphere_sub0.geo
 shore info sphere_sub0.geo
 ```

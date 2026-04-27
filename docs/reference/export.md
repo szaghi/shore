@@ -1,25 +1,30 @@
 # shore export
 
-Export a `.geo` volume or `.npz` surface layer to VTK StructuredGrid format (`.vts`) for ParaView.
+Export `.geo` volumes or a `.npz` surface layer to VTK XML for ParaView.
+
+- **One** `.geo` or `.npz` input → one `.vts` StructuredGrid.
+- **Two or more** `.geo` inputs → one `.vtm` MultiBlock, with one
+  PyVista block per input. Block labels are derived from each input's
+  filename stem.
 
 ## Synopsis
 
 ```
-shore export [OPTIONS] INPUT
+shore export [OPTIONS] INPUTS...
 ```
 
 ## Arguments
 
 | Argument | Description |
 |---|---|
-| `INPUT` | Path to a `.geo` volume file or a `.npz` surface layer file |
+| `INPUTS...` | One or more input files. A single `.geo` / `.npz` produces a `.vts`; multiple `.geo` inputs produce a `.vtm` MultiBlock. |
 
 ## Options
 
 | Option | Default | Description |
 |---|---|---|
-| `-o` / `--output PATH` | `<stem>.vts` | Output `.vts` file path |
-| `--no-jacobian` | off | Omit Jacobian cell data (only applies to `.geo` input) |
+| `-o` / `--output PATH` | `<first-input-stem>.vts` (single) or `<first-input-stem>.vtm` (multi) | Output file path. The right extension (`.vts` / `.vtm`) is forced if missing. |
+| `--no-jacobian` | off | Omit Jacobian cell data (applies to `.geo` inputs in both single and multi modes) |
 | `--help` | — | Show this help and exit |
 
 ## Output
@@ -81,29 +86,29 @@ After loading a `.vts` file in ParaView:
 2. Color by **Jacobian** to identify low-quality cells (blue = low, red = high with the default `RdYlGn` palette).
 3. Use **Clip** or **Slice** to inspect interior layers.
 
-## Multi-block export (sphere-cap topology)
+## Multi-block export
 
-The `shore export` command handles single-block `.geo` files. For the
-6-block caps topology, use the Python API to bundle them into one
-ParaView-friendly `.vtm` MultiBlock:
-
-```python
-from shore.io.geo import read_geo
-from shore.io.vtk import write_caps_vtm
-
-labels = ["sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"]
-blocks = [read_geo(f"sphere_{lbl}.geo") for lbl in labels]
-write_caps_vtm("sphere.vtm", blocks, with_jacobian=True)
-```
-
-Or use the example script:
+Pass multiple `.geo` files in one invocation; SHORE bundles them into
+a single ParaView-friendly `.vtm` MultiBlock. Block keys inside the
+`.vtm` come from each file's stem.
 
 ```bash
-.venv/bin/python examples/visualize_geo.py \
-    --generate --vtk --no-view --nk 10
-# writes 6 sphere_<label>.geo files + sphere.vtm (MultiBlock)
+# 6-block caps topology — sphere_<label>.geo  →  sphere.vtm
+shore export sphere_*.geo -o sphere.vtm
 paraview sphere.vtm
+
+# 5-block flat-caps cylinder primitive
+shore export bg_*.geo -o background.vtm
 ```
+
+The shell glob is the natural way to drive this; the CLI itself
+takes a list of paths, so `shore export a.geo b.geo c.geo -o out.vtm`
+works equally well.
+
+If you pass a `.npz` together with `.geo` files, the command rejects
+the mix — multi-input mode is `.geo`-only by design (a single `.vtm`
+cannot represent both volume blocks and a surface layer
+unambiguously). Convert the surface separately if you need both.
 
 ## See also
 

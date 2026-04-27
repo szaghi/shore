@@ -1,0 +1,47 @@
+# SHORE primitive config — Cartesian box background
+# ==================================================
+#
+# Scenario: a rectangular axis-aligned background mesh with mild
+# clustering near the inflow plane (i = 0 face).  Single block;
+# writes one .geo file plus a one-block .vtm MultiBlock.
+#
+# Run with:
+#
+#     shore primitive box -c examples/config_primitive_box.toml -o background
+#
+# or via the standalone example:
+#
+#     python examples/visualize_box.py --config examples/config_primitive_box.toml --no-view
+
+version = 1
+kind    = "primitive"
+
+# ----------------------------------------------------------------------
+# Geometry: 10 x 5 x 3 box centred on the origin (offset to start at 0).
+# ----------------------------------------------------------------------
+[geometry]
+type = "box"
+vmin = [0.0, 0.0, 0.0]
+vmax = [10.0, 5.0, 3.0]
+
+# ----------------------------------------------------------------------
+# Resolution
+# ----------------------------------------------------------------------
+[grid]
+ni = 60
+nj = 30
+nk = 20
+
+# ----------------------------------------------------------------------
+# Spacing
+# ----------------------------------------------------------------------
+# The non-default knob: cluster cells along i (the long axis) toward
+# the inflow plane (i = 0) for boundary-layer-style refinement of a
+# wall-bounded flow.  j and k stay uniform.
+[spacing]
+i_law  = "tanh"
+i_beta = 4.0
+j_law  = "uniform"
+j_beta = 3.0
+k_law  = "uniform"
+k_beta = 3.0
