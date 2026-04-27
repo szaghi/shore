@@ -107,6 +107,7 @@ export default defineConfig({
           items: [
             { text: 'shore mesh',      link: '/reference/mesh' },
             { text: 'shore primitive', link: '/reference/primitive' },
+            { text: 'shore split',     link: '/reference/split' },
             { text: 'shore project',   link: '/reference/project' },
             { text: 'shore info',      link: '/reference/info' },
             { text: 'shore check',     link: '/reference/check' },

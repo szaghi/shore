@@ -1,0 +1,50 @@
+# SHORE split config — paired k-split across cubed-sphere sub-blocks
+# ===================================================================
+#
+# Used by ``examples/split_cubed_sphere.py`` to subdivide each of the
+# 4 equatorial sub-blocks (sub0, sub1, sub2, sub3) along the
+# wall-normal (k) axis at the same vertex index.  All four splits are
+# required because of the j-periodic equatorial ring: each sub_q
+# shares its j_lo with sub_(q-1)'s j_hi, so splitting only some of
+# the sub-blocks would break the ring.
+#
+# The polar caps (cap_north, cap_south) are intentionally *not*
+# listed here — they pass through unchanged.  Splitting a cap along
+# any axis would create a multi-chunk-to-single-cap mismatch on the
+# DIRICHLET cap-equator seam, which the splitter rejects.
+#
+# Run with:
+#
+#     python examples/split_cubed_sphere.py --config examples/config_split_cubed_sphere.toml
+#
+# or via the CLI directly (after generating a cubed-sphere mesh):
+#
+#     shore mesh sphere.stl --ni 30 --nj 40 --nk 12 -o sphere
+#     shore split sphere_*.geo -c examples/config_split_cubed_sphere.toml -o sphere_split
+
+version = 1
+kind    = "split"
+
+# Mid-block cut on the wall-normal axis: nk = 12 → cut at vertex 6.
+# Adjust to match your own (ni, nj, nk) — the splitter checks the
+# index is in range and raises if not.
+
+[[splits]]
+label = "sub0"
+axis  = "k"
+at    = [6]
+
+[[splits]]
+label = "sub1"
+axis  = "k"
+at    = [6]
+
+[[splits]]
+label = "sub2"
+axis  = "k"
+at    = [6]
+
+[[splits]]
+label = "sub3"
+axis  = "k"
+at    = [6]

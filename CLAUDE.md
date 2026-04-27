@@ -95,7 +95,7 @@ and the j-periodic `jacobian_field`. Writes one `<stem>.geo`.
 
 | Module | Role |
 |---|---|
-| `cli.py` | Typer CLI — 6 commands: `mesh`, `project`, `info`, `check`, `export`, `view`. `mesh` always builds the cubed-sphere topology (no `--topology` flag); `project` runs the legacy single-block lat-lon path. Shared option aliases (`_NI`, `_NJ`, `_NK`, `_DS`, `_GROWTH`, `_SMOOTH`, `_SITERS`, spacing flags) enforce consistent help text. Deprecated flags: `--cap-pull`, `--cap-squareness`, `--j-cluster-lon` accept values, warn, and are ignored. |
+| `cli.py` | Typer CLI — 9 commands: `mesh`, `primitive` (sub-app: `box`/`annulus`/`flat-caps`), `split`, `project`, `config`, `info`, `check`, `export`, `view`. `mesh` selects topology via `--topology cubed_sphere|ogrid` (default `cubed_sphere`); `project` runs the single-block lat-lon path. Shared option aliases (`_NI`, `_NJ`, `_NK`, `_DS`, `_GROWTH`, `_SMOOTH`, `_SITERS`, spacing flags) enforce consistent help text. Deprecated flags: `--cap-pull`, `--cap-squareness`, `--j-cluster-lon` accept values, warn, and are ignored. |
 | `surface/io.py` | `load_stl` — loads an STL file into a `trimesh.Trimesh`; validates it is a single mesh. |
 | `surface/projector.py` | `Projector` — ray-cast helper around `trimesh.RayMeshIntersector` with cached BVH; `Projector.project(dirs)` returns hit positions + per-ray status. Used by `Body` (lazy) and by `build_cap_k0` / `build_equator` directly. |
 | `surface/anchor.py` | `resolve_anchor(mesh)` — chooses an anchor inside the body for ray casting (centroid-based, with star-shaped checks). |
@@ -111,6 +111,8 @@ and the j-periodic `jacobian_field`. Writes one `<stem>.geo`.
 | `mesh/mesh.py` | `Mesh.from_stl(...)` orchestrates body load + topology build. `Mesh.march()` dispatches by topology: `_march_caps()` for `CubedSphereTopology` (per layer: snapshots all 6 blocks, builds ghost rows via `_sub_ghost_rows` / `_cap_ghost_rows`, advances each block with seam-aware normals + Laplacian + cap-block DIRICHLET pin, restitches sub-sub seams, runs Jacobian guards, commits) and `_march_ogrid()` for `OGridTopology` (single-block hyperbolic march with `periodic=(False, True)` and j-periodic Jacobian guard). |
 | `io/geo.py` | ASCII geo format (Xall_GPU compatible): `read_geo`, `write_geo`. |
 | `io/vtk.py` | VTK XML StructuredGrid export: `write_vts`, `write_surface_vts`, `write_caps_vtm` (MultiBlock for the 6-block cubed-sphere topology), `geo_to_pyvista`, `surface_to_pyvista`. |
+| `io/adjacency.py` | JSON sidecar for split block lists: `write_adjacency_json` / `read_adjacency_json` serialise the per-face BC + partner graph (FaceBC name + `{label, face}` partner reference). Read by downstream solvers to learn which faces are SHARED between which split chunks. |
+| `split.py` | `BlockSplit` dataclass + `split_blocks(blocks, splits)`: post-processing pass that subdivides any list of `HexBlock`s along ijk vertex indices, wires internal SHARED seams between consecutive chunks (numpy-view aliased; bit-exact node coincidence), and rewires external SHARED partner pointers. v1 supports single-axis-per-block per call; raises `ParameterError` on cross-block split mismatches (e.g. splitting `sub0` along k without paired splits on `sub1`/`sub2`/`sub3`). Used by the `shore split` CLI and reusable from Python. |
 | `vis.py` | PyVista interactive visualisation: `view_geo`, `view_surface`, `save_screenshot`. Optional dep (`shore[vis]`); Jupyter backend via `jupyter=True`. |
 
 ### Test Suite
@@ -128,6 +130,7 @@ Test files:
 - `test_spacing.py` — 1D spacing laws, domain builders, error cases
 - `test_jacobian.py` — Jacobian field calculations, inversion detection
 - `test_geo.py` / `test_vtk.py` / `test_vis.py` — file I/O round-trips, VTK export, PyVista helpers
+- `test_split.py` — `BlockSplit` validation, single- and multi-cut splits, internal-seam wiring, external-face BC preservation, cross-block adjacency rewiring, JSON sidecar round-trip, `shore split` CLI
 - `test_exceptions.py` — exception hierarchy
 
 Full suite: 194 tests, runs in ~2.5 s on a modern laptop.

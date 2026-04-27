@@ -86,6 +86,10 @@ _PRIM_GRID_KEYS = frozenset({"ni", "nj", "nk"})
 _PRIM_SPACING_KEYS = frozenset({"i_law", "j_law", "k_law", "i_beta", "j_beta", "k_beta"})
 _PRIM_TYPES = frozenset({"box", "annulus", "flat_caps"})
 
+# Split schema (kind = "split")
+_SPLIT_TOP_KEYS = frozenset({"version", "kind", "output", "splits"})
+_SPLIT_KEYS = frozenset({"label", "axis", "at"})
+
 
 @dataclass
 class GridConfig:
@@ -185,6 +189,28 @@ class PrimitiveConfig:
     geometry: GeometryConfig = field(default_factory=GeometryConfig)
     grid: PrimGridConfig = field(default_factory=PrimGridConfig)
     spacing: PrimSpacingConfig = field(default_factory=PrimSpacingConfig)
+
+
+@dataclass
+class SplitDirective:
+    """One split directive parsed from a TOML split config.
+
+    Mirrors :class:`shore.split.BlockSplit`; kept separate so the
+    config layer doesn't import the split module (avoids a circular
+    import for users who only want config validation).
+    """
+
+    label: str
+    axis: str
+    at: tuple[int, ...]
+
+
+@dataclass
+class SplitConfig:
+    """Resolved configuration for a single ``shore split`` invocation."""
+
+    output: Path | None = None
+    splits: list[SplitDirective] = field(default_factory=list)
 
 
 @dataclass
@@ -569,3 +595,102 @@ def dump_primitive_template(stream=None, type_: str = "box") -> None:
     emit("[spacing]")
     for f in fields(sp):
         emit(f"{f.name} = {getattr(sp, f.name)!r}")
+
+
+# ---------------------------------------------------------------------------
+# Split config loader
+# ---------------------------------------------------------------------------
+
+
+def load_split_config(path: str | Path) -> SplitConfig:
+    """Load and validate a SHORE TOML split config.
+
+    A split config is identified by ``kind = "split"`` at the top
+    level.  Schema (single example)::
+
+        version = 1
+        kind    = "split"
+
+        # Optional output stem; the CLI supplies the rest.
+        # output = "split_out/mesh"
+
+        [[splits]]
+        label = "sub0"
+        axis  = "k"
+        at    = [4]
+
+        [[splits]]
+        label = "background_center"
+        axis  = "i"
+        at    = [8, 16, 24]
+
+    Returns
+    -------
+    SplitConfig
+        Fully populated config.
+
+    Raises
+    ------
+    ParameterError
+        On file-not-found, malformed TOML, missing required keys,
+        unknown keys, or version / kind mismatch.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise ParameterError(f"Config file not found: {p}")
+
+    try:
+        with p.open("rb") as f:
+            raw = tomllib.load(f)
+    except tomllib.TOMLDecodeError as exc:
+        raise ParameterError(f"Invalid TOML in {p}: {exc}") from exc
+
+    _reject_unknown_keys(raw, _SPLIT_TOP_KEYS, where=str(p))
+
+    version = raw.get("version")
+    if version is None:
+        raise ParameterError(f"{p}: missing required key 'version' (current: {CONFIG_VERSION})")
+    if version != CONFIG_VERSION:
+        raise ParameterError(
+            f"{p}: unsupported config version {version!r} (this build supports {CONFIG_VERSION})"
+        )
+
+    kind = raw.get("kind")
+    if kind != "split":
+        raise ParameterError(f'{p}: split configs require kind = "split" (got kind={kind!r})')
+
+    cfg = SplitConfig()
+    if "output" in raw:
+        cfg.output = _resolve_path(raw["output"], base=p.parent)
+
+    raw_splits = raw.get("splits")
+    if not isinstance(raw_splits, list) or not raw_splits:
+        raise ParameterError(f"{p}: a split config must define at least one [[splits]] entry")
+
+    for i, entry in enumerate(raw_splits):
+        if not isinstance(entry, dict):
+            raise ParameterError(f"{p}:[[splits]][{i}]: must be a TOML table")
+        _reject_unknown_keys(entry, _SPLIT_KEYS, where=f"{p}:[[splits]][{i}]")
+        for required in ("label", "axis", "at"):
+            if required not in entry:
+                raise ParameterError(f"{p}:[[splits]][{i}]: missing required key {required!r}")
+        label = entry["label"]
+        axis = entry["axis"]
+        at = entry["at"]
+        if not isinstance(label, str):
+            raise ParameterError(f"{p}:[[splits]][{i}]: 'label' must be a string, got {label!r}")
+        if axis not in ("i", "j", "k"):
+            raise ParameterError(
+                f"{p}:[[splits]][{i}]: 'axis' must be 'i' / 'j' / 'k', got {axis!r}"
+            )
+        if not isinstance(at, list) or not at:
+            raise ParameterError(f"{p}:[[splits]][{i}]: 'at' must be a non-empty list, got {at!r}")
+        try:
+            cuts = tuple(int(x) for x in at)
+        except (TypeError, ValueError) as exc:
+            raise ParameterError(
+                f"{p}:[[splits]][{i}]: 'at' entries must be integers, got {at!r}"
+            ) from exc
+        cfg.splits.append(SplitDirective(label=label, axis=axis, at=cuts))
+
+    return cfg

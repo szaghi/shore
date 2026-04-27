@@ -26,6 +26,7 @@ from shore.config import (
     dump_template,
     load_config,
     load_primitive_config,
+    load_split_config,
 )
 from shore.mesh import (
     Body,
@@ -499,21 +500,16 @@ def mesh(
         if verbose:
             nc = nj // 4 + 1
             _console.print(
-                f"[green]✓[/green] Wrote 6 .geo files  "
-                f"(sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
+                f"[green]✓[/green] Wrote 6 .geo files  (sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
             )
     else:
         # Single-block O-grid: write one ``<stem>.geo`` (no _<label>).
         from shore.io.geo import write_geo
 
-        single_path = (
-            out_stem if out_stem.suffix == ".geo" else out_stem.with_suffix(".geo")
-        )
+        single_path = out_stem if out_stem.suffix == ".geo" else out_stem.with_suffix(".geo")
         write_geo(single_path, m.blocks[0].nodes)
         if verbose:
-            _console.print(
-                f"[green]✓[/green] Wrote {single_path}  ({ni}x{nj}x{nk})"
-            )
+            _console.print(f"[green]✓[/green] Wrote {single_path}  ({ni}x{nj}x{nk})")
 
 
 # ---------------------------------------------------------------------------
@@ -1249,3 +1245,137 @@ def primitive_flat_caps(
         raise typer.Exit(1) from None
 
     _emit_primitive_writeback(prim, output, default_name="flat_caps")
+
+
+# ---------------------------------------------------------------------------
+# shore split
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def split(
+    inputs: Annotated[
+        list[Path],
+        typer.Argument(
+            help=(
+                "Input .geo files to split.  Block labels are derived from each "
+                "file's stem (e.g. 'sub0' from 'sphere_sub0.geo')."
+            ),
+        ),
+    ],
+    config: Annotated[
+        Path,
+        typer.Option(
+            "-c",
+            "--config",
+            help="TOML split config (kind = 'split') describing one or more BlockSplit directives.",
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "-o",
+            "--output",
+            help=(
+                "Output stem.  Writes one '<stem>_<label>.geo' per chunk plus "
+                "'<stem>.adjacency.json' describing the SHARED / DIRICHLET graph."
+            ),
+        ),
+    ] = None,
+    verbose: _VERBOSE = False,
+) -> None:
+    """Split structured blocks along ijk vertex indices, preserving adjacency.
+
+    Reads existing ``.geo`` files, applies the splits described in the
+    TOML config (one ``[[splits]]`` entry per block), writes new
+    ``.geo`` files and a JSON sidecar with the adjacency graph.
+    """
+    if not inputs:
+        _err.print("[red]Error:[/red] no input .geo files given.")
+        raise typer.Exit(1) from None
+    for p in inputs:
+        if not p.exists():
+            _err.print(f"[red]Error:[/red] file not found: {p}")
+            raise typer.Exit(1) from None
+        if p.suffix.lower() != ".geo":
+            _err.print(f"[red]Error:[/red] input is not a .geo file: {p}")
+            raise typer.Exit(1) from None
+
+    try:
+        cfg = load_split_config(config)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    # Build HexBlocks from the input .geo files.  Block label = filename
+    # stem; if a stem looks like ``<base>_<label>``, the suffix is used.
+    from shore.io.adjacency import write_adjacency_json
+    from shore.io.geo import read_geo, write_geo
+    from shore.mesh.block import HexBlock
+    from shore.split import BlockSplit, split_blocks
+
+    # Determine block labels.  When all inputs share a common
+    # ``<base>_`` prefix, strip it so the labels match the topology
+    # builder's labels (e.g. ``sphere_sub0.geo`` → label ``sub0``).
+    # Otherwise fall back to the full stem of each input.
+    stems = [p.stem for p in inputs]
+    if len(stems) >= 2:
+        # Longest common ``<base>_`` prefix among all stems, ending
+        # at the last underscore boundary.
+        common = stems[0]
+        for s in stems[1:]:
+            i = 0
+            limit = min(len(common), len(s))
+            while i < limit and common[i] == s[i]:
+                i += 1
+            common = common[:i]
+        # Trim back to the last underscore (so the prefix is full segments).
+        if "_" in common:
+            base_stem = common.rsplit("_", 1)[0] + "_"
+        else:
+            base_stem = ""
+    else:
+        # Single input: strip up to and including the *last* underscore
+        # if present, so e.g. ``background_box.geo`` → label ``box``.
+        base_stem = stems[0].rsplit("_", 1)[0] + "_" if "_" in stems[0] else ""
+
+    blocks: list[HexBlock] = []
+    for p, stem in zip(inputs, stems, strict=True):
+        nodes = read_geo(p)
+        label = stem[len(base_stem) :] if base_stem and stem.startswith(base_stem) else stem
+        blocks.append(HexBlock(label=label, nodes=nodes))
+
+    if verbose:
+        _console.print(f"Read {len(blocks)} input block(s):")
+        for blk in blocks:
+            _console.print(f"  {blk.label:24s} {blk.nodes.shape}")
+
+    directives = [BlockSplit(label=d.label, axis=d.axis, at=d.at) for d in cfg.splits]
+    try:
+        new_blocks = split_blocks(blocks, directives)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    # Resolve output stem (CLI > config > default).
+    if output is None:
+        output = (
+            cfg.output if cfg.output is not None else (inputs[0].parent / (base_stem or "split"))
+        )
+
+    out_dir = output.parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write one .geo per output block, plus the adjacency JSON.
+    for blk in new_blocks:
+        target = out_dir / f"{output.name}_{blk.label}.geo"
+        write_geo(target, blk.nodes)
+        if verbose:
+            _console.print(f"  wrote {target}")
+
+    adj_path = out_dir / f"{output.name}.adjacency.json"
+    write_adjacency_json(new_blocks, adj_path)
+    _console.print(
+        f"[green]✓[/green] Wrote {len(new_blocks)} blocks "
+        f"+ {adj_path.name} ({len(directives)} split directive(s))"
+    )

@@ -34,7 +34,7 @@ features:
     linkText: Topologies
   - icon: 🔍
     title: Focused CLI
-    details: Eight commands — mesh, primitive, project, config, info, check, export, view — let you generate, inspect, validate, and visualise both body-fitted and parametric grids. A Rich progress bar shows per-layer Jacobians during marching.
+    details: Nine commands — mesh, primitive, split, project, config, info, check, export, view — let you generate, subdivide for parallel solvers, inspect, validate, and visualise both body-fitted and parametric grids. A Rich progress bar shows per-layer Jacobians during marching.
     link: /reference/mesh
     linkText: CLI reference
   - icon: 🏗️
