@@ -1,0 +1,62 @@
+# SHORE mesh config — near-body cubed-sphere for the assembly example
+# ====================================================================
+#
+# Used by ``examples/assembly_sphere_in_cylinder.py`` to drive the
+# 6-block cubed-sphere mesh wrapping the unit-radius (diameter 1.0)
+# sphere body that sits at the origin of the cylindrical domain.
+#
+# Output: 6 .geo files written by the orchestrator script (the script
+# overrides ``input`` and ``output`` because the icosphere is built
+# in-memory and the output stem follows the script's own layout).
+
+version = 1
+
+# ----------------------------------------------------------------------
+# I/O — the orchestrator script overrides both keys.  These are kept for
+# parity with `shore mesh -c` invocation and for ``shore config validate``.
+# ----------------------------------------------------------------------
+input = "sphere.stl"
+# output = "fuselage"
+
+# ----------------------------------------------------------------------
+# Grid
+# ----------------------------------------------------------------------
+# ni / nj chosen so the cap radial step (theta_cap/(nc-1)) and the
+# equator radial step ((pi-2*theta_cap)/(ni-1)) land inside the per-j
+# C1 pinning window (ratio in [0.5, 2.0]):
+#   nc = nj//4 + 1 = 11
+#   cap step = pi/6 / 10 ≈ 0.052 rad  (3.0 deg)
+#   eq step  = (pi - pi/3) / 29 ≈ 0.072 rad  (4.1 deg)
+#   ratio    = 0.72  (well inside the pinning window)
+[grid]
+ni            = 30
+nj            = 40
+nk            = 13
+theta_cap_deg = 30.0
+topology      = "cubed_sphere"
+
+# ----------------------------------------------------------------------
+# March — geometric wall-normal spacing
+# ----------------------------------------------------------------------
+# ds=0.01 gives a first cell ~0.3x the surface cell scale; growth=1.1
+# over nk=13 layers reaches a total thickness ~0.21, putting the outer
+# cubed-sphere shell at r ~ 0.7 (= 0.5 body radius + 0.2 wall-normal).
+#
+# A tanh wall-clustered law also works on bigger bodies, but on this
+# tiny body (radius 0.5) the resulting first cell is too thin and
+# inverts the cap-equator corner cells during the first march step.
+[march]
+ds              = 0.01
+growth          = 1.1
+smooth          = 0.2
+smooth_iters    = 2
+blend_normals_k = 0
+
+[surface]
+i_spacing = "uniform"
+i_beta    = 3.0
+j_spacing = "uniform"
+j_beta    = 3.0
+
+[volume]
+k_spacing = "geometric"

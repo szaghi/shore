@@ -1,0 +1,63 @@
+# SHORE primitive config — background for the assembly example
+# =============================================================
+#
+# Used by ``examples/assembly_sphere_in_cylinder.py`` to drive the
+# 5-block flat-caps cylinder background that fills the whole domain
+# ``[-10, 10]^2 × [-10, 50]`` around the unit-radius sphere body at
+# the origin.
+#
+# Domain shape: cylindrical, axis along z, with z ∈ [-10, 50] giving
+# 10 body-lengths upstream and 50 downstream of the body.  Radius 10
+# means ~20 body-diameters laterally.  The flat-caps decomposition
+# avoids a Chimera fringe at the cylinder's inner boundary, which is
+# the whole point of using this primitive over a hollow annulus.
+
+version = 1
+kind    = "primitive"
+
+# ----------------------------------------------------------------------
+# Geometry
+# ----------------------------------------------------------------------
+# inner_frac = 0.4 puts the central square corners at r = 4.0 — well
+# clear of the near-body cubed-sphere mesh (outer shell at r ~ 0.7),
+# so the background's central-square cells overlap a region the
+# near-body mesh has already covered (Chimera-style; the solver
+# handles the donor lookup).
+[geometry]
+type       = "flat_caps"
+r_out      = 10.0
+z0         = -10.0
+z1         =  50.0
+axis       = "z"
+center     = [0.0, 0.0, 0.0]
+inner_frac = 0.4
+
+# ----------------------------------------------------------------------
+# Resolution
+# ----------------------------------------------------------------------
+# In the flat_caps schema:
+#   ni → radial node count for each sub-block (square edge → circle)
+#   nj → side node count of the central square (shared with sub-blocks)
+#   nk → axial node count
+#
+# nk is chosen larger than ni/nc because the axial extent (60 units)
+# is much longer than the radial extent (10 units).
+[grid]
+ni = 16
+nj = 24
+nk = 60
+
+# ----------------------------------------------------------------------
+# Spacing
+# ----------------------------------------------------------------------
+# Uniform across the board for a first-tentative example.  Production
+# use would likely cluster i/c near the body region (radial r → 0)
+# and k near the inflow (z → z0); see docs/topologies/primitives for
+# how to set those.
+[spacing]
+i_law  = "uniform"
+i_beta = 3.0
+j_law  = "uniform"
+j_beta = 3.0
+k_law  = "uniform"
+k_beta = 3.0

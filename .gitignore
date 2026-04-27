@@ -18,6 +18,9 @@ coverage.xml
 # examples/tests artifacts
 *.geo
 *.stl
+*.vtm
+*.vts
+examples_out/
 
 # VitePress
 docs/node_modules/
