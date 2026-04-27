@@ -295,7 +295,11 @@ class TestConfigSubcommand:
         p.write_text(f'version = 1\ninput = "{sphere_stl}"\n')
         r = runner.invoke(app, ["config", "validate", str(p)])
         assert r.exit_code == 0
-        assert "parses cleanly" in r.output
+        # Click may wrap the output line at the terminal width, putting a
+        # newline anywhere between "parses" and "cleanly" depending on the
+        # config-file path length.  Collapse whitespace before matching so
+        # the test is invariant to wrap position.
+        assert "parses cleanly" in " ".join(r.output.split())
 
     def test_validate_action_rejects_typo(self, tmp_path):
         p = tmp_path / "shore.toml"
