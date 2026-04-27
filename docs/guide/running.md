@@ -94,6 +94,41 @@ sphere_cap_north.geo                 # north polar cap
 sphere_cap_south.geo                 # south polar cap
 ```
 
+### `examples/config_fuselage.toml` — config-driven workflow
+
+When the parameter set gets large enough that the CLI invocation
+becomes a wall of flags, switch to a TOML config file. Every CLI flag
+on `shore mesh` has an equivalent TOML key; the file is parsed,
+validated, and merged with any explicit CLI flags before the run
+starts (CLI flag > config value > built-in default).
+
+```bash
+# bootstrap a fresh config from defaults
+shore config template > shore.toml
+
+# or start from the annotated example
+cp examples/config_fuselage.toml my_case.toml
+
+# parse-check before running (catches typos, version mismatches, etc.)
+shore config validate my_case.toml
+
+# run the full pipeline; INPUT is taken from the config's `input` key
+shore mesh -c my_case.toml -v
+
+# CLI overrides still apply: this picks up everything from the file
+# but uses --nk 80 instead of the configured value.
+shore mesh -c my_case.toml --nk 80
+```
+
+The example config (`examples/config_fuselage.toml`) demonstrates
+every section with a non-default choice — tanh wall-normal spacing
+with fixed thickness, equator clustering at the cap seams, blended
+STL normals in the near-wall region — so you can see how the knobs
+combine in a single recipe.
+
+See the full schema and precedence rules in
+[Config files](/reference/config).
+
 ### `examples/visualize.ipynb` — Jupyter Notebook
 
 A complete notebook covering mesh generation, Jacobian analysis,

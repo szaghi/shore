@@ -1,0 +1,89 @@
+# SHORE meshing config — annotated example
+# =========================================
+#
+# Representative scenario: high-resolution boundary-layer mesh around a
+# fuselage-shaped STL.  Demonstrates every section of the v1 schema
+# with a non-default choice in each, so you can see how the knobs
+# interact in a single coherent recipe.
+#
+# The numbers below are tuned for a fuselage-scale STL (length ~1, in
+# the body's units).  If you want to try the example on the unit-sphere
+# fixture from the test suite, also pass `--volume-k-thickness 1.0` or
+# drop `volume.k_spacing` back to "geometric" — a thickness of 5 on a
+# radius-1 body asks the outer cells to wrap around the body and will
+# trigger a negative-Jacobian abort on the first layer.
+#
+# Run with:
+#
+#     shore config validate examples/config_fuselage.toml
+#     shore mesh -c examples/config_fuselage.toml -v
+#
+# CLI flags override anything you set here, e.g.
+#
+#     shore mesh -c examples/config_fuselage.toml --nk 80
+#
+# would still pick up everything below, but with `nk = 80` instead of
+# the configured 50.
+
+version = 1
+
+# ----------------------------------------------------------------------
+# I/O
+# ----------------------------------------------------------------------
+# Paths are resolved relative to THIS config file's directory.
+# Replace 'fuselage.stl' with your own surface (any star-shaped body).
+
+input  = "fuselage.stl"
+output = "out/fuselage"   # 6 files: out/fuselage_sub*.geo + out/fuselage_cap_*.geo
+
+# ----------------------------------------------------------------------
+# Grid resolution and cap geometry
+# ----------------------------------------------------------------------
+# The cap radial step (theta_cap / (nc - 1), nc = nj // 4 + 1) should
+# stay within ~2x of the equator's natural radial step
+# ((pi - 2*theta_cap) / (ni - 1)) — otherwise the C1 seam pin falls
+# back to the unpinned i_spacing law and emits a UserWarning.
+[grid]
+ni            = 80
+nj            = 120
+nk            = 50
+theta_cap_deg = 30.0
+
+# ----------------------------------------------------------------------
+# Marching: per-layer extrusion and smoothing
+# ----------------------------------------------------------------------
+# `ds` and `growth` are only consumed when volume.k_spacing = "geometric".
+# With the tanh / tanh2 laws the per-layer thickness is determined by
+# k_thickness + k_beta + nk; ds and growth are kept here for reference
+# but ignored at run time.
+[march]
+ds              = 1.0e-5
+growth          = 1.15
+smooth          = 0.3        # 0 = no smoothing; 1 = full Laplacian replacement
+smooth_iters    = 3          # number of Jacobi sweeps per layer
+blend_normals_k = 5          # blend STL surface normals into the first 5 layers
+
+# ----------------------------------------------------------------------
+# Surface (k=0) spacing
+# ----------------------------------------------------------------------
+# i: equator meridional distribution.  `tanh` clusters at both cap
+# seams (one-sided Roberts on the half-arc, mirrored).
+# j: cap-edge tangent-plane distribution.  `uniform` keeps cap cells
+# square; switch to `tanh2` if you need refinement at the cap corners.
+[surface]
+i_spacing = "tanh"
+i_beta    = 4.0
+j_spacing = "uniform"
+j_beta    = 3.0
+
+# ----------------------------------------------------------------------
+# Volume (k>0) spacing
+# ----------------------------------------------------------------------
+# `tanh` gives a fixed total wall-normal thickness with clustering at
+# the wall (k=0).  `k_thickness` is REQUIRED for tanh / tanh2.
+# Drop the law to "geometric" if you prefer to control the first-layer
+# thickness via `march.ds` and let the far-field float.
+[volume]
+k_spacing   = "tanh"
+k_beta      = 4.0
+k_thickness = 5.0

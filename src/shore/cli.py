@@ -5,9 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
+import click
 import numpy as np
 import typer
 from rich.console import Console
+from rich.markup import escape as _esc
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -18,6 +20,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from shore.config import MeshConfig, dump_template, load_config
 from shore.mesh import (
     Body,
     CapsTopology,
@@ -187,6 +190,35 @@ def _resolve_theta(
     return theta_cap
 
 
+def _param_source(name: str) -> click.core.ParameterSource | None:
+    """Return how *name* was supplied for the current click invocation, or None."""
+    try:
+        ctx = click.get_current_context()
+    except RuntimeError:
+        return None
+    return ctx.get_parameter_source(name)
+
+
+def _make_picker(cfg):  # type: ignore[no-untyped-def]
+    """Build a (name, cli_value, cfg_value) -> resolved-value function.
+
+    Precedence: explicit CLI flag wins; otherwise config (when present and
+    not None); otherwise the CLI default.
+    """
+
+    def pick(name: str, cli_value, cfg_value):  # type: ignore[no-untyped-def]
+        if cfg is None:
+            return cli_value
+        src = _param_source(name)
+        if src == click.core.ParameterSource.COMMANDLINE:
+            return cli_value
+        if cfg_value is not None:
+            return cfg_value
+        return cli_value
+
+    return pick
+
+
 def _build_spacing_k(
     volume_k_spacing: str,
     volume_k_beta: float,
@@ -217,7 +249,18 @@ def _build_spacing_k(
 
 @app.command()
 def mesh(
-    input: Annotated[Path, typer.Argument(help="Input STL file.")],
+    input: Annotated[
+        Path | None,
+        typer.Argument(help="Input STL file (optional when --config supplies it)."),
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "-c",
+            "--config",
+            help="TOML config file (CLI flags take precedence over its values).",
+        ),
+    ] = None,
     output: Annotated[
         Path | None,
         typer.Option("-o", "--output", help="Output stem for .geo files."),
@@ -244,10 +287,70 @@ def mesh(
     blend_normals_k: _BLEND_K = 0,
     verbose: _VERBOSE = False,
 ) -> None:
-    """Full pipeline: STL → 6-block sphere O-grid volume → geo files."""
+    """Full pipeline: STL → 6-block sphere O-grid volume → geo files.
+
+    Parameter precedence (highest first): explicit CLI flag → config file → built-in default.
+    """
+    cfg: MeshConfig | None = None
+    if config is not None:
+        try:
+            cfg = load_config(config)
+        except Exception as exc:
+            _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+            raise typer.Exit(1) from None
+
+    # Resolve input STL: CLI positional > config > error.
+    if input is None and cfg is not None:
+        input = cfg.input
+    if input is None:
+        _err.print("[red]Error:[/red] no input STL given (pass as positional arg or via --config).")
+        raise typer.Exit(1) from None
+
     if not input.exists():
         _err.print(f"[red]Error:[/red] file not found: {input}")
         raise typer.Exit(1) from None
+
+    # CLI > config > default for every scalar option.  ``_pick`` returns
+    # the CLI value when the user typed the flag explicitly (click's
+    # parameter source is COMMANDLINE), otherwise the config value
+    # (when a config file was loaded), otherwise the CLI default.
+    _pick = _make_picker(cfg)
+    output = _pick("output", output, cfg.output if cfg else None)
+    ni = _pick("ni", ni, cfg.grid.ni if cfg else None)
+    nj = _pick("nj", nj, cfg.grid.nj if cfg else None)
+    nk = _pick("nk", nk, cfg.grid.nk if cfg else None)
+    ds = _pick("ds", ds, cfg.march.ds if cfg else None)
+    growth = _pick("growth", growth, cfg.march.growth if cfg else None)
+    smooth = _pick("smooth", smooth, cfg.march.smooth if cfg else None)
+    smooth_iters = _pick("smooth_iters", smooth_iters, cfg.march.smooth_iters if cfg else None)
+    blend_normals_k = _pick(
+        "blend_normals_k", blend_normals_k, cfg.march.blend_normals_k if cfg else None
+    )
+    surface_i_spacing = _pick(
+        "surface_i_spacing", surface_i_spacing, cfg.surface.i_spacing if cfg else None
+    )
+    surface_i_beta = _pick("surface_i_beta", surface_i_beta, cfg.surface.i_beta if cfg else None)
+    surface_j_spacing = _pick(
+        "surface_j_spacing", surface_j_spacing, cfg.surface.j_spacing if cfg else None
+    )
+    surface_j_beta = _pick("surface_j_beta", surface_j_beta, cfg.surface.j_beta if cfg else None)
+    volume_k_spacing = _pick(
+        "volume_k_spacing", volume_k_spacing, cfg.volume.k_spacing if cfg else None
+    )
+    volume_k_beta = _pick("volume_k_beta", volume_k_beta, cfg.volume.k_beta if cfg else None)
+    volume_k_thickness = _pick(
+        "volume_k_thickness", volume_k_thickness, cfg.volume.k_thickness if cfg else None
+    )
+
+    # theta_cap is special: CLI exposes two flags (--theta-cap and
+    # --theta-cap-deg) but the config has a single resolved radian
+    # value.  Apply the same picker logic to whichever CLI flag was set.
+    if cfg is not None and cfg.grid.theta_cap is not None:
+        cli_set_rad = _param_source("theta_cap") == click.core.ParameterSource.COMMANDLINE
+        cli_set_deg = _param_source("theta_cap_deg") == click.core.ParameterSource.COMMANDLINE
+        if not (cli_set_rad or cli_set_deg):
+            theta_cap = cfg.grid.theta_cap
+            theta_cap_deg = None
 
     if cap_pull is not None:
         import warnings as _warn
@@ -315,7 +418,7 @@ def mesh(
             j_beta=surface_j_beta,
         )
     except Exception as exc:
-        _err.print(f"[red]Error:[/red] {exc}")
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
     m = Mesh(body=body, blocks=blocks, topology=topo)
@@ -340,7 +443,7 @@ def mesh(
                     blend_normals_k=blend_normals_k,
                 )
             except Exception as exc:
-                _err.print(f"[red]Error:[/red] {exc}")
+                _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
                 raise typer.Exit(1) from None
     else:
         try:
@@ -353,7 +456,7 @@ def mesh(
                 blend_normals_k=blend_normals_k,
             )
         except Exception as exc:
-            _err.print(f"[red]Error:[/red] {exc}")
+            _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
             raise typer.Exit(1) from None
 
     # --- write ---
@@ -364,6 +467,66 @@ def mesh(
         _console.print(
             f"[green]✓[/green] Wrote 6 .geo files  (sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
         )
+
+
+# ---------------------------------------------------------------------------
+# shore config
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="config")
+def config_cmd(
+    action: Annotated[
+        str,
+        typer.Argument(
+            help="One of: 'template' (emit a default config), 'validate' (check a config).",
+        ),
+    ],
+    path: Annotated[
+        Path | None,
+        typer.Argument(help="Path to validate (required for 'validate'); ignored for 'template'."),
+    ] = None,
+) -> None:
+    """Inspect SHORE TOML configs.
+
+    Examples
+    --------
+
+        shore config template > shore.toml
+        shore config validate shore.toml
+    """
+    if action == "template":
+        dump_template()
+        return
+
+    if action == "validate":
+        if path is None:
+            _err.print("[red]Error:[/red] 'validate' requires a config-file path.")
+            raise typer.Exit(1) from None
+        try:
+            cfg = load_config(path)
+        except Exception as exc:
+            _err.print(f"[red]✗[/red] {_esc(str(exc))}")
+            raise typer.Exit(1) from None
+        _console.print(f"[green]✓[/green] {path} parses cleanly")
+        _console.print(f"  input         = {cfg.input}")
+        _console.print(f"  grid          ni={cfg.grid.ni} nj={cfg.grid.nj} nk={cfg.grid.nk}")
+        _console.print(
+            f"  march         ds={cfg.march.ds} growth={cfg.march.growth} "
+            f"smooth={cfg.march.smooth}/{cfg.march.smooth_iters}"
+        )
+        _console.print(
+            f"  surface       i={cfg.surface.i_spacing}({cfg.surface.i_beta}) "
+            f"j={cfg.surface.j_spacing}({cfg.surface.j_beta})"
+        )
+        _console.print(
+            f"  volume        k={cfg.volume.k_spacing}({cfg.volume.k_beta}) "
+            f"thickness={cfg.volume.k_thickness}"
+        )
+        return
+
+    _err.print(f"[red]Error:[/red] unknown action {action!r}; expected 'template' or 'validate'.")
+    raise typer.Exit(1) from None
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +724,7 @@ def export(
             )
             raise typer.Exit(1) from None
     except ImportError as exc:
-        _err.print(f"[red]Error:[/red] {exc}")
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
     _console.print(f"[green]✓[/green] Wrote {out}")
@@ -602,5 +765,5 @@ def view(
             )
             raise typer.Exit(1) from None
     except ImportError as exc:
-        _err.print(f"[red]Error:[/red] {exc}")
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None

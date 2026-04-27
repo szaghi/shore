@@ -54,6 +54,9 @@ SHORE is the foundational meshing layer for a Chimera (overset) CFD mesh generat
 ```bash
 # Full pipeline — one command
 shore mesh fuselage.stl --ni 60 --nj 80 --nk 40 --ds 1e-4 --growth 1.15 -o fuselage.geo -v
+
+# Or drive everything from a TOML config file (see /reference/config)
+shore mesh -c fuselage.toml
 ```
 
 The result is an O-grid: a single structured block that wraps tightly around the body, with high near-wall resolution and smoothly growing cells toward the far field — exactly what a Chimera solver needs for its near-body block.

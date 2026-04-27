@@ -103,6 +103,12 @@ export default defineConfig({
           ],
         },
         {
+          text: 'Configuration',
+          items: [
+            { text: 'Config files', link: '/reference/config' },
+          ],
+        },
+        {
           text: 'Python API',
           items: [
             { text: 'surface.io',             link: '/reference/api-surface-io' },

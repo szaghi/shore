@@ -12,14 +12,17 @@ across all layers.
 ## Synopsis
 
 ```
-shore mesh [OPTIONS] INPUT
+shore mesh [OPTIONS] [INPUT]
 ```
+
+`INPUT` is optional when `--config` supplies it. CLI flags override
+config-file values; config-file values override built-in defaults.
 
 ## Arguments
 
 | Argument | Description |
 |---|---|
-| `INPUT` | Path to the input `.stl` file (binary or ASCII) |
+| `INPUT` | Path to the input `.stl` file (binary or ASCII). Optional when `--config` is given and the config provides `input`. |
 
 ## Options
 
@@ -77,6 +80,7 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 
 | Option | Default | Description |
 |---|---|---|
+| `-c` / `--config PATH` | — | Read parameter values from a TOML file (see [Config files](config)). Explicit CLI flags still override the file. |
 | `-o` / `--output PATH` | `<INPUT stem>` | Output stem; writes `<stem>_sub0.geo` ... `<stem>_cap_south.geo` (6 files) |
 | `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats |
 | `--help` | — | Show this help and exit |
@@ -168,6 +172,13 @@ shore mesh airfoil.stl \
   -o airfoil
 ```
 
+Drive the full pipeline from a TOML config (see [Config files](config)):
+
+```bash
+shore mesh -c fuselage.toml          # all parameters from the file
+shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
+```
+
 ## Notes
 
 - The STL must be a single connected, watertight mesh. Multi-body STL files
@@ -182,6 +193,7 @@ shore mesh airfoil.stl \
 
 ## See also
 
+- [Config files](config) — drive `shore mesh` from a TOML file (`-c`)
 - [`shore project`](project) — generate the k=0 surface only (single-block,
   legacy `body.project` path; not the caps topology)
 - [`shore check`](check) — validate Jacobians on existing `.geo` files
