@@ -4,9 +4,11 @@ All functions are pure numpy — no scipy dependency.
 
 Public API
 ----------
-build_i_coords   : latitude parameter redistribution
-build_j_coords   : longitude parameter redistribution (periodic axis)
-build_k_steps    : wall-normal step sizes
+build_i_coords         : latitude parameter redistribution
+build_j_coords         : longitude parameter redistribution (periodic axis)
+build_k_steps          : wall-normal step sizes
+pinned_distribution    : 1D coords with first/last interval pinned to caller-given
+                         step sizes (used for C1 matching at multi-block seams)
 
 Low-level primitives (reusable):
 uniform, tanh_one_sided, tanh_two_sided, geometric
@@ -21,6 +23,7 @@ from shore.exceptions import ParameterError
 # ---------------------------------------------------------------------------
 # Low-level 1D laws
 # ---------------------------------------------------------------------------
+
 
 def uniform(n: int, start: float, stop: float) -> np.ndarray:
     """Uniform distribution: n points in [start, stop].
@@ -102,7 +105,7 @@ def tanh_two_sided(
         t = 0.5 * (1.0 + np.tanh(beta * (tau - 0.5)) / np.tanh(0.5 * beta))
     else:
         total = stop - start
-        frac = (cluster_at - start) / total   # map cluster_at → [0, 1]
+        frac = (cluster_at - start) / total  # map cluster_at → [0, 1]
         t = 0.5 * (1.0 + np.tanh(beta * (tau - frac)) / np.tanh(0.5 * beta))
         t = np.clip(t, 0.0, 1.0)
 
@@ -112,6 +115,7 @@ def tanh_two_sided(
 # ---------------------------------------------------------------------------
 # Domain-specific builders
 # ---------------------------------------------------------------------------
+
 
 def build_i_coords(
     ni: int,
@@ -147,9 +151,7 @@ def build_i_coords(
         return tanh_one_sided(ni, theta_start, theta_stop, beta)
     if spacing == "tanh2":
         return tanh_two_sided(ni, theta_start, theta_stop, beta)
-    raise ParameterError(
-        f"Unknown i-spacing law '{spacing}'. Choose uniform, tanh, or tanh2."
-    )
+    raise ParameterError(f"Unknown i-spacing law '{spacing}'. Choose uniform, tanh, or tanh2.")
 
 
 def build_j_coords(
@@ -195,19 +197,17 @@ def build_j_coords(
     if spacing == "tanh2":
         target = cluster_lon if cluster_lon is not None else np.pi
         # 1. Build nj+1 symmetric tanh2 points on [0, 2*pi] (endpoint included)
-        coords = tanh_two_sided(nj + 1, start, stop, beta)   # dense at both ends
+        coords = tanh_two_sided(nj + 1, start, stop, beta)  # dense at both ends
         # The symmetric law has its dense regions at coords[0] and coords[-1].
         # We want the dense region at `target`.  Roll so that the midpoint of
         # the dense zone aligns with `target`.
         # Dense zone centre is at coords[0] = 0.  Shift by target.
         coords = (coords + target) % stop
         # Re-sort to restore monotone order in [0, 2*pi)
-        coords = np.sort(coords[:-1])   # drop duplicate endpoint after wrap
+        coords = np.sort(coords[:-1])  # drop duplicate endpoint after wrap
         return coords
 
-    raise ParameterError(
-        f"Unknown j-spacing law '{spacing}'. Choose uniform or tanh2."
-    )
+    raise ParameterError(f"Unknown j-spacing law '{spacing}'. Choose uniform or tanh2.")
 
 
 def build_k_steps(
@@ -247,12 +247,10 @@ def build_k_steps(
     """
     if spacing == "geometric":
         k = np.arange(nk - 1)
-        return ds * growth ** k
+        return ds * growth**k
 
     if total_thickness is None:
-        raise ParameterError(
-            "total_thickness is required for tanh/tanh2 k-spacing."
-        )
+        raise ParameterError("total_thickness is required for tanh/tanh2 k-spacing.")
 
     if spacing == "tanh":
         coords = tanh_one_sided(nk, 0.0, total_thickness, beta)
@@ -263,4 +261,103 @@ def build_k_steps(
             f"Unknown k-spacing law '{spacing}'. Choose geometric, tanh, or tanh2."
         )
 
-    return np.diff(coords)   # (nk-1,) step sizes, all positive
+    return np.diff(coords)  # (nk-1,) step sizes, all positive
+
+
+# ---------------------------------------------------------------------------
+# Pinned-endpoint distribution
+# ---------------------------------------------------------------------------
+
+
+def pinned_distribution(
+    n: int,
+    start: float,
+    stop: float,
+    first_step: float,
+    last_step: float,
+    spacing: str = "uniform",
+    beta: float = 3.0,
+) -> np.ndarray:
+    """Return ``(n,)`` coords with pinned first and last intervals.
+
+    ``out[1] - out[0] == first_step`` and ``out[-1] - out[-2] == last_step``;
+    the interior ``n-2`` coords lie on ``[start + first_step, stop - last_step]``
+    distributed by the chosen law.
+
+    Used for C1 spacing matching at multi-block seams: each edge whose two
+    endpoints share a step size with neighbouring blocks needs the first and
+    last cells pinned to those neighbour steps, while the interior is free
+    to follow a clustering law.
+
+    Parameters
+    ----------
+    n :
+        Number of points (>= 2).
+    start, stop :
+        Interval endpoints (inclusive).
+    first_step, last_step :
+        Required first and last interval lengths (both > 0).
+    spacing :
+        Interior law: ``'uniform'``, ``'tanh'``, or ``'tanh2'``.
+    beta :
+        Clustering strength for tanh/tanh2 (ignored for uniform).
+
+    Returns
+    -------
+    numpy.ndarray, shape ``(n,)``
+
+    Raises
+    ------
+    ParameterError
+        If ``n < 2``, ``first_step`` or ``last_step`` is non-positive, or the
+        two pinned intervals don't fit inside ``[start, stop]``.
+
+    Notes
+    -----
+    Edge cases:
+        - ``n == 2``: law is unused; ``out = [start, stop]`` and the caller
+          must ensure ``first_step == stop - start`` (no constraint on last).
+        - ``n == 3``: interior collapses to a single coord at
+          ``start + first_step``, requiring
+          ``first_step + last_step == stop - start``.
+    """
+    if n < 2:
+        raise ParameterError(f"n must be >= 2 for pinned_distribution, got {n}")
+    if first_step <= 0.0 or last_step <= 0.0:
+        raise ParameterError(
+            f"first_step and last_step must be positive (got {first_step}, {last_step})"
+        )
+
+    out = np.empty(n, dtype=np.float64)
+    out[0] = start
+    out[-1] = stop
+    if n == 2:
+        # Both pins collapse onto the single interval [start, stop].  The
+        # caller is responsible for ensuring first_step matches the span;
+        # last_step is unconstrained at n==2.
+        return out
+
+    span = stop - start
+    if first_step + last_step > span + 1e-12:
+        raise ParameterError(
+            f"first_step + last_step ({first_step + last_step:.6g}) exceeds "
+            f"interval span ({span:.6g})"
+        )
+    out[1] = start + first_step
+    out[-2] = stop - last_step
+    if n == 3:
+        return out
+    inner_start = start + first_step
+    inner_stop = stop - last_step
+    if spacing == "uniform":
+        out[1:-1] = np.linspace(inner_start, inner_stop, n - 2)
+    elif spacing == "tanh":
+        out[1:-1] = tanh_one_sided(n - 2, inner_start, inner_stop, beta)
+    elif spacing == "tanh2":
+        out[1:-1] = tanh_two_sided(n - 2, inner_start, inner_stop, beta)
+    else:
+        raise ParameterError(
+            f"Unknown interior spacing law '{spacing}' for pinned_distribution."
+            " Choose uniform, tanh, or tanh2."
+        )
+    return out

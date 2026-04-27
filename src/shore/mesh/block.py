@@ -119,6 +119,14 @@ class HexBlock(Block):
         _sp_j = spacing_j or Spacing1D(law="uniform")
         _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
 
+        # Stored for the per-edge spacing resolver: the constructor assigns
+        # the same Spacing1D instance to all 12 edges of each axis, so an
+        # ``edge.spacing is block.<default>`` identity check tells the
+        # resolver whether a given edge has been overridden post-construction.
+        self._default_spacing_i = _sp_i
+        self._default_spacing_j = _sp_j
+        self._default_spacing_k = _sp_k
+
         # --- build vertex list (8 corners) ---
         # vertex index order: (i_lo/hi) x (j_lo/hi) x (k_lo/hi) = 000..111
         self._vertices: list[Vertex] = [

@@ -175,6 +175,42 @@ For the equator's meridional distribution (`i_spacing`, `i_beta`) and
 the wall-normal stepping (`spacing_k`), see
 [Spacing laws](/algorithm/spacing-laws).
 
+## Per-edge spacing
+
+Per-edge spacing on the cubed-sphere topology has one viable axis: **k**.
+
+- **k**: the four k-edges of every block can be overridden with a shared
+  `Spacing1D` instance, and `Mesh.march()` reads it instead of `(ds,
+  growth)` — same identity-check resolver as the O-grid. The
+  constraint is that *all 6 blocks must agree*, because the cap-equator
+  DIRICHLET pins and sub-sub SHARED views are k-coupled (their layer
+  positions must coincide layer by layer). Cross-block disagreement
+  triggers a `UserWarning`; block 0's schedule wins.
+
+  ```python
+  from shore.mesh.spacing import Spacing1D
+
+  override = Spacing1D(law="geometric", ds=5e-4, growth=1.2)
+  for blk in m.blocks:
+      for name in ("i_lo_j_lo", "i_hi_j_lo", "i_lo_j_hi", "i_hi_j_hi"):
+          blk.edge(name).spacing = override
+  m.march(ds=99, growth=99)   # ds, growth ignored — override wins
+  ```
+
+  See `examples/per_edge_k_spacing_cubed_sphere.py` for a worked
+  comparison.
+
+- **i / j**: deferred. The cap-equator C1 pinning *is* a per-edge
+  construction internally — the equator's first and last meridional
+  intervals are pinned per-j to the cap-edge first cell at the
+  corresponding seam vertex — but it is geometric, not user-driven.
+  Making `build_cap_k0` and `build_equator` honour user-supplied
+  `Edge.first_step` / `Edge.last_step` would require a non-trivial
+  rewrite of those builders, and is on the roadmap rather than wired
+  today.
+
+For the full mechanism see [Per-edge spacing](/algorithm/spacing-laws#per-edge-spacing).
+
 ## Public API
 
 ```python

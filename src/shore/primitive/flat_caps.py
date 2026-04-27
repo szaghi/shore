@@ -81,6 +81,7 @@ import numpy as np
 
 from shore.exceptions import ParameterError
 from shore.mesh.block import HexBlock
+from shore.mesh.spacing import Spacing1D
 from shore.primitive.base import PrimitiveMesh, axis_frame, coords_1d, resolve_axis
 from shore.volume.spacing import tanh_one_sided, tanh_two_sided
 
@@ -194,6 +195,7 @@ class FlatCapsCylinder(PrimitiveMesh):
         i_beta: float = 3.0,
         c_beta: float = 3.0,
         k_beta: float = 3.0,
+        edge_pins: dict[str, Spacing1D] | None = None,
     ) -> FlatCapsCylinder:
         """Build a flat-caps cylinder primitive.
 
@@ -226,6 +228,19 @@ class FlatCapsCylinder(PrimitiveMesh):
             cell); ``c`` controls the central-square / sub-block-arc
             distribution (shared between center and sub-blocks);
             ``k`` controls the axial distribution.
+        edge_pins :
+            Optional sparse override mapping k-axis edge name →
+            ``Spacing1D``.  When any k-edge is pinned the axial
+            coordinate is built by transfinite interpolation between
+            the 4 parallel k-edges of every block, allowing different
+            axial spacing on (e.g.) the inner radius vs the outer
+            circumference at the same k-layer.
+
+            Pins on i- or c-axis edges are **rejected**: the radial
+            (i) and tangential (c) distributions on this primitive are
+            shaped by the geometric construction (per-j first-step
+            matching at the central-square seam) and overriding them
+            would require rewriting that geometry.
 
         Returns
         -------
@@ -238,6 +253,24 @@ class FlatCapsCylinder(PrimitiveMesh):
         if not (0.0 < inner_frac < 1.0):
             raise ParameterError(
                 f"FlatCapsCylinder: inner_frac must be in (0, 1), got {inner_frac}"
+            )
+
+        # FlatCapsCylinder pins all three axes geometrically: i (radial)
+        # is per-j-pinned to the central square's tangential step,
+        # c (tangential) is set by the central square / outer circle
+        # geometry, and k is uniform across the 5 blocks because radial
+        # SHARED seams must coincide layer by layer.  Per-edge spacing
+        # therefore has no degree of freedom on this primitive.
+        # ``edge_pins`` is accepted for API symmetry with Box / Annulus
+        # but raises if any entry is supplied.
+        if edge_pins:
+            raise ParameterError(
+                "FlatCapsCylinder: edge_pins is not supported on this "
+                "primitive.  The radial (i), tangential (c) and axial (k) "
+                "distributions are pinned by the geometric construction "
+                "and the radial seams across the 5 blocks must remain "
+                "coincident at every k-layer.  Use i_law / c_law / k_law "
+                "for global control."
             )
 
         axis_vec = resolve_axis(axis)

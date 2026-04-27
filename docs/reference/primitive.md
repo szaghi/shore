@@ -220,6 +220,35 @@ Unknown keys raise `ParameterError`. Run `shore config validate`
 (planned for primitive configs) or just invoke the subcommand — the
 loader runs first.
 
+## Per-edge spacing (Python API)
+
+`BoxMesh.build` and `AnnularCylinderMesh.build` accept an `edge_pins`
+keyword to override individual edges:
+
+```python
+from shore.mesh.spacing import Spacing1D
+from shore.primitive import BoxMesh
+
+box = BoxMesh.build(
+    vmin=(0, 0, 0), vmax=(10, 5, 3),
+    ni=40, nj=30, nk=20,
+    edge_pins={
+        "j_lo_k_lo": Spacing1D(law="tanh", beta=4.0),
+        "j_lo_k_lo": Spacing1D(law="pinned", first_step=0.05, last_step=0.10),
+    },
+)
+```
+
+`FlatCapsCylinder.build` also accepts the kwarg for API symmetry but
+raises if any edge is supplied — its radial / tangential / axial
+distributions are all geometrically pinned and have no degree of
+freedom for per-edge control. See
+[Per-edge spacing](/algorithm/spacing-laws#per-edge-spacing) for the
+support table and TFI mechanism.
+
+The CLI does not expose `edge_pins` today; per-edge spacing is a
+Python-API feature.
+
 ## See also
 
 - [Primitives overview](/topologies/primitives)

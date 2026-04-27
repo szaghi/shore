@@ -156,8 +156,7 @@ class CubedSphereTopology(Topology):
         )
         if cap_proj is None:
             raise ValueError(
-                "CubedSphereTopology.build requires a Projector "
-                "(pass projector= or mesh=)."
+                "CubedSphereTopology.build requires a Projector (pass projector= or mesh=)."
             )
 
         _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
@@ -297,6 +296,24 @@ class OGridTopology(Topology):
     ``j_spacing`` flags as the cubed sphere apply, with the same
     semantics: ``i`` controls the meridional distribution, ``j`` the
     longitude.
+
+    Per-edge spacing
+    ----------------
+    Per-edge **k-spacing** works on O-grid via the same identity-check
+    mechanism as :class:`CubedSphereTopology`: replace the four k-edges'
+    ``spacing`` field with a shared ``Spacing1D`` instance, and
+    :meth:`shore.mesh.Mesh.march` reads it instead of its ``ds``/``growth``
+    arguments.  See :func:`shore.mesh.mesh._resolve_k_steps` for the rules.
+
+    Per-edge **i-spacing** has no degree of freedom on O-grid: the j
+    direction is periodic, so the four parallel i-edges
+    (``j_lo_k_lo`` / ``j_hi_k_lo`` / ``j_lo_k_hi`` / ``j_hi_k_hi``) lie
+    at *adjacent* azimuths under the j-wrap rather than at distinct
+    transverse corners.  Use the per-axis ``i_spacing`` / ``i_beta``
+    arguments instead.
+
+    Per-edge **j-spacing** is meaningless on a periodic axis (the
+    "first" and "last" cells of any j-edge are the same cell).
     """
 
     def build(
@@ -360,9 +377,7 @@ class OGridTopology(Topology):
             from shore.surface.remesh import sphere_latlon_directions
 
             if ni is None or nj is None:
-                raise ValueError(
-                    "OGridTopology.build needs ni and nj when no surface is supplied."
-                )
+                raise ValueError("OGridTopology.build needs ni and nj when no surface is supplied.")
             proj = (
                 projector
                 if projector is not None

@@ -14,12 +14,15 @@ write, VTK export) are inherited.
 
 from __future__ import annotations
 
+import warnings
 from abc import ABC
 from pathlib import Path
 
 import numpy as np
 
+from shore.exceptions import ParameterError
 from shore.mesh.block import HexBlock
+from shore.mesh.spacing import Spacing1D
 from shore.volume.spacing import tanh_one_sided, tanh_two_sided, uniform
 
 # ---------------------------------------------------------------------------
@@ -128,6 +131,202 @@ def coords_1d(
     if law == "tanh2":
         return tanh_two_sided(n, start, stop, beta)
     raise ValueError(f"coords_1d: unknown law {law!r} (expected 'uniform', 'tanh', or 'tanh2')")
+
+
+# ---------------------------------------------------------------------------
+# Per-axis TFI: bilinear blend between 4 parallel edges' distributions.
+#
+# A structured hex block has 4 edges parallel to each axis.  For axis ``i``
+# they are j_lo_k_lo, j_hi_k_lo, j_lo_k_hi, j_hi_k_hi.  When all 4 carry
+# the same Spacing1D the construction reduces to a tensor product and the
+# axis coordinate depends only on ``i``.  When they disagree, the axis
+# coordinate becomes a function of (i, j, k) via bilinear blending of the
+# four parametric positions:
+#
+#     t(i, j, k) = (1-η)(1-ζ) * t_00(i) + η(1-ζ) * t_10(i)
+#                + (1-η)ζ     * t_01(i) + η ζ    * t_11(i)
+#
+# with ``η = j/(nj-1)``, ``ζ = k/(nk-1)``.  Each ``t_ab(i)`` is the
+# corresponding edge's normalised arc-length parameter on ``[0, 1]``.
+# Linear interpolation between ``start`` and ``stop`` produces the world
+# coordinate.
+#
+# This generalises straightforwardly to the j- and k-axes: rotate the
+# argument names.
+# ---------------------------------------------------------------------------
+
+
+def _normalise_to_unit(coords: np.ndarray) -> np.ndarray:
+    """Map ``coords`` ∈ [a, b] to ``t`` ∈ [0, 1] preserving spacing."""
+    a, b = float(coords[0]), float(coords[-1])
+    if b - a == 0.0:
+        raise ParameterError(f"_normalise_to_unit: degenerate interval [{a}, {b}]")
+    return (coords - a) / (b - a)
+
+
+def axis_field_tfi(
+    n_axis: int,
+    n_t1: int,
+    n_t2: int,
+    start: float,
+    stop: float,
+    edge_specs: dict[tuple[int, int], Spacing1D],
+    axis_label: str,
+) -> np.ndarray:
+    """Return ``(n_axis, n_t1, n_t2)`` axis-coordinate field via TFI.
+
+    The 4 parallel edges of an axis are keyed by their endpoint indices in
+    the two transverse directions:
+
+    - ``(0, 0)`` — both transverse axes at lo (e.g. j_lo_k_lo for axis i)
+    - ``(1, 0)`` — first transverse hi, second lo (j_hi_k_lo)
+    - ``(0, 1)`` — first lo, second hi              (j_lo_k_hi)
+    - ``(1, 1)`` — both hi                          (j_hi_k_hi)
+
+    Each ``edge_specs`` value is a ``Spacing1D`` describing the node
+    distribution along that edge.  All 4 keys must be present.
+
+    Parameters
+    ----------
+    n_axis :
+        Number of nodes along the axis being built.
+    n_t1, n_t2 :
+        Number of nodes along the two transverse axes.
+    start, stop :
+        World coordinates of the axis interval.
+    edge_specs :
+        Mapping ``{(0,0), (1,0), (0,1), (1,1) → Spacing1D}``.
+    axis_label :
+        Used in error messages (``'i'`` / ``'j'`` / ``'k'``).
+
+    Returns
+    -------
+    numpy.ndarray, shape ``(n_axis, n_t1, n_t2)``
+    """
+    expected = {(0, 0), (1, 0), (0, 1), (1, 1)}
+    missing = expected - set(edge_specs.keys())
+    if missing:
+        raise ParameterError(
+            f"axis_field_tfi[{axis_label}]: missing edge specs for {sorted(missing)}"
+        )
+
+    # Build each edge's parametric position t in [0, 1], shape (n_axis,).
+    t_edges: dict[tuple[int, int], np.ndarray] = {}
+    for key, sp in edge_specs.items():
+        coords = sp.build(n_axis, start, stop)
+        t_edges[key] = _normalise_to_unit(coords)
+
+    # Bilinear blend weights, shape (n_t1, n_t2).
+    eta = np.linspace(0.0, 1.0, n_t1)[:, None]  # (n_t1, 1)
+    zeta = np.linspace(0.0, 1.0, n_t2)[None, :]  # (1,    n_t2)
+    w00 = (1.0 - eta) * (1.0 - zeta)
+    w10 = eta * (1.0 - zeta)
+    w01 = (1.0 - eta) * zeta
+    w11 = eta * zeta
+
+    # Combined parametric field, shape (n_axis, n_t1, n_t2).
+    t_field = (
+        t_edges[(0, 0)][:, None, None] * w00[None, :, :]
+        + t_edges[(1, 0)][:, None, None] * w10[None, :, :]
+        + t_edges[(0, 1)][:, None, None] * w01[None, :, :]
+        + t_edges[(1, 1)][:, None, None] * w11[None, :, :]
+    )
+    return start + (stop - start) * t_field
+
+
+def resolve_edge_specs(
+    axis: str,
+    edge_pins: dict[str, Spacing1D] | None,
+    axis_default: Spacing1D,
+) -> dict[tuple[int, int], Spacing1D]:
+    """Resolve the 4 parallel-edge ``Spacing1D``s for one axis.
+
+    Parameters
+    ----------
+    axis :
+        ``'i'`` / ``'j'`` / ``'k'``.
+    edge_pins :
+        Optional sparse user override: ``{edge_name: Spacing1D}``.  Edges
+        not in the dict (or unmentioned for this axis) fall back to
+        *axis_default*.  Edge names are the canonical 12 in
+        :mod:`shore.mesh.edge`.
+    axis_default :
+        ``Spacing1D`` used for any edge not pinned in *edge_pins*.
+
+    Returns
+    -------
+    dict ``{(0,0), (1,0), (0,1), (1,1) → Spacing1D}``
+
+    Notes
+    -----
+    Edge-name → axis-key mapping (from :mod:`shore.mesh.block`):
+
+    - axis ``i`` (j and k constant): j_lo_k_lo=(0,0), j_hi_k_lo=(1,0),
+      j_lo_k_hi=(0,1), j_hi_k_hi=(1,1)  — first key = j, second = k
+    - axis ``j`` (i and k constant): i_lo_k_lo=(0,0), i_hi_k_lo=(1,0),
+      i_lo_k_hi=(0,1), i_hi_k_hi=(1,1)  — first key = i, second = k
+    - axis ``k`` (i and j constant): i_lo_j_lo=(0,0), i_hi_j_lo=(1,0),
+      i_lo_j_hi=(0,1), i_hi_j_hi=(1,1)  — first key = i, second = j
+    """
+    edge_name_map: dict[str, tuple[tuple[int, int], ...]] = {
+        "i": (
+            ("j_lo_k_lo", (0, 0)),
+            ("j_hi_k_lo", (1, 0)),
+            ("j_lo_k_hi", (0, 1)),
+            ("j_hi_k_hi", (1, 1)),
+        ),
+        "j": (
+            ("i_lo_k_lo", (0, 0)),
+            ("i_hi_k_lo", (1, 0)),
+            ("i_lo_k_hi", (0, 1)),
+            ("i_hi_k_hi", (1, 1)),
+        ),
+        "k": (
+            ("i_lo_j_lo", (0, 0)),
+            ("i_hi_j_lo", (1, 0)),
+            ("i_lo_j_hi", (0, 1)),
+            ("i_hi_j_hi", (1, 1)),
+        ),
+    }
+    if axis not in edge_name_map:
+        raise ParameterError(f"resolve_edge_specs: axis must be 'i'/'j'/'k', got {axis!r}")
+
+    pins = edge_pins or {}
+    out: dict[tuple[int, int], Spacing1D] = {}
+    for name, key in edge_name_map[axis]:
+        out[key] = pins.get(name, axis_default)
+    return out
+
+
+def stamp_edge_specs_onto_block(
+    block: HexBlock,
+    *,
+    edge_pins: dict[str, Spacing1D] | None,
+) -> None:
+    """Populate ``block.edge(name).spacing`` for every name in *edge_pins*.
+
+    After construction, downstream readers (e.g. ``Mesh._resolve_k_steps``)
+    may want to learn the actual per-edge schedule used.  This stamps the
+    user's pins onto the block so they survive past ``build()``.
+    """
+    if not edge_pins:
+        return
+    for name, spec in edge_pins.items():
+        block.edge(name).spacing = spec
+
+
+# Suppress "unused" in the interim while the helper is being threaded through
+# the primitive constructors.
+__all__ = [
+    "PrimitiveMesh",
+    "axis_field_tfi",
+    "axis_frame",
+    "coords_1d",
+    "resolve_axis",
+    "resolve_edge_specs",
+    "stamp_edge_specs_onto_block",
+]
+_ = warnings  # touched in concrete primitives
 
 
 # ---------------------------------------------------------------------------

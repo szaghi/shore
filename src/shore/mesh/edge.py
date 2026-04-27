@@ -38,6 +38,19 @@ class Edge:
         1D spacing law for node distribution along this edge.
     body_projected :
         True when all nodes of this edge lie on the k=0 body wall.
+    first_step, last_step :
+        Optional per-vertex first / last interval lengths.  When set, the
+        topology / primitive builder treats them as a C1 matching request
+        at that endpoint of the edge: the first (or last) cell along the
+        edge will have this physical length, with the interior shaped by
+        ``spacing``.  When unset (``None``), the edge is built purely from
+        ``spacing`` with no endpoint pinning.
+
+        Setting these does *not* require ``spacing.law == 'pinned'``: the
+        consumer is free to read the steps and switch laws as needed.  At
+        corners where multiple incident edges request different first/last
+        steps, the builder applies a precedence rule (cap / body geometry
+        wins) and emits a ``UserWarning`` naming the overridden edges.
     """
 
     index: int
@@ -47,6 +60,8 @@ class Edge:
     n_nodes: int
     spacing: Spacing1D
     body_projected: bool = False
+    first_step: float | None = None
+    last_step: float | None = None
 
     def nodes(self, block: Block) -> np.ndarray:
         """Return a (n_nodes, 3) view of this edge's node coordinates."""

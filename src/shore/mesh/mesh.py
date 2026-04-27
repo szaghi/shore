@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 
@@ -18,6 +19,123 @@ from shore.topology.sphere_cap import (
 )
 from shore.volume.hyperbolic import _compute_normals
 from shore.volume.spacing import build_k_steps
+
+# ---------------------------------------------------------------------------
+# Per-edge k-spacing resolver
+# ---------------------------------------------------------------------------
+# All blocks in a single Mesh share one k-step schedule because adjacent
+# blocks have k-coupled SHARED / DIRICHLET seams that must remain coincident
+# layer-by-layer.  The resolver below picks the schedule from per-edge data
+# when available, falling back to the (ds, growth) defaults.
+#
+# Precedence (highest first):
+#   1. Caller-supplied ``steps`` argument (overrides everything).
+#   2. Block 0's k-edges, if they all carry a consistent Spacing1D.  Other
+#      blocks' k-edges are checked for agreement; disagreement → warn and
+#      fall back.
+#   3. Block 0's ``spacing_k`` attribute (the topology-level default).
+#   4. The ``(ds, growth)`` geometric defaults.
+
+_K_EDGE_NAMES = ("i_lo_j_lo", "i_hi_j_lo", "i_lo_j_hi", "i_hi_j_hi")
+
+
+def _block_user_k_spacing(block: HexBlock) -> Spacing1D | None:
+    """Return *block*'s k-spacing if user-overridden on every k-edge, else None.
+
+    Override detection is by identity: ``HexBlock.__init__`` assigns the same
+    ``Spacing1D`` instance (``block._default_spacing_k``) to all 4 k-edges, so
+    any edge whose ``spacing`` is no longer that instance has been replaced
+    by the caller post-construction.
+
+    Policy:
+        - All 4 k-edges still pointing at the default → no override (return None).
+        - All 4 k-edges replaced with the same instance → return that instance.
+        - Mixed (some replaced, some still default; or replaced with different
+          instances) → emit a warning and return None (fall back to default).
+    """
+    default = block._default_spacing_k
+    edges = [block.edge(name).spacing for name in _K_EDGE_NAMES]
+
+    overridden = [e is not default for e in edges]
+    if not any(overridden):
+        return None  # all edges still on the default — no user override
+
+    if not all(overridden):
+        warnings.warn(
+            f"Block '{block.label}': k-spacing overridden on some k-edges but "
+            "not others; falling back to block default.  Set all 4 k-edges "
+            "(i_lo_j_lo, i_hi_j_lo, i_lo_j_hi, i_hi_j_hi) to the same "
+            "Spacing1D instance for a per-block override.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return None
+
+    first = edges[0]
+    if any(e is not first and not _spacings_equal(e, first) for e in edges[1:]):
+        warnings.warn(
+            f"Block '{block.label}': the 4 k-edges carry different Spacing1D "
+            "values; falling back to block default.  All 4 k-edges must agree "
+            "for a per-block override.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return None
+
+    return first
+
+
+def _resolve_k_steps(
+    blocks: list[HexBlock],
+    nk: int,
+    ds: float,
+    growth: float,
+    steps: np.ndarray | None,
+) -> np.ndarray:
+    """Resolve the wall-normal k-step schedule for a list of blocks.
+
+    Precedence (highest first):
+        1. Caller-supplied ``steps`` argument.
+        2. Block 0's k-edges — if all 4 carry a user-overridden ``Spacing1D``
+           that agrees, use it.
+        3. Block 0's ``spacing_k`` default if it has been customised away from
+           the constructor fallback.
+        4. The ``(ds, growth)`` geometric defaults.
+
+    All blocks in the mesh share one schedule because k-coupled seams require
+    coincident node positions layer-by-layer.  When other blocks disagree
+    with block 0's choice, a ``UserWarning`` is emitted but block 0 still wins.
+    """
+    if steps is not None:
+        return steps
+
+    block0 = blocks[0]
+    canonical = _block_user_k_spacing(block0)
+
+    # Cross-block consistency: every block's k-edges should agree with block 0.
+    for blk in blocks[1:]:
+        their = _block_user_k_spacing(blk)
+        if their is not None and not _spacings_equal(their, canonical):
+            warnings.warn(
+                f"Block '{blk.label}' k-edges request a different spacing than "
+                f"block '{block0.label}' ({their} vs {canonical}).  K-coupled "
+                f"seams require one schedule; using block '{block0.label}'.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+    if canonical is None:
+        # No per-edge override: fall through to the legacy (ds, growth) path.
+        return build_k_steps(nk, ds, growth)
+    return canonical.build_steps(nk)
+
+
+def _spacings_equal(a: Spacing1D | None, b: Spacing1D | None) -> bool:
+    """Compare two Spacing1D instances by *value* (dataclass equality)."""
+    if a is None or b is None:
+        return a is b
+    return a == b
+
 
 # ---------------------------------------------------------------------------
 # Ghost-row helpers for seam-aware normals during marching
@@ -308,7 +426,7 @@ class Mesh:
         nk = sub_blocks[0].nodes.shape[2]
         ni = sub_blocks[0].nodes.shape[0]
 
-        _steps = steps if steps is not None else build_k_steps(nk, ds, growth)
+        _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
 
         do_blend = blend_normals_k > 0
         if do_blend:
@@ -504,7 +622,7 @@ class Mesh:
         """
         block = self.blocks[0]
         nk = block.nodes.shape[2]
-        _steps = steps if steps is not None else build_k_steps(nk, ds, growth)
+        _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
 
         do_blend = blend_normals_k > 0
         if do_blend:
@@ -525,9 +643,7 @@ class Mesh:
                 grid_n = _compute_normals(layer, periodic=periodic)
                 stl_n = _stl_normals(trimesh_obj, layer.reshape(-1, 3)).reshape(ni, nj, 3)
                 normals_override = alpha * stl_n + (1.0 - alpha) * grid_n
-                normals_override /= np.linalg.norm(
-                    normals_override, axis=-1, keepdims=True
-                )
+                normals_override /= np.linalg.norm(normals_override, axis=-1, keepdims=True)
 
             new_layer = _march_one_layer(
                 layer,

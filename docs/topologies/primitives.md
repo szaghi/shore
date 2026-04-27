@@ -2,8 +2,11 @@
 
 Primitives are parametric structured grids built from simple
 geometric inputs — boxes, annular cylinders, flat-caps cylinders. No
-STL, no projection, no hyperbolic marching: each primitive is a tensor
-product of three 1D distributions.
+STL, no projection, no hyperbolic marching. By default each primitive
+is a tensor product of three 1D distributions; with the `edge_pins`
+kwarg (see [Per-edge spacing](/algorithm/spacing-laws#per-edge-spacing))
+the parallel edges of an axis can carry different `Spacing1D`s and
+construction switches to transfinite interpolation.
 
 They exist for one reason: an overset/Chimera assembly is not just the
 near-body mesh produced by `shore mesh`. You also need a **background**
@@ -203,6 +206,40 @@ shore primitive annulus -c buffer.toml
 
 CLI flags override config values exactly as for `shore mesh`. See
 [Config files](/reference/config) for the full precedence rule.
+
+## Per-edge spacing on primitives
+
+Per-axis `*_law` arguments apply one `Spacing1D` to all four parallel
+edges of an axis (the tensor-product default). To request different
+spacings on individual edges, pass an `edge_pins` dict at build time:
+
+```python
+from shore.primitive import BoxMesh
+from shore.mesh.spacing import Spacing1D
+
+box = BoxMesh.build(
+    vmin=(0, 0, 0), vmax=(10, 5, 3),
+    ni=40, nj=30, nk=20,
+    # i-edge at (j=0, k=0) clusters near vmin[0]; the other 3 i-edges
+    # remain at the global i_law (uniform) — TFI blends the four
+    # distributions across the (j, k) face.
+    edge_pins={"j_lo_k_lo": Spacing1D(law="tanh", beta=4.0)},
+)
+```
+
+Support varies by primitive — see the
+[per-edge spacing reference](/algorithm/spacing-laws#per-edge-spacing)
+for the full table:
+
+| Primitive | i / j | k |
+|---|---|---|
+| `BoxMesh` | full TFI | full TFI |
+| `AnnularCylinderMesh` | TFI on `r` always; TFI on `θ` only when sector is partial (full annulus rejects j-pins) | full TFI |
+| `FlatCapsCylinder` | rejected — geometric pinning forecloses per-edge control | rejected — radial seams across the 5 blocks must coincide layer by layer |
+
+The CLI (`shore primitive box / annulus / flat-caps`) does not currently
+expose `edge_pins`; it is a Python-API feature only. See
+`examples/per_edge_ij_box.py` for a worked example.
 
 ## Limitations
 

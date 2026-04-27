@@ -121,6 +121,38 @@ SHORE implements the O-grid (this page) and the cubed sphere as
 peers. C-grid and H-grid topologies require different surface
 parametrisation strategies and are on the roadmap.
 
+## Per-edge spacing
+
+Per-edge spacing on the O-grid topology has one viable axis: **k**. The
+i and j directions are foreclosed by the geometry:
+
+- **i**: the j direction is periodic, so the four parallel i-edges
+  (`j_lo_k_lo`, `j_hi_k_lo`, `j_lo_k_hi`, `j_hi_k_hi`) lie at adjacent
+  azimuths under the j-wrap rather than at distinct transverse
+  corners. There is no degree of freedom over the per-axis
+  `i_spacing` argument.
+- **j**: periodic — the "first" and "last" cells of any j-edge are
+  the same cell, so endpoint pinning is geometrically meaningless.
+- **k**: the four parallel k-edges (`i_lo_j_lo`, `i_hi_j_lo`,
+  `i_lo_j_hi`, `i_hi_j_hi`) of the single block can be overridden via
+  the same identity-check resolver as the cubed sphere. Replace the
+  `spacing` field on all four with a shared `Spacing1D` instance and
+  `Mesh.march()` reads it instead of `(ds, growth)`:
+
+```python
+from shore.mesh.spacing import Spacing1D
+
+override = Spacing1D(law="geometric", ds=5e-4, growth=1.2)
+for name in ("i_lo_j_lo", "i_hi_j_lo", "i_lo_j_hi", "i_hi_j_hi"):
+    m.blocks[0].edge(name).spacing = override
+
+m.march(ds=99, growth=99)   # ds, growth ignored — override wins
+```
+
+See [Per-edge spacing](/algorithm/spacing-laws#per-edge-spacing) for
+the full mechanism, and `examples/per_edge_k_spacing_ogrid.py` for a
+side-by-side comparison.
+
 ## Periodicity in j
 
 Because the j-direction is periodic, normal estimation and Laplacian smoothing use circular indexing:

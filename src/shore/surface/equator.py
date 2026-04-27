@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from shore.volume.spacing import build_i_coords, tanh_one_sided, tanh_two_sided
+from shore.volume.spacing import build_i_coords, pinned_distribution
 
 
 def _seam_ring(cap: np.ndarray, pole: str) -> np.ndarray:
@@ -65,57 +65,6 @@ def _seam_ring(cap: np.ndarray, pole: str) -> np.ndarray:
     for q, s in enumerate(sub_seams):
         seam[q * (nc - 1) : (q + 1) * (nc - 1)] = s[:-1]
     return seam
-
-
-def _constrained_distribution(
-    ni: int,
-    start: float,
-    stop: float,
-    first_step: float,
-    last_step: float,
-    spacing: str,
-    beta: float,
-) -> np.ndarray:
-    """Return ``(ni,)`` coords with pinned first and last intervals.
-
-    ``out[1] - out[0] == first_step`` and ``out[-1] - out[-2] == last_step``;
-    the interior ``ni-2`` coords lie on ``[start + first_step, stop - last_step]``
-    distributed by the chosen law.
-
-    Constraints:
-        - ``ni >= 2``
-        - ``first_step > 0``, ``last_step > 0``
-        - ``first_step + last_step <= stop - start``  (interior must fit)
-
-    For ``ni == 2`` the law is unused; ``out = [start, stop]`` and the caller
-    must ensure ``first_step == stop - start`` (no constraint on last).  For
-    ``ni == 3`` interior collapses to a single coord at ``start + first_step``,
-    requiring ``first_step + last_step == stop - start``.
-    """
-    if ni < 2:
-        raise ValueError(f"ni must be >= 2, got {ni}")
-    out = np.empty(ni, dtype=np.float64)
-    out[0] = start
-    out[-1] = stop
-    if ni == 2:
-        return out
-    out[1] = start + first_step
-    out[-2] = stop - last_step
-    if ni == 3:
-        return out
-    # Interior coords 1..ni-2 lie on [start+first_step, stop-last_step] with
-    # `ni-2` points (already pinned at endpoints).  The law shapes the gap.
-    inner_start = start + first_step
-    inner_stop = stop - last_step
-    if spacing == "uniform":
-        out[1:-1] = np.linspace(inner_start, inner_stop, ni - 2)
-    elif spacing == "tanh":
-        out[1:-1] = tanh_one_sided(ni - 2, inner_start, inner_stop, beta)
-    elif spacing == "tanh2":
-        out[1:-1] = tanh_two_sided(ni - 2, inner_start, inner_stop, beta)
-    else:
-        raise ValueError(f"unknown spacing law: {spacing!r}")
-    return out
 
 
 def _colatitude(point: np.ndarray, anchor: np.ndarray, pole_axis: np.ndarray) -> np.ndarray:
@@ -236,7 +185,7 @@ def build_equator(
 
     # Convert the cap-seam arc step (which is in *anchor-angle* units, i.e.
     # the angle subtended at the anchor) to the colatitude-step units used
-    # by _constrained_distribution.  The conversion is per-j:
+    # by pinned_distribution.  The conversion is per-j:
     #   first_step_colat = cap_seam_step * interval_j / omega_j
     # where interval_j is the colatitude span [theta_seam_s, pi - theta_seam_n]
     # and omega_j is the anchor-angle subtended by the full meridian (south
@@ -288,7 +237,7 @@ def build_equator(
         sane = (fs > 0) and (ls > 0) and (fs + ls < 0.9 * interval_j)
 
         if compatible and sane:
-            i_coords = _constrained_distribution(
+            i_coords = pinned_distribution(
                 ni,
                 start_j,
                 stop_j,

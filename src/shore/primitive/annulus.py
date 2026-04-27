@@ -18,7 +18,15 @@ import numpy as np
 
 from shore.exceptions import ParameterError
 from shore.mesh.block import HexBlock
-from shore.primitive.base import PrimitiveMesh, axis_frame, coords_1d, resolve_axis
+from shore.mesh.spacing import Spacing1D
+from shore.primitive.base import (
+    PrimitiveMesh,
+    axis_field_tfi,
+    axis_frame,
+    resolve_axis,
+    resolve_edge_specs,
+    stamp_edge_specs_onto_block,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,18 @@ class AnnulusExtent:
             raise ParameterError(f"AnnulusExtent: z1 ({self.z1}) must exceed z0 ({self.z0})")
 
 
+_J_EDGE_NAMES = ("i_lo_k_lo", "i_hi_k_lo", "i_lo_k_hi", "i_hi_k_hi")
+
+
+def _law_to_spacing1d(law: str, beta: float) -> Spacing1D:
+    if law not in ("uniform", "tanh", "tanh2"):
+        raise ParameterError(
+            f"AnnularCylinderMesh: unknown spacing law {law!r} "
+            "(expected 'uniform', 'tanh', 'tanh2')"
+        )
+    return Spacing1D(law=law, beta=beta)
+
+
 class AnnularCylinderMesh(PrimitiveMesh):
     """Single-block annular cylinder.
 
@@ -56,6 +76,21 @@ class AnnularCylinderMesh(PrimitiveMesh):
 
     The cylinder axis defaults to z.  Pass ``axis="x"``, ``axis="y"``,
     or a 3-vector to rotate the geometry into world frame.
+
+    Per-edge spacing
+    ----------------
+    The ``edge_pins`` argument lets individual edges carry a different
+    ``Spacing1D`` than the global ``i_law`` / ``j_law`` / ``k_law``.
+    When any edge of an axis is pinned, that axis's parametric
+    coordinate becomes a transfinite-interpolation blend of the 4
+    parallel edges' distributions.
+
+    Periodic-j constraint: for a full annulus, the j-direction is
+    azimuthally periodic and pinning any j-edge (``i_lo_k_lo``,
+    ``i_hi_k_lo``, ``i_lo_k_hi``, ``i_hi_k_hi``) is rejected — the
+    "first" and "last" cells of a periodic edge are the same cell, so
+    per-edge endpoint pinning is meaningless there.  Use a partial
+    sector if you need azimuthal clustering control.
 
     Examples
     --------
@@ -92,6 +127,7 @@ class AnnularCylinderMesh(PrimitiveMesh):
         i_beta: float = 3.0,
         j_beta: float = 3.0,
         k_beta: float = 3.0,
+        edge_pins: dict[str, Spacing1D] | None = None,
         label: str = "annulus",
     ) -> AnnularCylinderMesh:
         """Build an annular cylinder primitive.
@@ -118,7 +154,9 @@ class AnnularCylinderMesh(PrimitiveMesh):
             passes through *center* with direction *axis*; ``z=0`` of
             the local frame corresponds to *center*.
         i_law, j_law, k_law, *beta :
-            Per-axis spacing laws and clustering strengths.
+            Per-axis default spacing laws and clustering strengths.
+        edge_pins :
+            Sparse per-edge overrides; see class docstring.
 
         Returns
         -------
@@ -143,37 +181,93 @@ class AnnularCylinderMesh(PrimitiveMesh):
             full = abs((theta_end - theta_start) - 2.0 * np.pi) < 1e-12
             periodic_j = full
 
-        # Build the three 1D distributions.
-        rs = coords_1d(ni, extent.r_in, extent.r_out, law=i_law, beta=i_beta)
+        # Periodic-j cannot be per-edge-pinned: see class docstring.
         if periodic_j:
-            # For a full annulus the last azimuthal node is the wrap of
-            # the first — drop the duplicate by sampling [start, end)
-            # via uniform spacing (no nonlinear law at the wrap point).
             if j_law != "uniform":
                 raise ParameterError(
                     "AnnularCylinderMesh: j_law must be 'uniform' for a full "
                     "(periodic) annulus; partial sectors accept any law."
                 )
-            thetas = np.linspace(theta_start, theta_end_eff, nj, endpoint=False)
+            if edge_pins is not None:
+                offending = [name for name in edge_pins if name in _J_EDGE_NAMES]
+                if offending:
+                    raise ParameterError(
+                        "AnnularCylinderMesh: edge_pins on j-edges "
+                        f"({offending}) is not allowed for a periodic full annulus. "
+                        "Use a partial sector (set theta_end) for azimuthal "
+                        "per-edge spacing control."
+                    )
+
+        # Per-axis defaults.
+        i_default = _law_to_spacing1d(i_law, i_beta)
+        k_default = _law_to_spacing1d(k_law, k_beta)
+
+        # ---------------------------------------------------------------
+        # Radial parametric field (i-axis)
+        # ---------------------------------------------------------------
+        i_specs = resolve_edge_specs("i", edge_pins, i_default)
+        r_field = axis_field_tfi(
+            ni,
+            nj,
+            nk,
+            extent.r_in,
+            extent.r_out,
+            edge_specs=i_specs,
+            axis_label="i",
+        )  # (ni, nj, nk)
+
+        # ---------------------------------------------------------------
+        # Azimuthal parametric field (j-axis)
+        # ---------------------------------------------------------------
+        if periodic_j:
+            # Full circle: no pinning, no TFI.  Drop the duplicate endpoint.
+            thetas_1d = np.linspace(theta_start, theta_end_eff, nj, endpoint=False)
+            theta_field = np.broadcast_to(thetas_1d[None, :, None], (ni, nj, nk)).copy()
         else:
-            thetas = coords_1d(nj, theta_start, theta_end_eff, law=j_law, beta=j_beta)
+            j_default = _law_to_spacing1d(j_law, j_beta)
+            j_specs = resolve_edge_specs("j", edge_pins, j_default)
+            theta_field_local = axis_field_tfi(
+                nj,
+                ni,
+                nk,
+                theta_start,
+                theta_end_eff,
+                edge_specs=j_specs,
+                axis_label="j",
+            )  # (nj, ni, nk)
+            theta_field = np.transpose(theta_field_local, (1, 0, 2))  # (ni, nj, nk)
 
-        zs = coords_1d(nk, extent.z0, extent.z1, law=k_law, beta=k_beta)
+        # ---------------------------------------------------------------
+        # Axial parametric field (k-axis)
+        # ---------------------------------------------------------------
+        k_specs = resolve_edge_specs("k", edge_pins, k_default)
+        z_field_local = axis_field_tfi(
+            nk,
+            ni,
+            nj,
+            extent.z0,
+            extent.z1,
+            edge_specs=k_specs,
+            axis_label="k",
+        )  # (nk, ni, nj)
+        z_field = np.transpose(z_field_local, (1, 2, 0))  # (ni, nj, nk)
 
-        # Local frame: e1, e2 span the radial plane; e3 is the axis.
+        # ---------------------------------------------------------------
+        # Local frame and Cartesian assembly.
+        # ---------------------------------------------------------------
         axis_vec = resolve_axis(axis)
         e1, e2, e3 = axis_frame(axis_vec)
         c = np.asarray(center, dtype=float).reshape(1, 1, 1, 3)
 
-        # Assemble the (ni, nj, nk, 3) node array.
-        R = rs[:, None, None]  # (ni, 1, 1)
-        T = thetas[None, :, None]  # (1, nj, 1)
-        Z = zs[None, None, :]  # (1, 1, nk)
-
-        cosT = np.cos(T)
-        sinT = np.sin(T)
-        # nodes = center + R*cosT*e1 + R*sinT*e2 + Z*e3
-        nodes = c + (R * cosT)[..., None] * e1 + (R * sinT)[..., None] * e2 + Z[..., None] * e3
+        cosT = np.cos(theta_field)
+        sinT = np.sin(theta_field)
+        # nodes = center + r*cosT*e1 + r*sinT*e2 + z*e3
+        nodes = (
+            c
+            + (r_field * cosT)[..., None] * e1
+            + (r_field * sinT)[..., None] * e2
+            + z_field[..., None] * e3
+        )
 
         block = HexBlock(
             label=label,
@@ -181,4 +275,6 @@ class AnnularCylinderMesh(PrimitiveMesh):
             periodic_i=False,
             periodic_j=periodic_j,
         )
+
+        stamp_edge_specs_onto_block(block, edge_pins=edge_pins)
         return cls(blocks=[block])
