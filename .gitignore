@@ -14,6 +14,7 @@ untracked/
 # coverage
 .coverage
 coverage.xml
+docs/public/coverage*.json
 
 # examples/tests artifacts
 *.geo

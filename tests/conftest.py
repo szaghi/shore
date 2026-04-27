@@ -2,11 +2,55 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 import trimesh
+
+_PUBLIC = Path(__file__).parent.parent / "docs" / "public"
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """After the test run: write coverage.json and coverage-badge.json to docs/public/.
+
+    The VitePress site picks up ``coverage-badge.json`` for a shields.io
+    endpoint badge.  The CI ``docs.yml`` workflow uploads ``coverage*.json``
+    as an artifact and re-injects it into ``docs/public/`` before building
+    the site, so the badge is always in sync with the suite that just
+    passed.
+    """
+    _PUBLIC.mkdir(parents=True, exist_ok=True)
+    try:
+        import coverage as coverage_lib
+
+        cov = coverage_lib.Coverage()
+        cov.load()
+        cov.json_report(outfile=str(_PUBLIC / "coverage.json"), pretty_print=True)
+        data = json.loads((_PUBLIC / "coverage.json").read_text())
+        pct = float(data["totals"]["percent_covered_display"])
+    except Exception:
+        return
+
+    if pct >= 90:
+        color = "brightgreen"
+    elif pct >= 75:
+        color = "green"
+    elif pct >= 60:
+        color = "yellow"
+    elif pct >= 40:
+        color = "orange"
+    else:
+        color = "red"
+
+    badge = {
+        "schemaVersion": 1,
+        "label": "coverage",
+        "message": f"{pct:.0f}%",
+        "color": color,
+    }
+    (_PUBLIC / "coverage-badge.json").write_text(json.dumps(badge, indent=2))
 
 
 def sphere_layer(
