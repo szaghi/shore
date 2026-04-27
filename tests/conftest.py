@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 import trimesh
+
+# Headless CI: force PyVista to render off-screen.  Without this, any test
+# that calls ``Plotter.render()`` segfaults on GitHub Actions runners (no
+# X server, no software OpenGL fallback).  The ``pyvista`` import is in a
+# try/except because the dependency is optional (``shore[vis]``).
+if os.environ.get("CI") == "true":
+    try:
+        import pyvista
+
+        pyvista.OFF_SCREEN = True
+    except ImportError:
+        pass
 
 _PUBLIC = Path(__file__).parent.parent / "docs" / "public"
 
