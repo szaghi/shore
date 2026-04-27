@@ -169,6 +169,48 @@ block stored under a sister directory (`box/`, `annulus/`, or
 `flat_caps/`).  Open the `.vtm` in ParaView; it pulls in every block
 automatically.
 
+### `examples/assembly_sphere_in_cylinder.py` — first-tentative assembly
+
+The assembly example combines a near-body cubed-sphere mesh and a
+background flat-caps cylinder into a single overset stack that
+shares one world-coordinate domain.  A 6-block sphere-mesh wraps a
+unit-radius (diameter 1.0) sphere body at the origin, marched
+outward to a wall-normal extent of ~0.2; a 5-block flat-caps
+cylinder spans `[-10, 10]² × [-10, 50]`.  All 11 blocks are bundled
+into a single ParaView-friendly `assembly.vtm`.
+
+```bash
+# Generate everything; open the viewer.
+python examples/assembly_sphere_in_cylinder.py
+
+# Generate only — skip the viewer.
+python examples/assembly_sphere_in_cylinder.py --no-view
+
+# Drive the two pieces from TOML configs.
+python examples/assembly_sphere_in_cylinder.py \
+    --near-body-config examples/config_assembly_near_body.toml \
+    --background-config examples/config_assembly_background.toml \
+    --no-view
+```
+
+Output:
+
+```
+examples_out/
+  sphere.stl                        # in-memory icosphere
+  fuselage_sub0..3.geo              # 6 cubed-sphere blocks
+  fuselage_cap_north/south.geo
+  background_center.geo             # 5 flat-caps blocks
+  background_sub_e/n/w/s.geo
+  assembly.vtm                      # 11-block ParaView MultiBlock
+  assembly/                         # 11 .vts files (manifest internals)
+```
+
+The walkthrough — including the rationale for the parameter
+choices, ParaView inspection workflow, and the explicit boundary
+between what SHORE produces and what the downstream solver does —
+lives in [Assembly walkthrough](/guide/assembly).
+
 ### `examples/visualize.ipynb` — Jupyter Notebook
 
 A complete notebook covering mesh generation, Jacobian analysis,

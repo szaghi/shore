@@ -38,6 +38,12 @@ export default defineConfig({
           ],
         },
         {
+          text: 'Worked examples',
+          items: [
+            { text: 'Assembly: sphere in cylinder', link: '/guide/assembly' },
+          ],
+        },
+        {
           text: 'Project',
           items: [
             { text: 'Changelog',    link: '/guide/changelog' },

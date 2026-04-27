@@ -34,14 +34,14 @@ features:
     linkText: Topologies
   - icon: 🔍
     title: Focused CLI
-    details: Six commands — mesh, project, info, check, export, view — let you generate, inspect, validate, and visualise. A Rich progress bar shows per-layer Jacobians during marching.
+    details: Eight commands — mesh, primitive, project, config, info, check, export, view — let you generate, inspect, validate, and visualise both body-fitted and parametric grids. A Rich progress bar shows per-layer Jacobians during marching.
     link: /reference/mesh
     linkText: CLI reference
   - icon: 🏗️
     title: Chimera-ready output
-    details: Writes a 6-block structured volume per body in the Xall_GPU .geo format. The conforming SHARED + DIRICHLET seams between sub-blocks and caps slot directly into a downstream Chimera (overset) workflow.
-    link: /concepts/chimera
-    linkText: Chimera meshing
+    details: Writes the structured blocks for both near-body (cubed sphere or O-grid) and background (box, annulus, flat-caps cylinder) grids in Xall_GPU .geo format, with a single .vtm MultiBlock for ParaView inspection of the full assembly.
+    link: /guide/assembly
+    linkText: Assembly walkthrough
   - icon: 🆓
     title: Free and open source
     details: Released under the MIT license. Pure Python — depends only on NumPy, trimesh, Typer, and Rich. No compiled extensions, no C++ meshing backends.
@@ -49,17 +49,26 @@ features:
 
 ## What is SHORE?
 
-SHORE is the foundational meshing layer for a Chimera (overset) CFD mesh generator. Given a body surface — a raw triangulated STL file for now, parametric and STEP inputs planned — it produces a structured body-fitted volume grid by hyperbolic extrusion.
+SHORE is the foundational meshing layer for a Chimera (overset) CFD
+mesh generator. Given a body surface — a raw triangulated STL file
+for now, parametric and STEP inputs planned — it produces a
+structured body-fitted volume grid by hyperbolic extrusion.
 
 ```bash
-# Full pipeline — one command
-shore mesh fuselage.stl --ni 60 --nj 80 --nk 40 --ds 1e-4 --growth 1.15 -o fuselage.geo -v
+# Full pipeline — one command (default: 6-block cubed sphere)
+shore mesh fuselage.stl --ni 60 --nj 80 --nk 40 --ds 1e-4 --growth 1.15 -o fuselage -v
+
+# Single-block O-grid alternative (one .geo file, j-periodic)
+shore mesh fuselage.stl --topology ogrid --ni 60 --nj 80 --nk 40 -o fuselage
 
 # Or drive everything from a TOML config file (see /reference/config)
 shore mesh -c fuselage.toml
 ```
 
-The result is an O-grid: a single structured block that wraps tightly around the body, with high near-wall resolution and smoothly growing cells toward the far field — exactly what a Chimera solver needs for its near-body block.
+The result is a body-fitted structured volume that wraps tightly
+around the body, with high near-wall resolution and smoothly growing
+cells toward the far field — exactly what a Chimera solver needs for
+its near-body block.
 
 ## Pipeline at a glance
 
@@ -69,11 +78,11 @@ STL (raw triangles)
       ▼  shore project
   k=0 layer (ni × nj × 3)   ← structured surface on the body
       │
-      ▼  shore march
-  volume (ni × nj × nk × 3) ← O-grid block
+      ▼  hyperbolic marching (inside shore mesh)
+  volume (ni × nj × nk × 3) ← cubed sphere (6 blocks) or O-grid (1 block)
       │
       ▼  shore mesh (= project + march)
-  fuselage.geo               ← Xall_GPU structured grid
+  fuselage_*.geo             ← Xall_GPU structured grid(s)
 ```
 
 
