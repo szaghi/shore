@@ -26,16 +26,20 @@ SHORE converts triangulated STL surfaces into structured body-fitted O-grid volu
 
 ### Topology
 
-The `shore mesh` CLI builds the **cubed-sphere topology** only (6 blocks). Other
-topologies (single-block lat-lon O-grid, Yin-Yang) still exist as Python
-APIs (`Body.project`, `surface/remesh.py`, `surface/yinyang.py`) but are
-not wired to the CLI.
+The `shore mesh` CLI supports two topologies, selected with
+`--topology cubed_sphere|ogrid` (default `cubed_sphere`):
 
 **`cubed_sphere`** (6-block, `mesh/topology.py:CubedSphereTopology`, `surface/cap.py`,
 `surface/equator.py`, `topology/sphere_cap.py`): 4 equatorial sub-blocks
 (j-split) + 2 polar caps. Implementation modules retain "cap" as the
 sub-block role name (`cap_north`, `cap_south`, `surface/cap.py`) — the
 topology name is the cubed-sphere; "cap" inside it is a part.
+
+**`ogrid`** (single-block, `mesh/topology.py:OGridTopology`,
+`surface/remesh.py:sphere_latlon_directions`): single hexahedral
+block, j-periodic, with polar singular axis rows at i=0 and i=ni-1.
+Marched by `Mesh._march_ogrid` using `_compute_normals(periodic=(False, True))`
+and the j-periodic `jacobian_field`. Writes one `<stem>.geo`.
 
 - **Cap k=0 seed**: gnomonic flat-square projection
   (`surface/cap.py:build_cap_k0`). A flat diamond is placed in the
@@ -97,8 +101,7 @@ topology name is the cubed-sphere; "cap" inside it is a part.
 | `surface/anchor.py` | `resolve_anchor(mesh)` — chooses an anchor inside the body for ray casting (centroid-based, with star-shaped checks). |
 | `surface/cap.py` | `build_cap_k0(theta_cap, nc, pole, projector, j_spacing, j_beta)` — gnomonic flat-square cap k=0 seed. Diamond in tangent plane (corners at azimuth 0/90/180/270°, distance `tan(theta_cap)`), bilinear interior, radial projection via `Projector`. |
 | `surface/equator.py` | `build_equator(cap_south, cap_north, ni, theta_cap, projector, i_spacing, i_beta)` — equator k=0 from cap seam rings. `_seam_ring(cap, pole)` extracts the `nj`-node seam in sub-block order. `_constrained_distribution(ni, start, stop, first_step, last_step, spacing, beta)` builds a 1D distribution with pinned first/last intervals. Per-j slerp-meridian + ray-cast onto STL. C1 seam pinning when cap/equator radial steps are within ~2x; warns + falls back otherwise. |
-| `surface/remesh.py` | Legacy single-block lat-lon path: `sphere_latlon_directions(ni, nj, theta_cap, i_spacing, i_beta, j_spacing, j_beta, j_cluster_lon)`, `project_sphere_to_surface(mesh, ...)`. Used by `Body.project()` and the `shore project` CLI command. **Not** used by the cubed-sphere topology. |
-| `surface/yinyang.py` | `YANG_ROTATION` matrix; `project_yang_to_surface`. Yin-Yang topology, Python-API only (not wired to CLI). |
+| `surface/remesh.py` | Single-block lat-lon path: `sphere_latlon_directions(ni, nj, theta_cap, i_spacing, i_beta, j_spacing, j_beta, j_cluster_lon)`, `project_sphere_to_surface(mesh, ...)`. Used by `Body.project()`, the `shore project` CLI command, and `OGridTopology` for the k=0 surface ray-cast. **Not** used by the cubed-sphere topology. |
 | `volume/spacing.py` | 1D spacing laws: low-level `uniform`, `tanh_one_sided`, `tanh_two_sided`; domain builders `build_i_coords` (`uniform`/`tanh`/`tanh2`), `build_j_coords` (`uniform`/`tanh2`, periodic), `build_k_steps` (`geometric`/`tanh`/`tanh2`). Pure numpy — no scipy. |
 | `exceptions.py` | `ShoreError` base + `MeshInputError(ShoreError, ValueError)`, `ParameterError(ShoreError, ValueError)`, `MarchingError(ShoreError, RuntimeError)`. |
 | `volume/hyperbolic.py` | `_compute_normals(layer, periodic, ghost_rows=None)`: outward unit normals via cross of i- and j-tangents. When `ghost_rows` is supplied (dict with optional keys `'i_lo'` / `'i_hi'` / `'j_lo'` / `'j_hi'`), the corresponding boundary tangent uses a centred difference against the ghost row instead of one-sided. `_laplacian_smooth(layer, strength, periodic)`: per-iteration `strength * (laplacian - node)` blend; non-periodic boundary rows clamped, k=0 wall always clamped. `_stl_normals` for blending. |

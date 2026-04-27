@@ -27,13 +27,11 @@ spacing continuity is preserved layer by layer.
 
 The pipeline above is run **per topology**. The topology determines
 the block layout and how stages 2 and 3 stitch the blocks together.
-SHORE's production topology is the [cubed-sphere topology](/topologies/cubed-sphere)
-(6 blocks); the `shore mesh` CLI builds it unconditionally.
-
-The catalogue of topologies — including the conceptual primitive
-[O-grid](/topologies/o-grid) and the legacy
-[Yin-Yang](/topologies/yin-yang) — lives in the
-[Topologies](/topologies/) section.
+SHORE's production default is the
+[cubed-sphere topology](/topologies/cubed-sphere) (6 blocks); the
+single-block [O-grid](/topologies/o-grid) is also a first-class
+choice for `shore mesh --topology ogrid`. The full catalogue lives
+in the [Topologies](/topologies/) section.
 
 ## Inputs
 

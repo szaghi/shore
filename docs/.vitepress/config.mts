@@ -82,10 +82,9 @@ export default defineConfig({
         {
           text: 'Topologies',
           items: [
-            { text: 'Overview & taxonomy', link: '/topologies/' },
-            { text: 'O-grid (primitive)',  link: '/topologies/o-grid' },
+            { text: 'Overview & taxonomy',    link: '/topologies/' },
+            { text: 'O-grid (single-block)',  link: '/topologies/o-grid' },
             { text: 'Cubed sphere (6-block)', link: '/topologies/cubed-sphere' },
-            { text: 'Yin-Yang (legacy)',   link: '/topologies/yin-yang' },
           ],
         },
         {

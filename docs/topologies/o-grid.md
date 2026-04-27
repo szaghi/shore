@@ -155,10 +155,8 @@ sg.plot(show_edges=True, opacity=0.5)
 
 ## See also
 
-- [Cubed-sphere topology](cubed-sphere) — the production 6-block extension that closes
-  the polar singularity
-- [Yin-Yang topology](yin-yang) — alternative pole-singularity-free
-  approach using two overlapping single-block O-grids
+- [Cubed-sphere topology](cubed-sphere) — the production 6-block
+  alternative without polar singularities
 - [Surface projection](/algorithm/projection) — how the body STL is
   ray-cast onto the structured i × j sphere template
 - [Hyperbolic marching](/algorithm/hyperbolic-marching) — how the
