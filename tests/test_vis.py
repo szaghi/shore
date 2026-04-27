@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 
@@ -50,6 +52,15 @@ class TestViewSurface:
 
 
 class TestSaveScreenshot:
+    @pytest.mark.skipif(
+        os.environ.get("CI") == "true",
+        reason=(
+            "GitHub Actions runners lack a working OpenGL stack: "
+            "Plotter.screenshot() segfaults inside VTK's render() even "
+            "with off_screen=True.  The other vis tests don't render "
+            "pixels and run fine."
+        ),
+    )
     def test_creates_png(self, tmp_path):
         grid = _make_volume()
         out = tmp_path / "shot.png"
