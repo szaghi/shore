@@ -111,7 +111,7 @@ have produced.
 
 ## Construction order
 
-The `CapsTopology.build` orchestrator:
+The `CubedSphereTopology.build` orchestrator:
 
 1. Builds **both cap k=0 layers** by gnomonic flat-square projection
    (see [k=0 mesh construction](/algorithm/k0-construction)). The cap
@@ -179,11 +179,11 @@ the wall-normal stepping (`spacing_k`), see
 
 ```python
 import numpy as np
-from shore.mesh import CapsTopology, Mesh, Spacing1D
+from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
 
 m = Mesh.from_stl(
     "sphere.stl",
-    topology=CapsTopology(),
+    topology=CubedSphereTopology(),
     ni=40, nj=60, nk=20,
     theta_cap=float(np.pi / 6),
     spacing_k=Spacing1D(law="geometric", ds=0.02, growth=1.1),
@@ -213,8 +213,8 @@ write_caps_vtm("sphere.vtm", blocks, with_jacobian=True)
   extrusion
 - [Seam-aware normals](/algorithm/seam-aware-normals) — what keeps
   spacing continuous across multi-block seams during marching
-- [O-grid topology](o-grid) — the conceptual primitive the caps
-  topology extends
+- [O-grid topology](o-grid) — the single-block sibling topology
+  (structurally independent of the cubed sphere)
 - [`shore.surface.cap`](/reference/api-sphere-cap),
   [`shore.surface.equator`](/reference/api-sphere-cap),
   [`shore.topology.sphere_cap`](/reference/api-sphere-cap) — Python API

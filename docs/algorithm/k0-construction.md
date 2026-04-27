@@ -149,7 +149,7 @@ The defaults `--ni 40 --nj 60 --theta-cap π/6` land inside this window.
 
 ## Final 6-block layout
 
-`CapsTopology.build` allocates a single contiguous ring array of shape
+`CubedSphereTopology.build` allocates a single contiguous ring array of shape
 `(ni, ring_nj, nk, 3)` for the 4 equatorial sub-blocks, with
 `ring_nj = 4·(nc-1) + 1`. Each sub-block is a numpy view into a 90°
 slice of this ring. Adjacent sub-blocks share their `j_hi`/`j_lo`

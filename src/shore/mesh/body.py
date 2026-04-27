@@ -136,7 +136,7 @@ class Body:
         j_cluster_lon: float | None = None,
         pole_eps_deg: float = 0.5,
     ) -> tuple[np.ndarray, int]:
-        """Unified ray-cast covering the full sphere for the caps topology.
+        """Unified ray-cast covering the full sphere for the cubed-sphere topology.
 
         Returns the full projected surface plus the split index ``nc_cap``.
         Rows ``0 .. nc_cap-1`` are the south cap, rows ``nc_cap .. ni_total-nc_cap``

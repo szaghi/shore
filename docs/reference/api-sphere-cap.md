@@ -156,7 +156,7 @@ Functions prefixed with `_` are internal implementation details. Use
   (`build_cap_k0`).
 - `shore.surface.equator` — great-circle meridian equator k=0 with
   per-j seam pinning (`build_equator`, `_constrained_distribution`).
-- `shore.mesh.topology.CapsTopology` — builds and wires the 6 blocks.
+- `shore.mesh.topology.CubedSphereTopology` — builds and wires the 6 blocks.
 - `shore.mesh.Mesh._march_caps` — orchestrates the per-layer march
   with seam-aware ghost rows for all 6 blocks.
 

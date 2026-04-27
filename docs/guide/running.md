@@ -18,7 +18,7 @@ make dev    # pip install -e ".[dev,vis]"
 SHORE ships a set of standalone example scripts and a Jupyter
 notebook that serve as both documentation and sanity checks.
 
-### `examples/visualize_caps_sphere.py` — cubed-sphere topology around a sphere
+### `examples/visualize_cubed_sphere.py` — cubed-sphere topology around a sphere
 
 The script generates a unit-sphere body-fitted test case (always
 6-block cubed-sphere topology) and optionally visualises it.  When called
@@ -26,16 +26,16 @@ The script generates a unit-sphere body-fitted test case (always
 
 ```bash
 # Generate sphere.stl + 6 sphere_<label>.geo files and open the viewer
-python examples/visualize_caps_sphere.py --generate
+python examples/visualize_cubed_sphere.py --generate
 
 # Generate and save a screenshot instead of opening a window
-python examples/visualize_caps_sphere.py --generate --screenshot sphere_preview.png
+python examples/visualize_cubed_sphere.py --generate --screenshot sphere_preview.png
 
 # Generate only (skip the viewer)
-python examples/visualize_caps_sphere.py --generate --no-view
+python examples/visualize_cubed_sphere.py --generate --no-view
 
 # Export to a single VTK MultiBlock .vtm for ParaView
-python examples/visualize_caps_sphere.py --generate --vtk
+python examples/visualize_cubed_sphere.py --generate --vtk
 ```
 
 Key parameters:
@@ -64,15 +64,15 @@ Spacing examples:
 
 ```bash
 # Tanh wall-normal spacing — fixed far-field boundary
-python examples/visualize_caps_sphere.py --generate \
+python examples/visualize_cubed_sphere.py --generate \
   --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
 
 # Equator meridional clustering at the cap seams
-python examples/visualize_caps_sphere.py --generate \
+python examples/visualize_cubed_sphere.py --generate \
   --surface-i-spacing tanh --surface-i-beta 4.0
 
 # Cap-corner clustering (tanh2 j-spacing — inherited by equator seam)
-python examples/visualize_caps_sphere.py --generate \
+python examples/visualize_cubed_sphere.py --generate \
   --surface-j-spacing tanh2 --surface-j-beta 5.0
 ```
 
@@ -82,9 +82,9 @@ distribution and what physical region it clusters toward.
 Visualise an existing `.geo` or `.npz` file directly:
 
 ```bash
-python examples/visualize_caps_sphere.py sphere_sub0.geo
-python examples/visualize_caps_sphere.py sphere_k0.npz
-python examples/visualize_caps_sphere.py sphere_sub0.geo --screenshot out.png --no-edges
+python examples/visualize_cubed_sphere.py sphere_sub0.geo
+python examples/visualize_cubed_sphere.py sphere_k0.npz
+python examples/visualize_cubed_sphere.py sphere_sub0.geo --screenshot out.png --no-edges
 ```
 
 Output: 6 `.geo` files per run
@@ -208,7 +208,7 @@ python -m pytest tests/ -v
 ### Running a specific test file
 
 ```bash
-python -m pytest tests/test_cap_gnomonic.py -v   # caps construction + seam C1
+python -m pytest tests/test_cap_gnomonic.py -v   # gnomonic cap construction + seam C1
 python -m pytest tests/test_jacobian.py -v       # Jacobian calculations
 python -m pytest tests/test_cli.py -v            # CLI commands
 python -m pytest tests/test_vtk.py -v            # VTK export
@@ -230,7 +230,7 @@ python -m pytest tests/test_cli.py::TestMesh::test_exit_code_ok -v
 | `tests/test_vis.py` | PyVista conversion helpers |
 | `tests/test_jacobian.py` | Jacobian field calculations and inversion detection |
 | `tests/test_cap_gnomonic.py` | Gnomonic cap, seam C0/C1, volume seam continuity |
-| `tests/test_mesh.py` | OOP `Mesh` API, `CapsTopology.build` |
+| `tests/test_mesh.py` | OOP `Mesh` API, `CubedSphereTopology.build` |
 | `tests/test_anchor.py` / `test_load_stl_hygiene.py` | Mesh preconditioning |
 | `tests/test_projector.py` / `test_projector_validation.py` | Ray-cast Projector |
 | `tests/test_cli.py` | All CLI commands end-to-end |
@@ -318,7 +318,7 @@ export DISPLAY=
 make test
 
 # Smoke-generate the example mesh
-python examples/visualize_caps_sphere.py --generate --no-view
+python examples/visualize_cubed_sphere.py --generate --no-view
 shore check sphere_sub0.geo
 shore info sphere_sub0.geo
 ```

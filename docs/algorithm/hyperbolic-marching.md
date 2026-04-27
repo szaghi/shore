@@ -182,7 +182,7 @@ locked down by
 |---|---|---|
 | `MarchingError` at small k | High curvature; normals converging | Reduce `ds`; increase `smooth_strength` |
 | jmin → 0 at large k | Outer layers collapsing | Reduce `nk` or `growth` |
-| Visible kink at multi-block seam | Seam-aware normals disabled | Should not happen — seam-aware normals are always on for caps |
+| Visible kink at multi-block seam | Seam-aware normals disabled | Should not happen — seam-aware normals are always on for the cubed sphere |
 | Jagged grid near sharp body features | Grid normals not tracking body | Use `--blend-normals-k 5` to blend STL normals near the wall |
 
 ## Comparison to elliptic methods

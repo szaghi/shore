@@ -15,11 +15,11 @@
 <table>
 <tr>
 <td><b>📐 STL → structured volume in one command</b><br><sub>Feed any raw triangulated STL — SHORE projects it onto a structured sphere template, marches layers outward along smooth vertex normals, and writes a Xall_GPU-compatible geo file with a single <code>shore mesh</code> call. <a href="https://szaghi.github.io/shore/guide/quickstart">Quick start</a></sub></td>
-<td><b>🌊 Hyperbolic marching kernel</b><br><sub>Each wall-normal layer is advanced by a geometric step along area-weighted vertex normals, with per-layer Laplacian smoothing and a Jacobian check that aborts immediately on cell inversion — no silent bad meshes. <a href="https://szaghi.github.io/shore/concepts/hyperbolic-marching">Algorithm</a></sub></td>
+<td><b>🌊 Hyperbolic marching kernel</b><br><sub>Each wall-normal layer is advanced by a geometric step along area-weighted vertex normals, with per-layer Laplacian smoothing and a Jacobian check that aborts immediately on cell inversion — no silent bad meshes. <a href="https://szaghi.github.io/shore/algorithm/hyperbolic-marching">Algorithm</a></sub></td>
 </tr>
 <tr>
-<td><b>🔍 Pipeline-aware CLI</b><br><sub>Seven focused commands — <code>mesh</code>, <code>project</code>, <code>march</code>, <code>info</code>, <code>check</code>, <code>export</code>, <code>view</code> — let you inspect and re-run any individual stage. A Rich progress bar shows layer count, minimum Jacobian, and step thickness in real time. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
-<td><b>🏗️ Multi-block topologies</b><br><sub>Single O-grid, Yin-Yang double O-grid, and 6-block sphere polar cap topology (4 equatorial sub-blocks + 2 hexahedral cap blocks). All share conforming node-for-node faces and are exported as ParaView MultiBlock (.vtm). <a href="https://szaghi.github.io/shore/concepts/sphere-cap">Polar cap topology</a></sub></td>
+<td><b>🔍 Pipeline-aware CLI</b><br><sub>Eight focused commands — <code>mesh</code>, <code>primitive</code>, <code>project</code>, <code>config</code>, <code>info</code>, <code>check</code>, <code>export</code>, <code>view</code> — let you inspect and re-run any individual stage, drive runs from TOML, and emit ParaView-ready output. A Rich progress bar shows layer count, minimum Jacobian, and step thickness in real time. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
+<td><b>🏗️ Multi-block topologies</b><br><sub>Two body-fitted topologies — single-block O-grid and the 6-block cubed sphere (4 equatorial sub-blocks + 2 hexahedral cap blocks) — plus three parametric primitives (box, annular cylinder, flat-caps cylinder) for backgrounds and buffers. All share conforming node-for-node faces and are exported as ParaView MultiBlock (.vtm). <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed-sphere topology</a></sub></td>
 </tr>
 <tr>
 <td><b>🎨 ParaView and Jupyter visualization</b><br><sub>Export to VTK StructuredGrid (<code>shore export</code>) for ParaView with per-cell Jacobian colour maps. Or use <code>shore view</code> for an immediate PyVista window, or <code>shore.vis</code> directly in Jupyter notebooks with the HTML backend. <a href="https://szaghi.github.io/shore/reference/api-vis">API reference</a></sub></td>
@@ -44,7 +44,7 @@ SHORE is the foundational meshing layer for a Chimera (overset) CFD mesh generat
 2. **March** outward along smooth vertex normals, layer by layer, with geometric growth
 3. **Write** the structured `(ni, nj, nk)` volume to a geo file ready for Xall_GPU
 
-The result is an O-grid: a single structured block that wraps tightly around the body, with high near-wall resolution and smoothly growing cells toward the far field.
+The result is a body-fitted structured volume that wraps tightly around the body, with high near-wall resolution and smoothly growing cells toward the far field. Two topologies are available: the 6-block cubed sphere (default — no polar singularity, conforming SHARED seams) and the single-block, j-periodic O-grid (`--topology ogrid`).
 
 ```bash
 # Full pipeline — one command
@@ -110,12 +110,15 @@ shore check sphere.geo
 
 ## Pipeline stages
 
-The `shore mesh` command builds the [6-block caps topology](docs/concepts/sphere-cap.md)
-end-to-end (gnomonic flat-square cap projection + great-circle meridian
-equator + seam-aware hyperbolic marching) and writes 6 `.geo` files. For
+The `shore mesh` command builds the
+[6-block cubed-sphere topology](docs/topologies/cubed-sphere.md)
+end-to-end by default (gnomonic flat-square cap projection +
+great-circle meridian equator + seam-aware hyperbolic marching) and
+writes 6 `.geo` files. Pass `--topology ogrid` to build a
+single-block, j-periodic O-grid instead — written as one `.geo`. For
 debugging or downstream tools that consume a single-block lat-lon
-surface, `shore project` writes the `(ni, nj, 3)` surface layer as `.npz`
-without marching.
+surface, `shore project` writes the `(ni, nj, 3)` surface layer as
+`.npz` without marching.
 
 ```bash
 # Project the lat-lon surface only (single-block, .npz)
@@ -136,7 +139,7 @@ k0 = np.load("sphere_k0.npz")["k0"]   # shape (ni, nj, 3)
 
 | Command | Description |
 |---|---|
-| `shore mesh INPUT.stl` | Full pipeline: STL → 6-block caps O-grid → 6 `.geo` files |
+| `shore mesh INPUT.stl` | Full pipeline: STL → cubed-sphere (6 blocks, default) or O-grid (1 block, `--topology ogrid`) volume → `.geo` file(s) |
 | `shore project INPUT.stl` | Project a single-block lat-lon surface onto the STL (`.npz`) |
 | `shore info INPUT.geo` | Print dimensions, point count, bounding box |
 | `shore check INPUT.geo` | Validate per-layer Jacobians, exit 1 on inversion |
@@ -182,10 +185,11 @@ where $\Delta s$ is the first-layer thickness, $r$ is the growth ratio, and $\ha
 - [ ] Steger–Sorenson orthogonality source term for high-curvature bodies
 - [ ] STEP and parametric surface input (via pythonOCC or cadquery)
 - [x] PyVista visualization (`shore view`, `shore export`, `shore.vis`)
-- [x] Sphere polar cap 6-block topology (caps — production default for `shore mesh`)
+- [x] 6-block cubed-sphere topology (production default for `shore mesh`)
 - [x] Gnomonic flat-square cap k=0 projection with C1 seam-step pinning
 - [x] Seam-aware hyperbolic marching (centred-difference normals across block seams)
-- [ ] Yin-Yang double O-grid topology (Python-API only; not wired to CLI)
+- [x] Single-block O-grid topology (`shore mesh --topology ogrid`)
+- [x] Parametric primitives (box, annular cylinder, flat-caps cylinder) for backgrounds and buffers
 - [ ] GitHub Actions CI
 
 ## Author

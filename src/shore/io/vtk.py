@@ -174,7 +174,7 @@ def open_to_pyvista(grid: np.ndarray, with_jacobian: bool = True) -> pv.Structur
     """Convert a non-periodic (open) structured block to a PyVista StructuredGrid.
 
     Unlike ``geo_to_pyvista``, no j-direction closing is performed.  Used for
-    polar cap blocks and the equatorial sub-blocks of the sphere-cap topology.
+    polar cap blocks and the equatorial sub-blocks of the cubed-sphere topology.
 
     Parameters
     ----------
@@ -208,8 +208,8 @@ def write_caps_vtm(
 ) -> None:
     """Export a list of structured grids as a PyVista MultiBlock (.vtm).
 
-    Originally written for the 6-block caps topology — when *labels* is
-    None and *blocks* has exactly 6 entries, the legacy caps labels
+    Originally written for the 6-block cubed-sphere topology — when *labels*
+    is None and *blocks* has exactly 6 entries, the cubed-sphere block labels
     (``sub0..sub3``, ``cap_north``, ``cap_south``) are used.  Otherwise
     *labels* must be provided with one entry per block.
 

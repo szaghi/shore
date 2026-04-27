@@ -1,9 +1,9 @@
-"""Standalone example: 6-block caps O-grid around a unit sphere.
+"""Standalone example: 6-block cubed-sphere mesh around a unit sphere.
 
 When ``--generate`` is given, this script runs the full SHORE
-body-fitted pipeline against an internally-built unit icosphere:
-``shore mesh`` over the gnomonic-cap topology, writing all 6 ``.geo``
-blocks (``sphere_sub0..3.geo`` + ``sphere_cap_north/south.geo``) and
+body-fitted pipeline against an internally-built unit icosphere
+through the cubed-sphere topology, writing all 6 ``.geo`` blocks
+(``sphere_sub0..3.geo`` + ``sphere_cap_north/south.geo``) and
 optionally a ``.vtm`` MultiBlock for ParaView.  The cap and equator
 spacing flags below are specific to this topology — see
 ``examples/visualize_box.py`` / ``visualize_annulus.py`` /
@@ -15,25 +15,25 @@ structured grid produced by SHORE, regardless of topology.
 
 Run from the project root after activating .venv:
 
-    # Generate a unit-sphere caps mesh and open the viewer:
-    python examples/visualize_caps_sphere.py --generate
+    # Generate a cubed-sphere mesh on a unit icosphere and open the viewer:
+    python examples/visualize_cubed_sphere.py --generate
 
     # Generate and export all 6 blocks to VTK MultiBlock:
-    python examples/visualize_caps_sphere.py --generate --vtk
+    python examples/visualize_cubed_sphere.py --generate --vtk
 
     # Tanh-spaced boundary layer with fixed total thickness:
-    python examples/visualize_caps_sphere.py --generate \\
+    python examples/visualize_cubed_sphere.py --generate \\
         --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
 
     # Latitude clustering (toward cap boundary) + longitude clustering:
-    python examples/visualize_caps_sphere.py --generate \\
+    python examples/visualize_cubed_sphere.py --generate \\
         --surface-i-spacing tanh --surface-i-beta 4.0 \\
         --surface-j-spacing tanh2 --surface-j-beta 5.0
 
     # Visualise an existing file (any topology):
-    python examples/visualize_caps_sphere.py sphere_sub0.geo
-    python examples/visualize_caps_sphere.py sphere_k0.npz
-    python examples/visualize_caps_sphere.py sphere_sub0.geo --screenshot out.png
+    python examples/visualize_cubed_sphere.py sphere_sub0.geo
+    python examples/visualize_cubed_sphere.py sphere_k0.npz
+    python examples/visualize_cubed_sphere.py sphere_sub0.geo --screenshot out.png
 
 Cap/equator C1 seam matching
 ----------------------------
@@ -80,8 +80,8 @@ def generate_sphere(
     volume_k_thickness: float | None = None,
     blend_normals_k: int = 0,
 ) -> list[Path]:
-    """Create sphere.stl + 6 sphere_<label>.geo files via the gnomonic
-    cap topology.
+    """Create sphere.stl + 6 sphere_<label>.geo files via the
+    cubed-sphere topology.
 
     Returns list of generated .geo paths.
     """

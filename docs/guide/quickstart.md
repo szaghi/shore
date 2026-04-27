@@ -2,7 +2,7 @@
 
 ## Your first O-grid
 
-Given a body surface `sphere.stl`, generate a 6-block cubed-sphere-topology
+Given a body surface `sphere.stl`, generate a 6-block cubed-sphere
 volume grid with 40 equator latitude points, 60 longitude points, and
 30 wall-normal layers:
 
@@ -25,7 +25,7 @@ The `-v` flag shows the live progress bar:
 
 ```
 ⠸ Loading STL     ████████████████  1/1   5,120 triangles  0:00:00
-⠸ Marching caps   ████████████████ 29/29  jmin=2.30e-05    0:00:00
+⠸ Marching        ████████████████ 29/29  jmin=2.30e-05    0:00:00
 ✓ Wrote 6 .geo files  (sub: 40x16x30, caps: 16x16x30)
 ```
 
@@ -157,11 +157,11 @@ The CLI is a thin wrapper over the OOP Python API:
 
 ```python
 import numpy as np
-from shore.mesh import CapsTopology, Mesh, Spacing1D
+from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
 
 m = Mesh.from_stl(
     "sphere.stl",
-    topology=CapsTopology(),
+    topology=CubedSphereTopology(),
     ni=40, nj=60, nk=30,
     theta_cap=float(np.pi / 6),
     spacing_k=Spacing1D(law="geometric", ds=1e-3, growth=1.15),
@@ -191,7 +191,7 @@ sp_k = Spacing1D(law="tanh", beta=4.0, total_thickness=2.0)
 steps = sp_k.build_steps(40)
 
 m = Mesh.from_stl(
-    "wing.stl", topology=CapsTopology(),
+    "wing.stl", topology=CubedSphereTopology(),
     ni=60, nj=80, nk=40,
     spacing_k=sp_k,
 )

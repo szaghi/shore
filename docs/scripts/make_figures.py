@@ -45,7 +45,7 @@ def _save(fig: plt.Figure, name: str) -> Path:
 
 
 def fig_pipeline() -> None:
-    """High-level pipeline flowchart: STL → caps + equator → march → 6 .geo."""
+    """High-level pipeline flowchart: STL → cap blocks + equator → march → 6 .geo."""
     fig, ax = plt.subplots(figsize=(10, 3.4))
     ax.axis("off")
     ax.set_xlim(0, 10)
@@ -75,7 +75,7 @@ def fig_pipeline() -> None:
         ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
                     arrowprops=dict(arrowstyle="->", color="#3a3a3a", lw=1.4))
 
-    ax.text(2.6, 3.2, "k=0 construction (caps topology)", fontsize=8.5,
+    ax.text(2.6, 3.2, "k=0 construction (cubed-sphere topology)", fontsize=8.5,
             color="#3a3a3a", style="italic")
     ax.text(7.0, 3.2, "volume extrusion", fontsize=8.5,
             color="#3a3a3a", style="italic")
@@ -378,14 +378,14 @@ def fig_seam_aware_normals() -> None:
 
 def _make_mesh(theta_cap_deg: float = 30.0, ni: int = 40, nj: int = 60, nk: int = 20):
     """Build a unit-sphere mesh with sensible defaults for figures."""
-    from shore.mesh import CapsTopology, Mesh, Spacing1D
+    from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
     stl = ROOT / "docs" / "scripts" / "_sphere_for_figs.stl"
     if not stl.exists():
         stl.parent.mkdir(parents=True, exist_ok=True)
         trimesh.creation.icosphere(subdivisions=4, radius=1.0).export(str(stl))
     m = Mesh.from_stl(
         str(stl),
-        topology=CapsTopology(),
+        topology=CubedSphereTopology(),
         ni=ni, nj=nj, nk=nk,
         theta_cap=float(np.deg2rad(theta_cap_deg)),
         spacing_k=Spacing1D(law="geometric", ds=0.02, growth=1.1),

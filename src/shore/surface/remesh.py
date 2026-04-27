@@ -8,9 +8,10 @@ Strategy
    the first intersection with the STL body.
 4. The intersection points form the k=0 layer of the O-grid.
 
-For the 6-block caps topology a unified projection covers the full sphere in
-one ray-cast (``project_caps_to_surface``).  The polar caps and equatorial band
-share the same ``di`` by construction — no Laplacian seed needed.
+For the 6-block cubed-sphere topology a unified projection covers the full
+sphere in one ray-cast (``project_caps_to_surface``).  The polar cap blocks
+and equatorial band share the same ``di`` by construction — no Laplacian
+seed needed.
 
 Limitation: the approach requires that every ray from the anchor hits the
 body exactly once (i.e. the body is star-shaped w.r.t. its anchor).  This
@@ -184,7 +185,7 @@ def project_caps_to_surface(
     pole_eps_deg: float = 0.5,
     projector: object | None = None,
 ) -> tuple[np.ndarray, int]:
-    """Project a unified lat-lon grid (caps + equatorial) onto a surface.
+    """Project a unified lat-lon grid (cap blocks + equatorial) onto a surface.
 
     Unlike ``project_sphere_to_surface``, this function covers the full sphere
     in a single ray-cast.  The equatorial band and both polar caps share the
@@ -198,7 +199,7 @@ def project_caps_to_surface(
     ni :
         Number of rows in the equatorial band.
     nj :
-        Number of longitude points (multiple of 4 for caps topology).
+        Number of longitude points (multiple of 4 for the cubed-sphere topology).
     theta_cap :
         Requested polar exclusion angle in radians.  Default ``0.05 * pi``.
     theta_cap_deg :

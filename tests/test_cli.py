@@ -4,7 +4,7 @@ All commands are exercised via typer.testing.CliRunner so no subprocess
 is spawned and coverage is collected normally.
 
 Grid parameters are kept small (ni=10, nj=12, nk=6) to keep the suite fast.
-The mesh command produces 6 .geo files (caps topology):
+The mesh command produces 6 .geo files (cubed-sphere topology):
   <stem>_sub0.geo .. <stem>_sub3.geo, <stem>_cap_north.geo, <stem>_cap_south.geo
 """
 

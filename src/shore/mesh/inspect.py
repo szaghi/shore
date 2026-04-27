@@ -82,8 +82,8 @@ def check_geo(
         Warn if jmin drops below this (but remains positive).
     periodic_j :
         Use the periodic-j Jacobian (``True``) or the open (non-periodic)
-        Jacobian (``False``, default).  Caps-topology blocks are always
-        open; use ``True`` only for legacy single-block O-grids.
+        Jacobian (``False``, default).  Cubed-sphere topology blocks are always
+        open; pass ``True`` for single-block O-grid topology blocks.
 
     Returns
     -------

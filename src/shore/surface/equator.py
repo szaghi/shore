@@ -190,7 +190,7 @@ def build_equator(
     ni :
         Number of equator latitude rows (including both seam rows).
     theta_cap :
-        Polar exclusion angle in radians used to build the caps.  Drives the
+        Polar exclusion angle in radians used to build the cap blocks.  Drives the
         meridional slerp interval ``[theta_cap, pi - theta_cap]`` for the
         i-spacing law.
     projector :

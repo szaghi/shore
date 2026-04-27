@@ -13,7 +13,7 @@ the cubed-sphere topology projects directly through the cached BVH inside
 :::
 
 Use this command when you want to inspect the surface projection or cache
-the stage-1 ray-cast for downstream non-caps workflows.
+the stage-1 ray-cast for downstream non-cubed-sphere workflows.
 
 ## Synopsis
 
