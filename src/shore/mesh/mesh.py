@@ -347,16 +347,17 @@ class Mesh:
                     normals_override=normals_override,
                     ghost_rows=ghost,
                 )
-                if do_blend:
-                    # Laplacian smoothing corrupts the pole rows regardless of
-                    # the blend window: the one-sided boundary clamp pulls i=0
-                    # and i=-1 inward.  Recompute those rows post-smoothing
-                    # using pure STL normals so they are always perpendicular
-                    # to the body surface.
-                    pole_pts = np.concatenate([layer_q[0], layer_q[-1]], axis=0)
-                    stl_poles = _stl_normals(trimesh_obj, pole_pts)
-                    new_q[0] = layer_q[0] + step * stl_poles[:nj_q]
-                    new_q[-1] = layer_q[-1] + step * stl_poles[nj_q:]
+                # Note: a previous "pole-row STL-normal override" used to run
+                # here whenever do_blend was True, on the assumption that the
+                # Laplacian smoothing's boundary clamp pulled the cap-equator
+                # seam rows inward.  With seam-aware ghost rows in place that
+                # clamp produces only sub-FP-noise drift, and the override
+                # itself amplifies the C1 cap-equator seam deviation by a
+                # factor of ~2 at k=NK-1.  See
+                # tests/test_cap_gnomonic.py::TestBlendNormalsK_C1SeamSurvives
+                # for the regression that pinned this down.  The override has
+                # been removed; the alpha-weighted blend at lines above is
+                # the only remaining STL-normal contribution.
                 new_subs.append(new_q)
 
             # Re-stitch shared edges to absorb FP noise from the

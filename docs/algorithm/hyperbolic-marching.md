@@ -133,7 +133,17 @@ For sharp-feature bodies the grid-computed normals near the body lag
 the true STL surface normals (the structured grid only "sees" body
 geometry through its k=0 layer). The `--blend-normals-k` flag blends
 grid normals with STL surface normals queried via
-`trimesh.proximity.closest_point` for the first `K` layers:
+`trimesh.proximity.closest_point` for the first `K` layers.
+
+The STL normal at each marching node is the **barycentric blend of the
+closest triangle's three vertex normals at the closest point** — C0-
+continuous across triangle edges, which suppresses the facet-aligned
+banding that flat face normals would produce on a coarse STL. trimesh's
+`vertex_normals` are area-weighted across incident faces and require a
+clean mesh (consistent face orientation, no degenerate faces, merged
+vertices) — all three are enforced unconditionally by `load_stl`'s
+hygiene step. The legacy flat-face behaviour is still available via the
+`interpolate=False` kwarg of `_stl_normals` for regression debugging.
 
 $$
 \hat{\mathbf{n}}_{\text{blend}} = \alpha \, \hat{\mathbf{n}}_{\text{STL}} + (1 - \alpha)\,\hat{\mathbf{n}}_{\text{grid}},
@@ -142,6 +152,29 @@ $$
 
 At `k = 0` the layer extrudes along pure STL normals; the blend
 linearly fades to pure grid normals at `k = K`.
+
+::: info Interaction with the seam-aware kernel
+The grid normal $\hat{\mathbf{n}}_{\text{grid}}$ used in the blend is
+already the **seam-aware ghost-row centred-difference** normal — the
+blend is applied on top of that, not on top of the one-sided
+fallback.  With **barycentric-interpolated** STL normals the blended
+normal field is C0-continuous across triangle edges, and the
+alpha-weighted contribution adds no measurable kick to the cap-equator
+C1 seam: the blend run tracks the no-blend run within ~0.13 deg per
+layer on the icosphere fixture (vs. ~0.55 deg with the old flat
+face-normal implementation).
+
+A previous implementation also re-extruded each sub-block's
+cap-equator seam rows along **pure STL normals every layer**
+("pole-row override").  The pole-row override pre-dated the
+seam-aware kernel and was needed to compensate for the Laplacian
+boundary clamp pulling the seam rows inward; with the seam-aware
+kernel in place that clamp produces only sub-FP-noise drift and the
+override itself amplified the C1 seam deviation by a factor of ~2 at
+`k = NK − 1`.  The override has been removed and the regression is
+locked down by
+[`TestBlendNormalsK_C1SeamSurvives`](https://github.com/szaghi/shore/blob/main/tests/test_cap_gnomonic.py).
+:::
 
 ## Failure modes and remedies
 

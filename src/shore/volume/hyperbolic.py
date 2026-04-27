@@ -167,11 +167,22 @@ def _laplacian_smooth(
 # ---------------------------------------------------------------------------
 
 
-def _stl_normals(trimesh_obj: object, points: np.ndarray) -> np.ndarray:
+def _stl_normals(
+    trimesh_obj: object,
+    points: np.ndarray,
+    interpolate: bool = True,
+) -> np.ndarray:
     """Query surface normals at arbitrary points from a trimesh object.
 
-    Uses closest-point projection; returns the face normal of the nearest
-    triangle (flat, not interpolated — sufficient for blending guidance).
+    Uses closest-point projection.  When ``interpolate=True`` (default), returns
+    the barycentric blend of the closest triangle's three vertex normals at the
+    closest point — C0-continuous across triangle edges, which suppresses
+    facet-aligned banding on coarse STLs.  When ``interpolate=False`` returns
+    the flat face normal of the closest triangle (legacy behaviour).
+
+    Vertex normals are area-weighted by trimesh and require a clean mesh
+    (consistent face orientation, no degenerate faces, merged vertices).
+    ``shore.surface.io.load_stl`` enforces all three by default.
 
     Parameters
     ----------
@@ -179,15 +190,27 @@ def _stl_normals(trimesh_obj: object, points: np.ndarray) -> np.ndarray:
         A ``trimesh.Trimesh`` instance.
     points :
         Shape (N, 3).
+    interpolate :
+        When *True*, barycentric blend of vertex normals over the closest
+        triangle.  When *False*, flat face normal of the closest triangle.
 
     Returns
     -------
     numpy.ndarray, shape (N, 3), unit normals.
     """
     import trimesh.proximity as prox
+    import trimesh.triangles as tri_utils
 
-    _, _, tri_ids = prox.closest_point(trimesh_obj, points)
-    normals = trimesh_obj.face_normals[tri_ids]
+    closest, _, tri_ids = prox.closest_point(trimesh_obj, points)
+
+    if interpolate:
+        tris = trimesh_obj.triangles[tri_ids]
+        bary = tri_utils.points_to_barycentric(tris, closest)
+        vn = trimesh_obj.vertex_normals[trimesh_obj.faces[tri_ids]]
+        normals = (bary[..., None] * vn).sum(axis=1)
+    else:
+        normals = trimesh_obj.face_normals[tri_ids]
+
     mag = np.linalg.norm(normals, axis=-1, keepdims=True)
     mag = np.where(mag < 1e-15, 1.0, mag)
     return normals / mag
