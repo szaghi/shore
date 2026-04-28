@@ -675,10 +675,10 @@ def _format_cc_par(
     # ----- Blocks -----
     lines.append(f"{len(entries):d} ! blocks number")
     lines.append("")
-    for entry in entries:
+    for block_idx, entry in enumerate(entries, start=1):
         lines.append(
             f"{entry.meta.level:9d} {entry.meta.group:9d} {entry.meta.priority:9d} "
-            f"! {entry.meta.comment}"
+            f"! {block_idx} : {entry.meta.comment}"
         )
     lines.append("")
 

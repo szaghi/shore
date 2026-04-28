@@ -144,8 +144,8 @@ class TestBlocksSection:
         out = write_cc_par(payload, tmp_path / "cc.par", grd_filename="x.grd")
         text = out.read_text()
         # Default level=1 group=0 priority=1, comment defaults to label.
-        assert "        1         0         1 ! a" in text
-        assert "        1         0         1 ! b" in text
+        assert "        1         0         1 ! 1 : a" in text
+        assert "        1         0         1 ! 2 : b" in text
 
     def test_blocks_count_line(self, tmp_path):
         payload = _two_block_shared_payload()
@@ -164,8 +164,8 @@ class TestBlocksSection:
             },
         )
         text = out.read_text()
-        assert "        2         1         7 ! aero block" in text
-        assert "        1         0         1 ! b" in text
+        assert "        2         1         7 ! 1 : aero block" in text
+        assert "        1         0         1 ! 2 : b" in text
 
 
 # ---------------------------------------------------------------------------
@@ -567,7 +567,7 @@ class TestCLI:
         )
         assert r.exit_code == 0, r.output
         text = ccpar.read_text()
-        assert "        3         1         7 ! body" in text
+        assert "        3         1         7 ! 1 : body" in text
 
     def test_cc_par_cli_meta_not_json_not_file(self, tmp_path):
         """--meta with a value that is neither valid JSON nor an existing file exits 1."""
