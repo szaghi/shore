@@ -1,6 +1,6 @@
 # shore.io.geo
 
-Xall_GPU geo format reader and writer.
+Xall geo format reader and writer.
 
 ## File format
 

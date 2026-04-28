@@ -14,7 +14,7 @@
 <div>
 <table>
 <tr>
-<td><b>📐 STL → structured volume in one command</b><br><sub>Feed any raw triangulated STL — SHORE projects it onto a structured sphere template, marches layers outward along smooth vertex normals, and writes a Xall_GPU-compatible geo file with a single <code>shore mesh</code> call. <a href="https://szaghi.github.io/shore/guide/quickstart">Quick start</a></sub></td>
+<td><b>📐 STL → structured volume in one command</b><br><sub>Feed any raw triangulated STL — SHORE projects it onto a structured sphere template, marches layers outward along smooth vertex normals, and writes a Xall-compatible geo file with a single <code>shore mesh</code> call. <a href="https://szaghi.github.io/shore/guide/quickstart">Quick start</a></sub></td>
 <td><b>🌊 Hyperbolic marching kernel</b><br><sub>Each wall-normal layer is advanced by a geometric step along area-weighted vertex normals, with per-layer Laplacian smoothing and a Jacobian check that aborts immediately on cell inversion — no silent bad meshes. <a href="https://szaghi.github.io/shore/algorithm/hyperbolic-marching">Algorithm</a></sub></td>
 </tr>
 <tr>
@@ -42,7 +42,7 @@ SHORE is the foundational meshing layer for a Chimera (overset) CFD mesh generat
 
 1. **Project** a structured sphere template onto the body surface → k=0 layer
 2. **March** outward along smooth vertex normals, layer by layer, with geometric growth
-3. **Write** the structured `(ni, nj, nk)` volume to a geo file ready for Xall_GPU
+3. **Write** the structured `(ni, nj, nk)` volume to a geo file ready for Xall
 
 The result is a body-fitted structured volume that wraps tightly around the body, with high near-wall resolution and smoothly growing cells toward the far field. Two topologies are available: the 6-block cubed sphere (default — no polar singularity, conforming SHARED seams) and the single-block, j-periodic O-grid (`--topology ogrid`).
 
@@ -180,7 +180,7 @@ where $\Delta s$ is the first-layer thickness, $r$ is the growth ratio, and $\ha
 
 ## Roadmap
 
-- [ ] Box-shaped outer boundary morphing (Xall_GPU background grid compatibility)
+- [ ] Box-shaped outer boundary morphing (Xall background grid compatibility)
 - [ ] Multi-block surface decomposition for non-star-shaped bodies
 - [ ] Steger–Sorenson orthogonality source term for high-curvature bodies
 - [ ] STEP and parametric surface input (via pythonOCC or cadquery)

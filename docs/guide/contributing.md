@@ -43,7 +43,7 @@ test(cli): add shore view command test
 
 The most impactful contributions, in rough priority order:
 
-1. **Box outer boundary morphing** — the outermost layer currently matches the sphere template shape. Xall_GPU background grids are Cartesian, so the outer boundary should be morphed to a box. This is a post-processing step on `grid[:,:,-1,:]`.
+1. **Box outer boundary morphing** — the outermost layer currently matches the sphere template shape. Xall background grids are Cartesian, so the outer boundary should be morphed to a box. This is a post-processing step on `grid[:,:,-1,:]`.
 
 2. **Steger–Sorenson orthogonality source term** — the current marching kernel uses pure normal extrusion. At high curvature the normals drift; the Steger–Sorenson correction keeps cells orthogonal. See: Steger & Sorenson (1979), *Automatic mesh-point clustering near a boundary in grid generation with elliptic partial differential equations*.
 

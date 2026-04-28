@@ -56,7 +56,7 @@ What SHORE **deliberately does not do**: hole cutting, fringe
 identification, donor search. Those are the solver's job. SHORE's
 boundary is "produce the grids in their world coordinates, write
 them to disk, optionally bundle them into one ParaView-friendly
-`.vtm`." The downstream Chimera-capable solver (Xall_GPU,
+`.vtm`." The downstream Chimera-capable solver (Xall,
 OVERFLOW, etc.) does the assembly at run time.
 
 ## A worked end-to-end assembly

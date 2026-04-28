@@ -1382,6 +1382,58 @@ def split(
 
 
 # ---------------------------------------------------------------------------
+# shore grd
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="grd")
+def grd(
+    inputs: Annotated[
+        list[Path],
+        typer.Argument(
+            help=(
+                "Input .geo files to pack, one per block.  Block ordering in "
+                "the .grd matches the order given here."
+            ),
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Output .grd file path."),
+    ],
+) -> None:
+    """Pack one or more .geo files into a single Xall binary .grd file.
+
+    The .grd format is Fortran unformatted sequential binary: a block-count
+    record, per-block cell-count triples (ni-1, nj-1, nk-1), then three
+    coordinate records (X, Y, Z) per block in Fortran column-major order.
+
+    Block ordering in the .grd matches the order of the input files, which
+    must agree with the ordering used when generating the companion cc.par.
+    """
+    from shore.io.grd import write_grd
+
+    if not inputs:
+        _err.print("[red]Error:[/red] no input .geo files given.")
+        raise typer.Exit(1) from None
+    for p in inputs:
+        if not p.exists():
+            _err.print(f"[red]Error:[/red] file not found: {p}")
+            raise typer.Exit(1) from None
+        if p.suffix.lower() != ".geo":
+            _err.print(f"[red]Error:[/red] input is not a .geo file: {p}")
+            raise typer.Exit(1) from None
+
+    try:
+        out = write_grd(output, inputs)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _console.print(f"[green]✓[/green] Wrote {out} ({len(inputs)} blocks)")
+
+
+# ---------------------------------------------------------------------------
 # shore cc-par
 # ---------------------------------------------------------------------------
 
@@ -1404,7 +1456,7 @@ def cc_par(
         str,
         typer.Option(
             "--grd",
-            help="Name of the .grd file Xnavis should pair with this cc.par "
+            help="Name of the .grd file Xall should pair with this cc.par "
             "(written into header line 1).",
         ),
     ],
@@ -1412,7 +1464,7 @@ def cc_par(
         str,
         typer.Option(
             "--output-basename",
-            help="Output basename Xnavis uses for derived files (header line 2).",
+            help="Output basename Xall uses for derived files (header line 2).",
         ),
     ] = "cc.",
     free_face_bc: Annotated[
@@ -1459,9 +1511,9 @@ def cc_par(
         ),
     ] = -1.0,
 ) -> None:
-    """Convert a SHORE .adjacency.json sidecar to an Xnavis cc.par file.
+    """Convert a SHORE .adjacency.json sidecar to an Xall cc.par file.
 
-    Maps SHORE's per-face boundary conditions to Xnavis cc.par codes:
+    Maps SHORE's per-face boundary conditions to Xall cc.par codes:
     WALL -> 1 (parete), FREE -> --free-bc (default 40), SHARED / DIRICHLET
     -> connection orientation codes with paired patch indices.  Cubed-sphere
     cap-equator cross-axis seams use the hard-coded orientation table from

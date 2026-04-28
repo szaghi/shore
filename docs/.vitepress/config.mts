@@ -108,6 +108,7 @@ export default defineConfig({
             { text: 'shore mesh',      link: '/reference/mesh' },
             { text: 'shore primitive', link: '/reference/primitive' },
             { text: 'shore split',     link: '/reference/split' },
+            { text: 'shore grd',       link: '/reference/grd' },
             { text: 'shore cc-par',    link: '/reference/cc-par' },
             { text: 'shore project',   link: '/reference/project' },
             { text: 'shore info',      link: '/reference/info' },

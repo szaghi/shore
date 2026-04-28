@@ -1,4 +1,4 @@
-"""Tests for the Xnavis cc.par writer.
+"""Tests for the Xall cc.par writer.
 
 Covers:
 - header field formatting

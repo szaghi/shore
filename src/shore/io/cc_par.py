@@ -1,15 +1,15 @@
-"""Xnavis ``cc.par`` writer.
+"""Xall ``cc.par`` writer.
 
 ``cc.par`` is the chimera pre-processor input file consumed by the
-Xnavis / Xall tooling.  It pairs with a ``.grd`` mesh file to declare
+Xall / Xall tooling.  It pairs with a ``.grd`` mesh file to declare
 per-block multigrid level / group / priority and to enumerate every
 patch (face boundary) on every block.  Some patches are simple BCs
 (walls, inflow); others are *connections* between adjacent blocks.
 
 This module is a one-way bridge: it consumes the SHORE
 ``.adjacency.json`` sidecar (see :mod:`shore.io.adjacency`) and emits a
-fully populated ``cc.par`` ASCII file ready for Xnavis ingestion.  It
-does **not** read ``cc.par`` files — the Xnavis side has its own
+fully populated ``cc.par`` ASCII file ready for Xall ingestion.  It
+does **not** read ``cc.par`` files — the Xall side has its own
 ``cc_par_object`` reader.
 
 Format reference
@@ -107,7 +107,7 @@ _FACE_TO_INDEX: dict[str, int] = {
 _FACE_NAMES: tuple[str, ...] = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi")
 
 # ---------------------------------------------------------------------------
-# Default BC codes (from Xnavis modpar.f90)
+# Default BC codes (from Xall modpar.f90)
 # ---------------------------------------------------------------------------
 
 _BC_WALL = 1  # parete (viscous wall)
@@ -137,7 +137,7 @@ _SAME_AXIS_CODE = 135
 #     cap_south[ :,-1, :] = sub2[0, ::-1, :]              # cap.j_hi edge (reversed)
 #     cap_south[ 0, :, :] = sub3[0, ::-1, :]              # cap.i_lo edge (reversed)
 #
-# Orientation digits per Xnavis convention (overset/calcorn.f90 lines 119-125,
+# Orientation digits per Xall convention (overset/calcorn.f90 lines 119-125,
 # 392-411):
 #
 #   l=1: partner's I-axis at Imin, increasing
@@ -341,10 +341,10 @@ def write_cc_par(
     path :
         Output ``cc.par`` path.
     grd_filename :
-        Name of the ``.grd`` mesh file Xnavis should pair with this
+        Name of the ``.grd`` mesh file Xall should pair with this
         ``cc.par`` (header line 1).
     output_basename :
-        Output basename Xnavis will use for its derived files (header
+        Output basename Xall will use for its derived files (header
         line 2).  Default ``"cc."``.
     save_ghost_cells, increase_overlap, extend_internal_wall :
         Header booleans (lines 3-5).
@@ -501,8 +501,8 @@ def _resolve_patch(
     if bc_name == "PERIODIC":
         warnings.warn(
             f"cc.par: PERIODIC BC on {block_label!r}.{face_name} not "
-            "natively supported by Xnavis; emitting offgen=40 instead.  "
-            "Use Xnavis chimera boxes for periodic stitching.",
+            "natively supported by Xall; emitting offgen=40 instead.  "
+            "Use Xall chimera boxes for periodic stitching.",
             UserWarning,
             stacklevel=3,
         )

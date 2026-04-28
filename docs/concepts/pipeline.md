@@ -53,7 +53,7 @@ ParaView `.vtm` MultiBlock if `shore export` is used:
 <stem>_cap_south.geo                 # south polar cap
 ```
 
-The `.geo` format is Xall_GPU compatible: ASCII header `ni nj nk`,
+The `.geo` format is Xall compatible: ASCII header `ni nj nk`,
 then x, y, z arrays in Fortran column-major order.
 
 ## Visualization
@@ -114,7 +114,7 @@ first. See [Surface projection](/algorithm/projection#failure-modes).
 
 The outer boundary of the volume (k=nk-1) currently inherits the
 shape of the cap-equator seam topology — it is not morphed to a box
-or matched to the Xall_GPU background grid. Far-field morphing is
+or matched to the Xall background grid. Far-field morphing is
 the next planned feature.
 
 ### Cap-equator size compatibility

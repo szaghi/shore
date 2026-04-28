@@ -1,9 +1,9 @@
-"""Generate Xnavis cc.par files from the sphere-in-cylinder assembly.
+"""Generate Xall cc.par files from the sphere-in-cylinder assembly.
 
 This example is a direct continuation of ``assembly_sphere_in_cylinder.py``.
 It re-builds the same two meshes, writes their adjacency sidecars, exports
 VTK MultiBlock files for ParaView inspection, then converts each sidecar to
-an Xnavis ``cc.par`` file.
+an Xall ``cc.par`` file.
 
 The two meshes are independent Chimera components — they share a domain in
 world-space but have no SHARED faces between them.  Each therefore gets its
@@ -25,8 +25,10 @@ Output
       wall_sub{0..3}.geo
       wall_cap_north.geo / wall_cap_south.geo    # near-body .geo files
       wall.vtm                                   # near-body ParaView MultiBlock
+      wall.grd                                   # near-body Xall binary grid
       background_{center,sub_e,sub_n,sub_w,sub_s}.geo
       background.vtm                             # background ParaView MultiBlock
+      background.grd                             # background Xall binary grid
       wall.adjacency.json
       background.adjacency.json
       wall.cc.par
@@ -159,6 +161,39 @@ def write_vtm(blocks: list, vtm_path: Path, prefix: str) -> Path | None:
 
 
 # ---------------------------------------------------------------------------
+# Binary .grd writer
+# ---------------------------------------------------------------------------
+
+
+def write_grd_file(blocks: list, out_dir: Path, stem: str) -> Path:
+    """Pack all blocks into one Xall binary ``.grd`` file, reading from disk.
+
+    Resolves each block's ``.geo`` path as ``<out_dir>/<stem>_<label>.geo``
+    and delegates to :func:`shore.io.grd.write_grd`.  Standalone: usable
+    after ``shore split`` writes ``.geo`` files without in-memory blocks.
+
+    Parameters
+    ----------
+    blocks :
+        List of HexBlock objects (labels used to locate the .geo files).
+    out_dir :
+        Directory containing the ``.geo`` files.
+    stem :
+        Shared stem prefix (e.g. ``"wall"``).
+    """
+    from shore.io.geo import read_geo
+    from shore.io.grd import write_grd
+
+    geo_paths = [out_dir / f"{stem}_{blk.label}.geo" for blk in blocks]
+    out = write_grd(out_dir / f"{stem}.grd", geo_paths)
+    total_nodes = sum(
+        g.shape[0] * g.shape[1] * g.shape[2] for g in (read_geo(p) for p in geo_paths)
+    )
+    print(f"  wrote {out}  ({len(geo_paths)} blocks, {total_nodes:,} nodes total)")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Adjacency + cc.par writers
 # ---------------------------------------------------------------------------
 
@@ -188,7 +223,7 @@ def write_cc_par_file(
     ccpar_path :
         Destination ``cc.par`` path.
     grd_filename :
-        Name of the ``.grd`` file that Xnavis pairs with this ``cc.par``
+        Name of the ``.grd`` file that Xall pairs with this ``cc.par``
         (written into header line 1 verbatim).
     block_metadata :
         ``{label: BlockMeta}`` dict giving per-block level / group / priority /
@@ -233,7 +268,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Build sphere-in-cylinder assembly meshes and convert each "
-            "mesh to an Xnavis cc.par chimera pre-processor input file."
+            "mesh to an Xall cc.par chimera pre-processor input file."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -279,12 +314,17 @@ def main() -> None:
     write_vtm(nb_blocks, out_dir / "wall.vtm", prefix="wall")
     write_vtm(bg_blocks, out_dir / "background.vtm", prefix="background")
 
-    # 5. Adjacency JSON sidecars
+    # 5. Binary .grd files for Xall
+    print("\nWriting binary .grd files:")
+    write_grd_file(nb_blocks, out_dir, "wall")
+    write_grd_file(bg_blocks, out_dir, "background")
+
+    # 6. Adjacency JSON sidecars
     print("\nWriting adjacency sidecars:")
     nb_adj = write_adjacency(nb_blocks, out_dir / "wall.adjacency.json")
     bg_adj = write_adjacency(bg_blocks, out_dir / "background.adjacency.json")
 
-    # 6. cc.par files — one per independent Chimera component.
+    # 7. cc.par files — one per independent Chimera component.
     #
     # Near-body: per-block BlockMeta assigns chimera cell-centre BC (40) to
     # every sub-block and cap; this is also the write_cc_par default, but we
@@ -317,11 +357,11 @@ def main() -> None:
         block_metadata=bg_meta,
     )
 
-    # 7. Spot-check printout
+    # 8. Spot-check printout
     print_cc_par_summary(nb_ccpar)
     print_cc_par_summary(bg_ccpar)
 
-    # 8. Equivalent CLI commands (for reference)
+    # 9. Equivalent CLI commands (for reference)
     import json
 
     nb_meta_json = json.dumps({k: {"free_face_bc": v.free_face_bc} for k, v in nb_meta.items()})
@@ -333,7 +373,7 @@ def main() -> None:
     if not args.view and args.screenshot is None:
         return
 
-    # 9. Optional visualisation (one near-body cap block)
+    # 10. Optional visualisation (one near-body cap block)
     try:
         from shore.io.geo import read_geo
         from shore.vis import save_screenshot, view_geo

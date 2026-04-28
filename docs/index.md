@@ -19,7 +19,7 @@ hero:
 features:
   - icon: 📐
     title: STL → 6-block structured volume in one command
-    details: Feed any star-shaped triangulated STL — SHORE builds the 6-block cubed-sphere topology with a single `shore mesh` call. Gnomonic flat-square cap k=0 seed, great-circle equator, C1 spacing match at every cap-equator seam vertex, six Xall_GPU-compatible .geo files out.
+    details: Feed any star-shaped triangulated STL — SHORE builds the 6-block cubed-sphere topology with a single `shore mesh` call. Gnomonic flat-square cap k=0 seed, great-circle equator, C1 spacing match at every cap-equator seam vertex, six Xall-compatible .geo files out.
     link: /guide/quickstart
     linkText: Quick start
   - icon: 🌊
@@ -39,7 +39,7 @@ features:
     linkText: CLI reference
   - icon: 🏗️
     title: Chimera-ready output
-    details: Writes the structured blocks for both near-body (cubed sphere or O-grid) and background (box, annulus, flat-caps cylinder) grids in Xall_GPU .geo format, with a single .vtm MultiBlock for ParaView inspection of the full assembly.
+    details: Writes the structured blocks for both near-body (cubed sphere or O-grid) and background (box, annulus, flat-caps cylinder) grids in Xall .geo format, with a single .vtm MultiBlock for ParaView inspection of the full assembly.
     link: /guide/assembly
     linkText: Assembly walkthrough
   - icon: 🆓
@@ -82,7 +82,7 @@ STL (raw triangles)
   volume (ni × nj × nk × 3) ← cubed sphere (6 blocks) or O-grid (1 block)
       │
       ▼  shore mesh (= project + march)
-  fuselage_*.geo             ← Xall_GPU structured grid(s)
+  fuselage_*.geo             ← Xall structured grid(s)
 ```
 
 

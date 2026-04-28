@@ -174,13 +174,12 @@ For larger bodies (wall, wing) the tanh-clustered law works as
 expected — it's the geometric-scale ratio of `ds` to surface cell
 size that matters, not the law per se.
 
-## Generating Xnavis `cc.par` files
+## Generating Xall `cc.par` files
 
-Once the geometry is verified in ParaView, convert each mesh to an
-Xnavis chimera pre-processor input with
-`examples/cc_par_assembly.py` — a direct continuation of this example
-that adds three steps: adjacency JSON sidecars, VTK MultiBlock exports,
-and `cc.par` generation.
+Once the geometry is verified in ParaView, convert each mesh to Xall
+inputs with `examples/cc_par_assembly.py` — a direct continuation of
+this example that adds four steps: adjacency JSON sidecars, VTK
+MultiBlock exports, binary `.grd` files, and `cc.par` generation.
 
 ```bash
 # Generate everything headlessly (no viewer).
@@ -199,6 +198,19 @@ codes — demonstrating that `write_cc_par`'s `block_metadata` argument
 
 ```python
 from shore.io.cc_par import BlockMeta, write_cc_par
+from shore.io.grd import write_grd
+
+# Pack each mesh into a binary .grd — block order must match cc.par.
+write_grd("wall.grd", [
+    "examples_out/wall_sub0.geo", "examples_out/wall_sub1.geo",
+    "examples_out/wall_sub2.geo", "examples_out/wall_sub3.geo",
+    "examples_out/wall_cap_north.geo", "examples_out/wall_cap_south.geo",
+])
+write_grd("background.grd", [
+    "examples_out/background_center.geo",
+    "examples_out/background_sub_e.geo", "examples_out/background_sub_n.geo",
+    "examples_out/background_sub_w.geo", "examples_out/background_sub_s.geo",
+])
 
 # Near-body: equatorial sub-blocks and caps all use chimera BC 40.
 nb_meta = {
@@ -217,9 +229,19 @@ write_cc_par(nb_adj, "wall.cc.par", grd_filename="wall.grd", block_metadata=nb_m
 write_cc_par(bg_adj, "background.cc.par", grd_filename="background.grd", block_metadata=bg_meta)
 ```
 
-The same result from the CLI using `--meta`:
+The same result from the CLI:
 
 ```bash
+# Binary grids
+shore grd wall_sub0.geo wall_sub1.geo wall_sub2.geo wall_sub3.geo \
+          wall_cap_north.geo wall_cap_south.geo \
+          --output wall.grd
+
+shore grd background_center.geo background_sub_e.geo background_sub_n.geo \
+          background_sub_w.geo background_sub_s.geo \
+          --output background.grd
+
+# Chimera descriptors (block order must match the grd invocations above)
 shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd
 
 shore cc-par background.adjacency.json background.cc.par \
@@ -234,12 +256,15 @@ examples_out/
   background.adjacency.json    # background adjacency sidecar
   wall.vtm                     # near-body ParaView MultiBlock
   background.vtm               # background ParaView MultiBlock
-  wall.cc.par                  # near-body Xnavis cc.par
-  background.cc.par            # background Xnavis cc.par
+  wall.grd                     # near-body Xall binary grid
+  background.grd               # background Xall binary grid
+  wall.cc.par                  # near-body Xall cc.par
+  background.cc.par            # background Xall cc.par
 ```
 
-See [`shore cc-par`](/reference/cc-par) for the full CLI reference,
-including the `--meta` flag format and BC code table.
+See [`shore grd`](/reference/grd) for the binary format reference and
+[`shore cc-par`](/reference/cc-par) for the full CLI reference including
+the `--meta` flag format and BC code table.
 
 ## What's deliberately not in this example
 
@@ -266,6 +291,8 @@ including the `--meta` flag format and BC code table.
   for the background.
 - [Config files](/reference/config) — TOML schema for the mesh
   side; primitives use the parallel `kind = "primitive"` schema.
+- [`shore grd`](/reference/grd) — pack per-block `.geo` files into
+  the Xall binary `.grd`.
 - [`shore export`](/reference/export) — the CLI command that bundles
   multiple `.geo` files into a `.vtm`. The orchestrator script does
   the same in-process so all 11 blocks share one manifest.

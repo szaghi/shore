@@ -9,7 +9,7 @@ Chimera mesh generation requires two classes of grids:
 - **Near-body grids** — structured, body-fitted, high near-wall resolution
 - **Background grids** — Cartesian or simple structured blocks that fill the far field
 
-SHORE generates the near-body grids. Starting from the surface of a body (e.g. a fuselage, wing section, or bluff body), it builds a structured O-grid that wraps tightly around it by marching layers of cells outward along the surface normal direction. The result is directly usable as input to the Xall_GPU CFD solver.
+SHORE generates the near-body grids. Starting from the surface of a body (e.g. a fuselage, wing section, or bluff body), it builds a structured O-grid that wraps tightly around it by marching layers of cells outward along the surface normal direction. The result is directly usable as input to the Xall CFD solver.
 
 ## Design philosophy
 
@@ -27,12 +27,12 @@ SHORE generates the near-body grids. Starting from the surface of a body (e.g. a
 | Single-block O-grid | Multi-block arbitrary surface decomposition |
 | 6-block cubed-sphere topology | Elliptic volume smoothing |
 | Box / annulus / flat-caps primitives (backgrounds, buffers) | Other CFD formats (Plot3D, CGNS) |
-| Xall_GPU geo output | Box-shaped outer boundary morphing |
+| Xall geo output | Box-shaped outer boundary morphing |
 | Sphere-projected surface | Advanced surface remeshing |
 | Hyperbolic normal extrusion | — |
 
 ## Related tools
 
-- **Xall_GPU** — the target Chimera CFD solver; SHORE generates its near-body geo blocks
+- **Xall** — the target Chimera CFD solver; SHORE generates its near-body geo blocks
 - **trimesh** — STL I/O and BVH-accelerated ray casting
 - **NumPy / SciPy** — all numerical kernels

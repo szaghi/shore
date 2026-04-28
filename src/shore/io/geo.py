@@ -1,4 +1,4 @@
-"""Xall_GPU geo format writer/reader.
+"""Xall geo format writer/reader.
 
 Format (ASCII, one block per file)
 -----------------------------------

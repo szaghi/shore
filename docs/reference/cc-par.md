@@ -1,6 +1,6 @@
 # `shore cc-par`
 
-Convert a SHORE `.adjacency.json` sidecar to an Xnavis `cc.par` chimera
+Convert a SHORE `.adjacency.json` sidecar to an Xall `cc.par` chimera
 pre-processor input file.
 
 ```bash
@@ -9,18 +9,18 @@ shore cc-par INPUT.adjacency.json OUTPUT.par --grd MESH.grd [OPTIONS]
 
 ## Motivation
 
-Xnavis (and Xall_GPU) is a Fortran CFD solver that consumes **two**
+Xall is a Fortran CFD solver that consumes **two**
 files per simulation: a binary mesh (`.grd`) and an ASCII chimera
 descriptor (`cc.par`). The `cc.par` file lists every block's overset
 metadata (level, group, priority) and every face *patch* — boundary
 condition, IJK extents, and partner reference for inter-block
 connections.
 
-SHORE produces the structured grid (which can be written as a binary
-`.grd` via `shore export`) and a JSON adjacency sidecar that captures
-the multi-block connectivity. `shore cc-par` is the bridge: it
-translates the SHORE adjacency JSON into the Xnavis ASCII format,
-ready to feed into the Xnavis pre-processor.
+SHORE produces the structured grid (packed into a binary `.grd` via
+`shore grd`) and a JSON adjacency sidecar that captures the multi-block
+connectivity. `shore cc-par` is the bridge: it translates the SHORE
+adjacency JSON into the Xall ASCII format, ready to feed into the
+Xall pre-processor.
 
 ## File format reference
 
@@ -31,7 +31,7 @@ emitted by SHORE / overset-exploded for human readability.
 
 The canonical readers / writers are:
 
-- `Xnavis-projects/overset/src/readpar.f90` — Xnavis reader (the
+- `Xnavis-projects/overset/src/readpar.f90` — Xall reader (the
   authoritative format definition).
 - `Xnavis-projects/overset-exploded/src/lib/overset_exploded_cc_par_object.F90`
   — modular reader/writer used by `overset-exploded` for
@@ -84,8 +84,8 @@ The file has **5 sections**, in this order:
 
 | Line | Field | Type | Meaning |
 |---|---|---|---|
-| 1 | grd filename | quoted string | Path/name of the binary `.grd` mesh file Xnavis pairs with this `cc.par`. |
-| 2 | output basename | quoted string | Basename Xnavis uses for derived output files (e.g. `cc.`). |
+| 1 | grd filename | quoted string | Path/name of the binary `.grd` mesh file Xall pairs with this `cc.par`. |
+| 2 | output basename | quoted string | Basename Xall uses for derived output files (e.g. `cc.`). |
 | 3 | save ghost cells | `.true.` / `.false.` | Write block files with ghost-cell frames. |
 | 4 | increase overlap | `.true.` / `.false.` | Enlarge inter-block overlap during chimera donor search. |
 | 5 | extend internal wall | `.true.` / `.false.` | Extend wall BC into chimera-boundary cells. |
@@ -204,7 +204,7 @@ is always `0` followed by a blank line.
 
 Boxes are **hole-cutting volumes** — user-supplied parallelepipeds /
 cylinders that mark cells as hole or recipient regardless of donor
-search. They're an Xnavis pre-processor input, not a SHORE output, so
+search. They're an Xall pre-processor input, not a SHORE output, so
 the writer always emits `0` here. If you need boxes, hand-edit them
 in afterwards using the schema from
 `overset_exploded_box_object.F90`.
@@ -325,8 +325,8 @@ subtracts 1 to produce the cell-count extents the reader expects.
 ## SHORE → `cc.par` BC mapping
 
 How `shore cc-par` translates each SHORE `FaceBC` enum value into the
-Xnavis BC code. See the [BC code constants](#bc-code-constants) table
-above for the full Xnavis BC vocabulary.
+Xall BC code. See the [BC code constants](#bc-code-constants) table
+above for the full Xall BC vocabulary.
 
 | SHORE `FaceBC` | `cc.par` BC code | `family` field | Notes |
 |---|---|---|---|
@@ -334,7 +334,7 @@ above for the full Xnavis BC vocabulary.
 | `FREE` | `--free-bc` (default `40`), or per-block `free_face_bc` via `--meta` | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a natural BC: `-3` inflow, `-4` inoutflow, `-9` extrapolation. Per-block overrides via `--meta` take precedence over `--free-bc`. |
 | `SHARED` | orientation code (≥ 100) | partner patch index | Same-axis (i↔i, j↔j, k↔k, no flip) emits `135` on both sides — see [orientation digits](#orientation-digits-in-detail). |
 | `DIRICHLET` | orientation code | partner patch index | Cubed-sphere cap-equator seams are *cross-axis*; per-pair codes are derived from the topology — see below. |
-| `PERIODIC` | `40` + `UserWarning` | `0` | `cc.par` has no first-class periodic BC; use Xnavis chimera boxes for periodic stitching. |
+| `PERIODIC` | `40` + `UserWarning` | `0` | `cc.par` has no first-class periodic BC; use Xall chimera boxes for periodic stitching. |
 
 ## Cubed-sphere cap-equator codes
 
@@ -364,8 +364,8 @@ introduce additional cross-axis seams must extend the table in
 
 | Flag | Default | Description |
 |---|---|---|
-| `--grd TEXT` | *required* | Name of the `.grd` mesh file Xnavis pairs with this `cc.par` (header line 1). |
-| `--output-basename TEXT` | `"cc."` | Output basename Xnavis uses for derived files (header line 2). |
+| `--grd TEXT` | *required* | Name of the `.grd` mesh file Xall pairs with this `cc.par` (header line 1). |
+| `--output-basename TEXT` | `"cc."` | Output basename Xall uses for derived files (header line 2). |
 | `--free-bc INT` | `40` | BC code for `FREE` faces on every block that has no entry in `--meta`. Use `-3`/`-4`/`-9` etc. for far-field background blocks. |
 | `--meta TEXT` | `null` | Per-block `BlockMeta` overrides. Accepts an inline JSON object or a path to a JSON file (inline JSON is tried first). Keys are block labels; values are objects with any subset of `{level, group, priority, comment, free_face_bc}`. Missing keys inherit their defaults. Any block absent from the map uses `--free-bc` for its FREE faces. |
 | `--mgl INT INT` | `4 1` | Multigrid levels: total, finest active. |
@@ -455,7 +455,7 @@ The `--meta` CLI flag exposes the same control without writing Python.
 - **No `boxes` section.** User-supplied chimera hole-cutting boxes are
   out of scope; the writer always emits `0 ! boxes number`.
 - **No `edges` section.** Likewise unsupported by SHORE-style adjacency.
-- **One-way bridge.** No `cc.par` reader is provided; the Xnavis
+- **One-way bridge.** No `cc.par` reader is provided; the Xall
   Fortran tooling owns the canonical reader.
 - **Cross-axis support is cubed-sphere-only.** When future topologies
   introduce non-trivial cross-axis adjacencies, the
@@ -464,6 +464,8 @@ The `--meta` CLI flag exposes the same control without writing Python.
 
 ## See also
 
+- [`shore grd`](./grd) — pack per-block `.geo` files into the binary
+  `.grd` that pairs with this `cc.par`.
 - [`shore split`](./split) — produces the `.adjacency.json` SHORE
   consumes.
 - [Adjacency sidecar format](./split#adjacency-sidecar) — JSON schema.

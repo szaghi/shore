@@ -211,7 +211,7 @@ choices, ParaView inspection workflow, and the explicit boundary
 between what SHORE produces and what the downstream solver does —
 lives in [Assembly walkthrough](/guide/assembly).
 
-### `examples/cc_par_assembly.py` — assembly + Xnavis `cc.par` generation
+### `examples/cc_par_assembly.py` — assembly + Xall `cc.par` generation
 
 Extends the assembly example by adding adjacency JSON sidecars, VTK
 MultiBlock exports, and `cc.par` generation for both meshes.  Viewer is
@@ -236,13 +236,15 @@ examples_out/
   wall_sub0..3.geo              # near-body cubed-sphere blocks
   wall_cap_north/south.geo
   wall.vtm                      # near-body ParaView MultiBlock
+  wall.grd                      # near-body Xall binary grid
   background_center.geo         # background flat-caps blocks
   background_sub_e/n/w/s.geo
   background.vtm                # background ParaView MultiBlock
+  background.grd                # background Xall binary grid
   wall.adjacency.json
   background.adjacency.json
-  wall.cc.par                   # near-body Xnavis cc.par
-  background.cc.par             # background Xnavis cc.par
+  wall.cc.par                   # near-body Xall cc.par
+  background.cc.par             # background Xall cc.par
 ```
 
 ### `examples/visualize.ipynb` — Jupyter Notebook
@@ -302,6 +304,7 @@ python -m pytest tests/test_cli.py::TestMesh::test_exit_code_ok -v
 |---|---|
 | `tests/conftest.py` | Shared fixtures (`sphere_stl`, `sphere_layer`) |
 | `tests/test_geo.py` | Geo file read/write round-trip fidelity |
+| `tests/test_grd.py` | Xall binary `.grd` writer — format structure, ordering, CLI |
 | `tests/test_vtk.py` | VTK XML export correctness |
 | `tests/test_vis.py` | PyVista conversion helpers |
 | `tests/test_jacobian.py` | Jacobian field calculations and inversion detection |
