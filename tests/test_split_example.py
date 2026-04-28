@@ -59,7 +59,9 @@ class TestSplitExampleDefaults:
         assert adj_path.exists()
 
         payload = read_adjacency_json(adj_path)
-        assert payload["version"] == 1
+        from shore.io.adjacency import ADJACENCY_VERSION
+
+        assert payload["version"] == ADJACENCY_VERSION
         assert len(payload["blocks"]) == 10
 
         # j-periodic equatorial ring: every sub_q__k0 must share j_lo

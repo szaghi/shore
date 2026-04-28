@@ -226,12 +226,20 @@ Patches:
 
 ```
 1   4   135   2    0   8   8   8   0   8  ! 1     A.j_hi -> B.j_lo
-2   3   135   1    0   8   0   0   0   8  ! 2     B.j_lo -> A.j_hi
+2   3   145   1    0   8   0   0   0   8  ! 2     B.j_lo -> A.j_hi
 ```
 
-- Both BCs are `135`, the canonical same-axis code (this side's i →
-  partner's I-min increasing; j → J-min increasing; k → K-min
-  increasing).
+- `135` (A side): A's i → B's I-min increasing (along, l=1); A's j
+  (perpendicular at Jmax) → B's J-min increasing inward (l=3); A's k
+  → B's K-min increasing (l=5).
+- `145` (B side): B's i → A's I-min increasing (along, l=1); B's j
+  (perpendicular at Jmin) → A's J-max decreasing inward (l=4); B's k
+  → A's K-min increasing (l=5).
+- The two codes differ even though the seam is geometrically symmetric:
+  each side reports its perpendicular partner from its own frame, and
+  the partner is at Jmin on one side and Jmax on the other. Both codes
+  describe the same seam — see the [orientation digits](#orientation-digits-in-detail)
+  table for the digit semantics.
 - `family = 2` and `family = 1` cross-reference the two patches.
 - A's j-extents are `8 8` (collapsed at j-max); B's j-extents are
   `0 0` (collapsed at j-min).
@@ -295,14 +303,18 @@ else if (l.eq.5) then; ka = nla(5) + n          ! Kmin, increasing
 else if (l.eq.6) then; ka = nla(6) + 1 - n      ! Kmax, decreasing
 ```
 
-The canonical "same coordinate frame, no flip" code is **`135`** —
-the only orientation SHORE emits for non-cap seams.
+For a same-axis seam with no flips, the side whose perpendicular face
+is at min (e.g. `j_lo`) emits `135` and the side at max (e.g. `j_hi`)
+emits `145`. The codes are *not* symmetric: each side describes the
+mapping in its own frame, and the perpendicular digit reflects which
+boundary of the partner the seam lies on.
 
 Decoding examples:
 
 | Code | li | lj | lk | Meaning |
 |---|---|---|---|---|
 | `135` | 1 | 3 | 5 | i→Imin↑, j→Jmin↑, k→Kmin↑ — *no flips, perpendicular goes Imin* |
+| `145` | 1 | 4 | 5 | i→Imin↑, j→Jmax↓, k→Kmin↑ — *perpendicular Jmax-flipped (mirror of 135)* |
 | `235` | 2 | 3 | 5 | i→Imax↓, j→Jmin↑, k→Kmin↑ — *perpendicular Imax-flipped* |
 | `415` | 4 | 1 | 5 | i→Jmax↓, j→Imin↑, k→Kmin↑ — *axis swap (i↔j) + flip on i* |
 | `245` | 2 | 4 | 5 | i→Imax↓, j→Jmax↓, k→Kmin↑ — *both i and j flipped* |
@@ -332,8 +344,8 @@ above for the full Xall BC vocabulary.
 |---|---|---|---|
 | `WALL` | `1` (`parete`, viscous wall) | `0` | Body wall. |
 | `FREE` | `--free-bc` (default `40`), or per-block `free_face_bc` via `--meta` | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a natural BC: `-3` inflow, `-4` inoutflow, `-9` extrapolation. Per-block overrides via `--meta` take precedence over `--free-bc`. |
-| `SHARED` | orientation code (≥ 100) | partner patch index | Same-axis (i↔i, j↔j, k↔k, no flip) emits `135` on both sides — see [orientation digits](#orientation-digits-in-detail). |
-| `DIRICHLET` | orientation code | partner patch index | Cubed-sphere cap-equator seams are *cross-axis*; per-pair codes are derived from the topology — see below. |
+| `SHARED` | orientation code (≥ 100) | partner patch index | Code derived from the face's `axis_map` plus the partner face name — see [orientation digits](#orientation-digits-in-detail). For a same-axis seam with no flips the codes are `135` / `145` per side. |
+| `DIRICHLET` | orientation code | partner patch index | Same derivation as `SHARED`; cross-axis seams (e.g. cubed-sphere cap-equator) are produced naturally from the `axis_map` without per-topology lookup tables. |
 | `PERIODIC` | `40` + `UserWarning` | `0` | `cc.par` has no first-class periodic BC; use Xall chimera boxes for periodic stitching. |
 
 ## Cubed-sphere cap-equator codes
@@ -343,7 +355,7 @@ For the cubed-sphere topology, each sub-block's polar face
 *lateral* face of the matching cap block (`cap_*.i_lo` / `i_hi` /
 `j_lo` / `j_hi`), with a per-`q` axis remapping that mirrors the cap
 boundary overwrite in `topology/sphere_cap.py`. The eight orientation
-codes are:
+codes that fall out of the axis_map derivation are:
 
 | Sub | Pole | Cap face | Sub-side code | Cap-side code |
 |---|---|---|---|---|
@@ -356,9 +368,11 @@ codes are:
 | sub2 | south | `cap_south.j_hi` | `425` | `415` |
 | sub3 | south | `cap_south.i_lo` | `145` | `145` |
 
-These are derived once and hard-coded; future topologies that
-introduce additional cross-axis seams must extend the table in
-`shore.io.cc_par._CAP_EQUATOR_PARTNER`.
+These values are not hard-coded in the writer: they are computed
+from the `axis_map` field that `CubedSphereTopology` stamps onto each
+seam at build time, then serialised into the adjacency JSON. The
+table is shown here as a reference for cross-checking the writer's
+output, not as a writer input.
 
 ## CLI options
 
@@ -457,10 +471,12 @@ The `--meta` CLI flag exposes the same control without writing Python.
 - **No `edges` section.** Likewise unsupported by SHORE-style adjacency.
 - **One-way bridge.** No `cc.par` reader is provided; the Xall
   Fortran tooling owns the canonical reader.
-- **Cross-axis support is cubed-sphere-only.** When future topologies
-  introduce non-trivial cross-axis adjacencies, the
-  `_CAP_EQUATOR_PARTNER` table must be extended; same-axis seams (the
-  common case for primitive splits) are always handled.
+- **Topology-agnostic orientation.** Cross-axis seams are no longer
+  hard-coded per topology: every connection face in the adjacency
+  JSON carries an `axis_map` that the writer uses to derive the
+  orientation code. New topologies need only stamp valid `axis_map`
+  values on their seams (see `shore.mesh.face.AxisMap`); no edits
+  to this writer are required.
 
 ## See also
 

@@ -81,6 +81,7 @@ import numpy as np
 
 from shore.exceptions import ParameterError
 from shore.mesh.block import HexBlock
+from shore.mesh.face import AxisMap, FaceBC, FaceName
 from shore.mesh.spacing import Spacing1D
 from shore.primitive.base import PrimitiveMesh, axis_frame, coords_1d, resolve_axis
 from shore.volume.spacing import tanh_one_sided, tanh_two_sided
@@ -424,6 +425,76 @@ class FlatCapsCylinder(PrimitiveMesh):
                     periodic_i=False,
                     periodic_j=False,
                 )
+            )
+
+        # ------------------------------------------------------------------
+        # Wire the 8 SHARED seams (4 center↔sub + 4 sub↔sub corners).
+        #
+        # Center↔sub seams: each sub-block's ``i_lo`` (the inner edge at
+        # the central square) coincides node-for-node with one face of
+        # the center block, possibly with cross-axis remap and j-axis
+        # reversal.  The geometric ground truth is the four asserts in
+        # ``test_inner_edges_match_central_square``:
+        #
+        #   sub_e.nodes[0, :, :] == center.nodes[-1, :, :]        # i_hi, identity
+        #   sub_n.nodes[0, :, :] == center.nodes[::-1, -1, :]     # j_hi, j↔i flipped
+        #   sub_w.nodes[0, :, :] == center.nodes[0, ::-1, :]      # i_lo, j-flipped
+        #   sub_s.nodes[0, :, :] == center.nodes[:, 0, :]         # j_lo, j↔i no flip
+        #
+        # Sub↔sub corner seams: each pair of adjacent sub-blocks shares
+        # a 2D radial face at the central-square corner azimuth.  Both
+        # faces are same-axis (along ``i`` and ``k``) with no flips:
+        # identity AxisMap.  These seams are bit-exact only when the
+        # central-square tangential distribution is symmetric
+        # (``c_law='uniform'`` or ``'tanh2'`` with default cluster);
+        # for ``c_law='tanh'`` (asymmetric) the corner cell sizes
+        # differ by ~1e-2 between adjacent sub-blocks, but the
+        # connectivity is still topologically valid and downstream
+        # consumers (cc.par etc.) need the SHARED tag to write the
+        # connection patch.
+        # ------------------------------------------------------------------
+        center, sub_e, sub_n, sub_w, sub_s = center_block, *sub_blocks
+
+        center_sub_seams: tuple[tuple[HexBlock, FaceName, AxisMap], ...] = (
+            # (sub_block, center_face, axis_map_on_sub_side[i_lo])
+            (sub_e, "i_hi", AxisMap.from_pairs(("j", False), ("k", False))),
+            (sub_n, "j_hi", AxisMap.from_pairs(("i", True), ("k", False))),
+            (sub_w, "i_lo", AxisMap.from_pairs(("j", True), ("k", False))),
+            (sub_s, "j_lo", AxisMap.from_pairs(("i", False), ("k", False))),
+        )
+        for sub_blk, center_face, sub_axis_map in center_sub_seams:
+            center._set_face_bc(
+                center_face,
+                FaceBC.SHARED,
+                partner=sub_blk.face("i_lo"),
+                axis_map=sub_axis_map.inverse("i_lo", center_face),
+            )
+            sub_blk._set_face_bc(
+                "i_lo",
+                FaceBC.SHARED,
+                partner=center.face(center_face),
+                axis_map=sub_axis_map,
+            )
+
+        # Sub↔sub corner seams: a.j_hi ↔ b.j_lo, identity AxisMap on each side.
+        corner_chain: tuple[tuple[HexBlock, HexBlock], ...] = (
+            (sub_e, sub_n),
+            (sub_n, sub_w),
+            (sub_w, sub_s),
+            (sub_s, sub_e),
+        )
+        for a, b in corner_chain:
+            a._set_face_bc(
+                "j_hi",
+                FaceBC.SHARED,
+                partner=b.face("j_lo"),
+                axis_map=AxisMap.identity("j_hi"),
+            )
+            b._set_face_bc(
+                "j_lo",
+                FaceBC.SHARED,
+                partner=a.face("j_hi"),
+                axis_map=AxisMap.identity("j_lo"),
             )
 
         return cls(blocks=[center_block, *sub_blocks])

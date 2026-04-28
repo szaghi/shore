@@ -5,7 +5,8 @@ Covers:
 - block section
 - BC code mapping (WALL/FREE/SHARED/DIRICHLET/PERIODIC)
 - patch index assignment + symmetric family pairing
-- cubed-sphere cap-equator orientation table (8 cross-axis pairs)
+- cubed-sphere cap-equator orientation derivation from axis_map
+  (8 cross-axis seams)
 - BlockMeta per-block free_face_bc override
 - end-to-end via shore cc-par CLI
 """
@@ -19,12 +20,43 @@ from typer.testing import CliRunner
 
 from shore.cli import app
 from shore.exceptions import ParameterError
-from shore.io.adjacency import write_adjacency_json
+from shore.io.adjacency import ADJACENCY_VERSION, write_adjacency_json
 from shore.io.cc_par import (
-    _CAP_EQUATOR_PARTNER,
     BlockMeta,
+    _orientation_code_from_axis_map,
     write_cc_par,
 )
+from shore.mesh.face import AxisMap
+
+# All payloads in this file use the current adjacency version.
+_VERSION = ADJACENCY_VERSION
+
+
+def _face(
+    bc: str,
+    partner: tuple[str, str] | None = None,
+    axis_map: list[list] | None = None,
+) -> dict:
+    """Build a face entry for a hand-crafted v2 adjacency payload."""
+    return {
+        "bc": bc,
+        "partner": ({"label": partner[0], "face": partner[1]} if partner else None),
+        "axis_map": axis_map,
+    }
+
+
+def _identity_map(face_name: str) -> list[list]:
+    """Same-axis no-flip axis_map JSON for *face_name* (for tests only)."""
+    a, b = {
+        "i_lo": ("j", "k"),
+        "i_hi": ("j", "k"),
+        "j_lo": ("i", "k"),
+        "j_hi": ("i", "k"),
+        "k_lo": ("i", "j"),
+        "k_hi": ("i", "j"),
+    }[face_name]
+    return [[a, False], [b, False]]
+
 
 # ---------------------------------------------------------------------------
 # Tiny payload fixtures (no real meshing required)
@@ -32,32 +64,32 @@ from shore.io.cc_par import (
 
 
 def _two_block_shared_payload() -> dict:
-    """Two adjacent blocks sharing a SHARED j_hi/j_lo seam."""
+    """Two adjacent blocks sharing a SHARED j_hi/j_lo seam (same-axis, no flip)."""
     return {
-        "version": 1,
+        "version": _VERSION,
         "blocks": [
             {
                 "label": "a",
                 "shape": [4, 4, 4],
                 "faces": {
-                    "i_lo": {"bc": "WALL", "partner": None},
-                    "i_hi": {"bc": "FREE", "partner": None},
-                    "j_lo": {"bc": "FREE", "partner": None},
-                    "j_hi": {"bc": "SHARED", "partner": {"label": "b", "face": "j_lo"}},
-                    "k_lo": {"bc": "FREE", "partner": None},
-                    "k_hi": {"bc": "FREE", "partner": None},
+                    "i_lo": _face("WALL"),
+                    "i_hi": _face("FREE"),
+                    "j_lo": _face("FREE"),
+                    "j_hi": _face("SHARED", ("b", "j_lo"), _identity_map("j_hi")),
+                    "k_lo": _face("FREE"),
+                    "k_hi": _face("FREE"),
                 },
             },
             {
                 "label": "b",
                 "shape": [4, 4, 4],
                 "faces": {
-                    "i_lo": {"bc": "WALL", "partner": None},
-                    "i_hi": {"bc": "FREE", "partner": None},
-                    "j_lo": {"bc": "SHARED", "partner": {"label": "a", "face": "j_hi"}},
-                    "j_hi": {"bc": "FREE", "partner": None},
-                    "k_lo": {"bc": "FREE", "partner": None},
-                    "k_hi": {"bc": "FREE", "partner": None},
+                    "i_lo": _face("WALL"),
+                    "i_hi": _face("FREE"),
+                    "j_lo": _face("SHARED", ("a", "j_hi"), _identity_map("j_lo")),
+                    "j_hi": _face("FREE"),
+                    "k_lo": _face("FREE"),
+                    "k_hi": _face("FREE"),
                 },
             },
         ],
@@ -210,32 +242,36 @@ class TestPatchBCMapping:
         assert a_free["bc"] == -9
         assert b_free["bc"] == 40
 
-    def test_shared_emits_135_with_paired_family(self, tmp_path):
+    def test_shared_emits_orientation_codes_with_paired_family(self, tmp_path):
         payload = _two_block_shared_payload()
         out = write_cc_par(payload, tmp_path / "cc.par", grd_filename="x.grd")
         patches = _parse_patches(out.read_text())
         a_seam = next(p for p in patches if p["block"] == 1 and p["face"] == 4)  # a.j_hi
         b_seam = next(p for p in patches if p["block"] == 2 and p["face"] == 3)  # b.j_lo
+        # a.j_hi → b.j_lo: this perp at max (j_hi), partner perp at min (j_lo,
+        # increasing inward) → lj=3 → 135.  The reverse side b.j_lo → a.j_hi:
+        # partner perp at max (j_hi, decreasing inward) → lj=4 → 145.
+        # Both sides describe the same seam but from their own frame.
         assert a_seam["bc"] == 135
-        assert b_seam["bc"] == 135
+        assert b_seam["bc"] == 145
         # Cross-referenced patch indices (symmetric).
         assert a_seam["family"] == b_seam["idx"]
         assert b_seam["family"] == a_seam["idx"]
 
     def test_periodic_warns_and_emits_offgen(self, tmp_path):
         payload = {
-            "version": 1,
+            "version": _VERSION,
             "blocks": [
                 {
                     "label": "a",
                     "shape": [4, 4, 4],
                     "faces": {
-                        "i_lo": {"bc": "WALL", "partner": None},
-                        "i_hi": {"bc": "FREE", "partner": None},
-                        "j_lo": {"bc": "PERIODIC", "partner": None},
-                        "j_hi": {"bc": "PERIODIC", "partner": None},
-                        "k_lo": {"bc": "FREE", "partner": None},
-                        "k_hi": {"bc": "FREE", "partner": None},
+                        "i_lo": _face("WALL"),
+                        "i_hi": _face("FREE"),
+                        "j_lo": _face("PERIODIC"),
+                        "j_hi": _face("PERIODIC"),
+                        "k_lo": _face("FREE"),
+                        "k_hi": _face("FREE"),
                     },
                 }
             ],
@@ -249,18 +285,18 @@ class TestPatchBCMapping:
 
     def test_unknown_bc_raises(self, tmp_path):
         payload = {
-            "version": 1,
+            "version": _VERSION,
             "blocks": [
                 {
                     "label": "a",
                     "shape": [4, 4, 4],
                     "faces": {
-                        "i_lo": {"bc": "BOGUS", "partner": None},
-                        "i_hi": {"bc": "FREE", "partner": None},
-                        "j_lo": {"bc": "FREE", "partner": None},
-                        "j_hi": {"bc": "FREE", "partner": None},
-                        "k_lo": {"bc": "FREE", "partner": None},
-                        "k_hi": {"bc": "FREE", "partner": None},
+                        "i_lo": _face("BOGUS"),
+                        "i_hi": _face("FREE"),
+                        "j_lo": _face("FREE"),
+                        "j_hi": _face("FREE"),
+                        "k_lo": _face("FREE"),
+                        "k_hi": _face("FREE"),
                     },
                 }
             ],
@@ -297,31 +333,31 @@ class TestSymmetry:
         """A hand-constructed broken pairing must be rejected."""
         # Block a says j_hi -> b.j_lo, but block b's j_lo doesn't reference a.
         payload = {
-            "version": 1,
+            "version": _VERSION,
             "blocks": [
                 {
                     "label": "a",
                     "shape": [4, 4, 4],
                     "faces": {
-                        "i_lo": {"bc": "WALL", "partner": None},
-                        "i_hi": {"bc": "FREE", "partner": None},
-                        "j_lo": {"bc": "FREE", "partner": None},
-                        "j_hi": {"bc": "SHARED", "partner": {"label": "b", "face": "j_lo"}},
-                        "k_lo": {"bc": "FREE", "partner": None},
-                        "k_hi": {"bc": "FREE", "partner": None},
+                        "i_lo": _face("WALL"),
+                        "i_hi": _face("FREE"),
+                        "j_lo": _face("FREE"),
+                        "j_hi": _face("SHARED", ("b", "j_lo"), _identity_map("j_hi")),
+                        "k_lo": _face("FREE"),
+                        "k_hi": _face("FREE"),
                     },
                 },
                 {
                     "label": "b",
                     "shape": [4, 4, 4],
                     "faces": {
-                        "i_lo": {"bc": "WALL", "partner": None},
-                        "i_hi": {"bc": "FREE", "partner": None},
+                        "i_lo": _face("WALL"),
+                        "i_hi": _face("FREE"),
                         # b.j_lo points at b.j_hi instead of a.j_hi — broken.
-                        "j_lo": {"bc": "SHARED", "partner": {"label": "b", "face": "j_hi"}},
-                        "j_hi": {"bc": "SHARED", "partner": {"label": "b", "face": "j_lo"}},
-                        "k_lo": {"bc": "FREE", "partner": None},
-                        "k_hi": {"bc": "FREE", "partner": None},
+                        "j_lo": _face("SHARED", ("b", "j_hi"), _identity_map("j_lo")),
+                        "j_hi": _face("SHARED", ("b", "j_lo"), _identity_map("j_hi")),
+                        "k_lo": _face("FREE"),
+                        "k_hi": _face("FREE"),
                     },
                 },
             ],
@@ -337,81 +373,168 @@ class TestSymmetry:
 
 def _build_cubed_sphere_payload() -> dict:
     """Build a minimal 6-block cubed-sphere adjacency JSON by hand,
-    matching what shore.mesh.CubedSphereTopology produces (sub_q.j_lo/j_hi
-    SHARED ring + sub_q.i_lo/i_hi DIRICHLET to caps)."""
+    matching what shore.mesh.CubedSphereTopology produces.
 
-    def face(bc: str, partner: tuple[str, str] | None) -> dict:
-        return {
-            "bc": bc,
-            "partner": ({"label": partner[0], "face": partner[1]} if partner else None),
-        }
+    Sub-block ↔ sub-block: same-axis SHARED ring (j_hi ↔ j_lo).
+    Sub-block ↔ cap: face-to-face DIRICHLET, with cap-side partner being
+    one of the 4 cap lateral faces (i_lo/i_hi/j_lo/j_hi).  The cap-side
+    AxisMap is the inverse of the sub-side AxisMap.  Sourced from
+    ``shore.mesh.topology._CAP_EQUATOR_NORTH/_SOUTH``.
+    """
+    # (sub_q, sub_face) -> (cap_face, sub_side_axis_map_pairs)
+    # Mirrors shore.mesh.topology._CAP_EQUATOR_{NORTH,SOUTH}.
+    cap_pairs: dict[tuple[int, str], tuple[str, str, list[list]]] = {
+        (0, "i_hi"): ("i_lo", "cap_north", [["j", False], ["k", False]]),
+        (1, "i_hi"): ("j_hi", "cap_north", [["i", False], ["k", False]]),
+        (2, "i_hi"): ("i_hi", "cap_north", [["j", True], ["k", False]]),
+        (3, "i_hi"): ("j_lo", "cap_north", [["i", True], ["k", False]]),
+        (0, "i_lo"): ("j_lo", "cap_south", [["i", False], ["k", False]]),
+        (1, "i_lo"): ("i_hi", "cap_south", [["j", False], ["k", False]]),
+        (2, "i_lo"): ("j_hi", "cap_south", [["i", True], ["k", False]]),
+        (3, "i_lo"): ("i_lo", "cap_south", [["j", True], ["k", False]]),
+    }
 
-    blocks = []
-    # Sub-blocks
+    def _inverse_map(sub_face: str, cap_face: str, sub_pairs: list[list]) -> list[list]:
+        """Return the cap-side axis_map (inverse of sub_pairs)."""
+        sub_along = {"i_lo": ("j", "k"), "i_hi": ("j", "k")}[sub_face]
+        cap_along = {
+            "i_lo": ("j", "k"),
+            "i_hi": ("j", "k"),
+            "j_lo": ("i", "k"),
+            "j_hi": ("i", "k"),
+        }[cap_face]
+        # rev: partner_axis -> (my_axis_label, flipped)
+        rev: dict[str, tuple[str, bool]] = {}
+        for my_ax, (p_ax, flip) in zip(sub_along, sub_pairs, strict=True):
+            rev[p_ax] = (my_ax, flip)
+        return [
+            [rev[cap_along[0]][0], rev[cap_along[0]][1]],
+            [rev[cap_along[1]][0], rev[cap_along[1]][1]],
+        ]
+
+    blocks: list[dict] = []
+    # 4 equatorial sub-blocks.
     for q in range(4):
         q_prev = (q - 1) % 4
         q_next = (q + 1) % 4
+        cap_n_face, cap_n_label, sub_n_pairs = cap_pairs[(q, "i_hi")]
+        cap_s_face, cap_s_label, sub_s_pairs = cap_pairs[(q, "i_lo")]
         blocks.append(
             {
                 "label": f"sub{q}",
                 "shape": [9, 5, 5],
                 "faces": {
-                    "i_lo": face("DIRICHLET", ("cap_south", "k_lo")),
-                    "i_hi": face("DIRICHLET", ("cap_north", "k_lo")),
-                    "j_lo": face("SHARED", (f"sub{q_prev}", "j_hi")),
-                    "j_hi": face("SHARED", (f"sub{q_next}", "j_lo")),
-                    "k_lo": face("WALL", None),
-                    "k_hi": face("FREE", None),
+                    "i_lo": _face("DIRICHLET", (cap_s_label, cap_s_face), sub_s_pairs),
+                    "i_hi": _face("DIRICHLET", (cap_n_label, cap_n_face), sub_n_pairs),
+                    "j_lo": _face("SHARED", (f"sub{q_prev}", "j_hi"), _identity_map("j_lo")),
+                    "j_hi": _face("SHARED", (f"sub{q_next}", "j_lo"), _identity_map("j_hi")),
+                    "k_lo": _face("WALL"),
+                    "k_hi": _face("FREE"),
                 },
             }
         )
-    # Cap blocks: SHORE leaves their lateral faces DIRICHLET-without-partner;
-    # the writer reconstructs the symmetric link from _CAP_EQUATOR_PARTNER.
+
+    # Cap blocks: lateral faces partner the matching sub block with the
+    # inverse axis_map.  k_lo is the cap's wall, k_hi is its outer.
     for pole in ("north", "south"):
+        cap_label = f"cap_{pole}"
+        # Build per-cap-face partner lookup from cap_pairs.
+        partner_of: dict[str, tuple[int, str, list[list]]] = {}
+        for (q, sub_face), (
+            cap_face,
+            cap_label_t,
+            sub_pairs,
+        ) in cap_pairs.items():
+            if cap_label_t != cap_label:
+                continue
+            partner_of[cap_face] = (q, sub_face, sub_pairs)
+
+        face_dict: dict = {}
+        for cap_face in ("i_lo", "i_hi", "j_lo", "j_hi"):
+            q, sub_face, sub_pairs = partner_of[cap_face]
+            cap_pairs_inv = _inverse_map(sub_face, cap_face, sub_pairs)
+            face_dict[cap_face] = _face("DIRICHLET", (f"sub{q}", sub_face), cap_pairs_inv)
+        face_dict["k_lo"] = _face("WALL")
+        face_dict["k_hi"] = _face("FREE")
         blocks.append(
             {
-                "label": f"cap_{pole}",
+                "label": cap_label,
                 "shape": [5, 5, 5],
-                "faces": {
-                    "i_lo": face("DIRICHLET", None),
-                    "i_hi": face("DIRICHLET", None),
-                    "j_lo": face("DIRICHLET", None),
-                    "j_hi": face("DIRICHLET", None),
-                    "k_lo": face("WALL", None),
-                    "k_hi": face("FREE", None),
-                },
+                "faces": face_dict,
             }
         )
-    return {"version": 1, "blocks": blocks}
+    return {"version": _VERSION, "blocks": blocks}
+
+
+class TestOrientationCodeDerivation:
+    """Pure-function tests for :func:`_orientation_code_from_axis_map`.
+
+    Replaces the old `_CAP_EQUATOR_PARTNER` table tests: the writer no
+    longer has a per-topology table — orientation codes are derived
+    from ``(face_name, partner_face_name, axis_map)``.
+    """
+
+    def test_same_axis_no_flip_yields_135(self):
+        # Generic same-axis seam: i_hi <-> i_lo, no flips on j or k.
+        # Perpendicular: partner is i_lo (Imin) -> li=1.
+        # Along-j: partner j, no flip -> lj=3.
+        # Along-k: partner k, no flip -> lk=5.
+        # Code = 135.
+        amap = AxisMap.from_pairs(("j", False), ("k", False))
+        assert _orientation_code_from_axis_map("i_hi", "i_lo", amap) == 135
+
+    def test_partner_at_max_yields_2(self):
+        # i_hi <-> i_hi: perpendicular partner at Imax -> li=2.
+        amap = AxisMap.from_pairs(("j", False), ("k", False))
+        assert _orientation_code_from_axis_map("i_hi", "i_hi", amap) == 235
+
+    def test_along_axis_flipped_yields_4(self):
+        # i_hi <-> i_hi with j-flip -> lj=4.
+        amap = AxisMap.from_pairs(("j", True), ("k", False))
+        assert _orientation_code_from_axis_map("i_hi", "i_hi", amap) == 245
+
+    @pytest.mark.parametrize(
+        ("face", "partner", "pairs", "expected"),
+        [
+            # Cubed-sphere cap-equator seams (sub side codes from the
+            # historical table).
+            ("i_hi", "i_lo", (("j", False), ("k", False)), 135),  # sub0/N
+            ("i_hi", "j_hi", (("i", False), ("k", False)), 415),  # sub1/N
+            ("i_hi", "i_hi", (("j", True), ("k", False)), 245),  # sub2/N
+            ("i_hi", "j_lo", (("i", True), ("k", False)), 325),  # sub3/N
+            ("i_lo", "j_lo", (("i", False), ("k", False)), 315),  # sub0/S
+            ("i_lo", "i_hi", (("j", False), ("k", False)), 235),  # sub1/S
+            ("i_lo", "j_hi", (("i", True), ("k", False)), 425),  # sub2/S
+            ("i_lo", "i_lo", (("j", True), ("k", False)), 145),  # sub3/S
+        ],
+    )
+    def test_cubed_sphere_sub_side_codes(self, face, partner, pairs, expected):
+        amap = AxisMap.from_pairs(pairs[0], pairs[1])
+        assert _orientation_code_from_axis_map(face, partner, amap) == expected
+
+    @pytest.mark.parametrize(
+        ("face", "partner", "pairs", "expected"),
+        [
+            # Cubed-sphere cap-side codes.  Cap faces have along-axes
+            # (j, k) for i_lo/i_hi and (i, k) for j_lo/j_hi; the AxisMap
+            # below uses the canonical cap-side along-axis order, then
+            # maps to the sub partner's along-axes (j, k).
+            ("i_lo", "i_hi", (("j", False), ("k", False)), 235),  # cap_n.i_lo ↔ sub0
+            ("j_hi", "i_hi", (("j", False), ("k", False)), 325),  # cap_n.j_hi ↔ sub1
+            ("i_hi", "i_hi", (("j", True), ("k", False)), 245),  # cap_n.i_hi ↔ sub2
+            ("j_lo", "i_hi", (("j", True), ("k", False)), 425),  # cap_n.j_lo ↔ sub3
+            ("j_lo", "i_lo", (("j", False), ("k", False)), 315),  # cap_s.j_lo ↔ sub0
+            ("i_hi", "i_lo", (("j", False), ("k", False)), 135),  # cap_s.i_hi ↔ sub1
+            ("j_hi", "i_lo", (("j", True), ("k", False)), 415),  # cap_s.j_hi ↔ sub2
+            ("i_lo", "i_lo", (("j", True), ("k", False)), 145),  # cap_s.i_lo ↔ sub3
+        ],
+    )
+    def test_cubed_sphere_cap_side_codes(self, face, partner, pairs, expected):
+        amap = AxisMap.from_pairs(pairs[0], pairs[1])
+        assert _orientation_code_from_axis_map(face, partner, amap) == expected
 
 
 class TestCubedSphereCapEquator:
-    def test_table_covers_all_8_pairs(self):
-        """The hard-coded table has exactly 4 sub-blocks * 2 poles = 8 entries."""
-        assert len(_CAP_EQUATOR_PARTNER) == 8
-        assert all(0 <= q <= 3 for q, _ in _CAP_EQUATOR_PARTNER.keys())
-        assert all(p in ("north", "south") for _, p in _CAP_EQUATOR_PARTNER.keys())
-
-    def test_orientation_codes_decode_canonically(self):
-        """Every code's three digits must each be in {1..6}."""
-        for entry in _CAP_EQUATOR_PARTNER.values():
-            _cap_face, _sub_face, sub_code, cap_code = entry
-            for code in (sub_code, cap_code):
-                li = code // 100
-                lj = (code // 10) % 10
-                lk = code % 10
-                assert 1 <= li <= 6, f"{code}: li={li} out of range"
-                assert 1 <= lj <= 6, f"{code}: lj={lj} out of range"
-                assert 1 <= lk <= 6, f"{code}: lk={lk} out of range"
-
-    def test_each_cap_face_used_exactly_once_per_pole(self):
-        """Cap_north has 4 lateral faces, each must bind to exactly one sub."""
-        for pole in ("north", "south"):
-            cap_faces = [entry[0] for (q, p), entry in _CAP_EQUATOR_PARTNER.items() if p == pole]
-            assert sorted(cap_faces) == ["i_hi", "i_lo", "j_hi", "j_lo"], (
-                f"{pole} cap-face usage: {cap_faces}"
-            )
-
     def test_cubed_sphere_writes_36_patches(self, tmp_path):
         payload = _build_cubed_sphere_payload()
         out = write_cc_par(payload, tmp_path / "cc.par", grd_filename="x.grd")

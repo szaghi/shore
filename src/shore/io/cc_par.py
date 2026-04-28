@@ -12,6 +12,12 @@ fully populated ``cc.par`` ASCII file ready for Xall ingestion.  It
 does **not** read ``cc.par`` files — the Xall side has its own
 ``cc_par_object`` reader.
 
+Orientation codes are derived **from the adjacency JSON's
+``axis_map`` field** — there are no per-topology lookup tables in
+this writer.  Any topology that produces a fully-wired adjacency
+(every SHARED/DIRICHLET face carries ``axis_map`` and ``partner``)
+generates correct ``cc.par`` output.
+
 Format reference
 ----------------
 ``cc.par`` has 5 sections:
@@ -45,35 +51,15 @@ Mapping from SHORE's ``FaceBC`` enum to ``cc.par`` BC codes:
   defaulting to ``40`` (``offgen``, chimera face cell-center).  Body-
   fitted and buffer meshes use ``40``; far-field background patches
   use a natural BC (e.g. ``-9``, extrapolation).
-- ``SHARED``     → connection orientation code (``>= 100``) +
-  ``family = partner patch index``.  For same-axis seams (i↔i, j↔j,
-  k↔k, no flip — the only kind SHORE produces between primitive splits
-  and within the cubed-sphere equatorial ring), the canonical code is
-  ``135`` on both sides.  See :func:`_orientation_code`.
-- ``DIRICHLET``  → connection orientation code, same as ``SHARED``.
-  In the cubed-sphere topology, DIRICHLET is used for cap-equator
-  seams which are *cross-axis* (the sub-block's i-axis maps to one of
-  the cap's lateral faces); the orientation code differs per sub_q
-  and per pole.  See :data:`_CAP_EQUATOR_ORIENT`.
+- ``SHARED`` / ``DIRICHLET`` → connection orientation code (``>= 100``)
+  + ``family = partner patch index``.  The 3-digit orientation code
+  ``lᵢ lⱼ lₖ`` is derived from this face's ``axis_map`` plus the
+  partner face's name (see :func:`_orientation_code_from_axis_map`).
 - ``PERIODIC``   → ``cc.par`` has no first-class periodic BC; emits
   ``40`` with a ``UserWarning``.
 
-Cap-equator partner reconciliation
-----------------------------------
-SHORE's adjacency JSON records the sub-block side of cap-equator
-seams (``sub_q.i_lo / i_hi → cap_*.k_lo``) but the cap side carries
-``partner: null`` because the topology builder leaves it unset.  This
-writer reconstructs the symmetric cap-side patch from the
-:func:`shore.topology.sphere_cap._overwrite_cap_boundaries` mapping
-(see :data:`_CAP_EQUATOR_PARTNER`); the cap-side ``i_lo / i_hi /
-j_lo / j_hi`` faces are emitted as connections back to the sub-block,
-overriding any DIRICHLET-without-partner placeholder in the JSON.
-
 Limitations
 -----------
-- Only the cubed-sphere cap-equator cross-axis layout is hard-coded.
-  Future topologies introducing additional cross-axis seams must
-  extend :data:`_CAP_EQUATOR_PARTNER` and :data:`_CAP_EQUATOR_ORIENT`.
 - No ``boxes`` section — user-supplied hole-cutting boxes for chimera
   donor zones are out of scope; the writer emits ``0 ! boxes number``.
 - No ``edges`` section — likewise unsupported by ``cc.par`` parsers
@@ -88,7 +74,8 @@ from pathlib import Path
 from typing import Any
 
 from shore.exceptions import MeshInputError, ParameterError
-from shore.io.adjacency import read_adjacency_json
+from shore.io.adjacency import _axis_map_from_json, read_adjacency_json
+from shore.mesh.face import FACE_ALONG_AXES, AxisMap
 
 # ---------------------------------------------------------------------------
 # Face-name ↔ cc.par face-index translation
@@ -113,147 +100,40 @@ _FACE_NAMES: tuple[str, ...] = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi")
 _BC_WALL = 1  # parete (viscous wall)
 _BC_OFFGEN = 40  # offset for chimera cell-center BC; default for FREE faces
 
-# Same-axis SHARED / DIRICHLET seam code (i→Imin-inc, j→Jmin-inc, k→Kmin-inc).
-# Used when adjacent blocks share the same coordinate frame and the seam is
-# bit-exact axis-aligned.  See module docstring.
-_SAME_AXIS_CODE = 135
-
 # ---------------------------------------------------------------------------
-# Cubed-sphere cap-equator cross-axis partner / orientation tables
-# ---------------------------------------------------------------------------
-#
-# Derived from
-# :func:`shore.topology.sphere_cap._overwrite_cap_boundaries`, which assigns:
-#
-#   North cap (sub.i_hi pole → cap_north[..., 0, :]):
-#     cap_north[ 0, :, :] = sub0[ni-1, :, :]              # cap.i_lo edge
-#     cap_north[ :,-1, :] = sub1[ni-1, :, :]              # cap.j_hi edge
-#     cap_north[-1, :, :] = sub2[ni-1, ::-1, :]           # cap.i_hi edge (reversed)
-#     cap_north[ :, 0, :] = sub3[ni-1, ::-1, :]           # cap.j_lo edge (reversed)
-#
-#   South cap (sub.i_lo pole → cap_south[..., 0, :]):
-#     cap_south[ :, 0, :] = sub0[0, :, :]                 # cap.j_lo edge
-#     cap_south[-1, :, :] = sub1[0, :, :]                 # cap.i_hi edge
-#     cap_south[ :,-1, :] = sub2[0, ::-1, :]              # cap.j_hi edge (reversed)
-#     cap_south[ 0, :, :] = sub3[0, ::-1, :]              # cap.i_lo edge (reversed)
-#
-# Orientation digits per Xall convention (overset/calcorn.f90 lines 119-125,
-# 392-411):
+# Orientation-code derivation (Xall convention from overset/calcorn.f90 lines
+# 119-125, 392-411).  A connection patch's BC is a 3-digit code lᵢ lⱼ lₖ where
+# each digit describes how *this side's* axis (i, j, k) maps onto the
+# partner's axes:
 #
 #   l=1: partner's I-axis at Imin, increasing
-#   l=2: partner's I-axis at Imax, decreasing (flip)
+#   l=2: partner's I-axis at Imax, decreasing (flipped)
 #   l=3: partner's J-axis at Jmin, increasing
-#   l=4: partner's J-axis at Jmax, decreasing (flip)
+#   l=4: partner's J-axis at Jmax, decreasing (flipped)
 #   l=5: partner's K-axis at Kmin, increasing
-#   l=6: partner's K-axis at Kmax, decreasing (flip)
+#   l=6: partner's K-axis at Kmax, decreasing (flipped)
 #
-# Code = li*100 + lj*10 + lk where (li, lj, lk) describes how this patch's
-# (i, j, k) maps onto the partner's axes.
+# Code = li * 100 + lj * 10 + lk.
 #
-# All cap-equator seams in the cubed sphere have the wall-normal axis (k)
-# preserved between sub and cap (both grow outward), so on every line below
-# either lk=5 (preserved, increasing) or — when the corresponding partner
-# face perpendicular is k — lk encodes that.  The partner-face perpendicular
-# is the cap's k (face 5/6, but the cap-side seam face is one of i_lo/i_hi/
-# j_lo/j_hi, perpendicular = i or j); k is therefore an *along-seam* axis
-# on the cap side too, and remains lk=5.  For the sub side, the patch face
-# is i_lo or i_hi → perpendicular axis = i.  See per-pair derivation below.
+# This writer derives the code purely from the adjacency JSON's
+# ``axis_map`` field plus the partner face name — no per-topology
+# tables are needed (they used to live here for the cubed-sphere
+# cap-equator seams; they were removed once topologies started
+# carrying axis_map directly).
+# ---------------------------------------------------------------------------
 
-# (sub_q, pole) → (cap_face_name, sub_face_name, sub_orient, cap_orient)
-_CAP_EQUATOR_PARTNER: dict[tuple[int, str], tuple[str, str, int, int]] = {
-    # ----- North pole: sub.i_hi (face 2) → cap_north -----
-    # sub0: cap_north[0, :, :] ← sub0[ni-1, :, :]
-    #   - sub's i (perpendicular, Imax) → cap's i (Imin, increasing inward) → li=1
-    #   - sub's j (along seam) → cap's j (preserved, increasing)            → lj=3
-    #   - sub's k (along seam) → cap's k (preserved, increasing)            → lk=5
-    #   sub-side code: 135
-    #   cap-side (cap_north.i_lo, perpendicular = cap's i, Imin):
-    #   - cap's i (perp Imin) → sub's i (Imax, decreasing inward)           → li=2
-    #   - cap's j (along)     → sub's j (preserved)                          → lj=3
-    #   - cap's k (along)     → sub's k (preserved)                          → lk=5
-    #   cap-side code: 235
-    (0, "north"): ("i_lo", "i_hi", 135, 235),
-    # sub1: cap_north[:, -1, :] ← sub1[ni-1, :, :]
-    #   sub's pole row's j-index runs along cap's i-index (cap's j is fixed at -1).
-    #   - sub's i (perp Imax) → cap's j (Jmax, decreasing inward)            → li=4
-    #   - sub's j (along)     → cap's i (Imin, increasing)                   → lj=1
-    #   - sub's k (along)     → cap's k                                      → lk=5
-    #   sub-side code: 415
-    #   cap-side (cap_north.j_hi, perpendicular = cap's j, Jmax):
-    #   - cap's i (along)     → sub's j (Jmin, increasing)                   → li=3
-    #   - cap's j (perp Jmax) → sub's i (Imax, decreasing inward)            → lj=2
-    #   - cap's k (along)     → sub's k                                      → lk=5
-    #   cap-side code: 325
-    (1, "north"): ("j_hi", "i_hi", 415, 325),
-    # sub2: cap_north[-1, :, :] ← sub2[ni-1, ::-1, :]  (j-axis reversed)
-    #   - sub's i (perp Imax) → cap's i (Imax, decreasing inward)            → li=2
-    #   - sub's j (along, reversed) → cap's j (Jmax, decreasing)             → lj=4
-    #   - sub's k (along)     → cap's k                                      → lk=5
-    #   sub-side code: 245
-    #   cap-side (cap_north.i_hi):
-    #   - cap's i (perp Imax) → sub's i (Imax, decreasing)                   → li=2
-    #   - cap's j (along)     → sub's j (Jmax, decreasing — reversed pole)   → lj=4
-    #   - cap's k (along)     → sub's k                                      → lk=5
-    #   cap-side code: 245
-    (2, "north"): ("i_hi", "i_hi", 245, 245),
-    # sub3: cap_north[:, 0, :] ← sub3[ni-1, ::-1, :]
-    #   - sub's i (perp Imax) → cap's j (Jmin, increasing inward)            → li=3
-    #   - sub's j (along, reversed) → cap's i (Imax, decreasing)             → lj=2
-    #   - sub's k (along)     → cap's k                                      → lk=5
-    #   sub-side code: 325
-    #   cap-side (cap_north.j_lo):
-    #   - cap's i (along)     → sub's j (Jmax, decreasing — reversed)       → li=4
-    #   - cap's j (perp Jmin) → sub's i (Imax, decreasing inward)            → lj=2
-    #   - cap's k (along)     → sub's k                                      → lk=5
-    #   cap-side code: 425
-    (3, "north"): ("j_lo", "i_hi", 325, 425),
-    # ----- South pole: sub.i_lo (face 1) → cap_south -----
-    # sub0: cap_south[:, 0, :] ← sub0[0, :, :]
-    #   - sub's i (perp Imin) → cap's j (Jmin, increasing inward)            → li=3
-    #   - sub's j (along)     → cap's i (Imin, increasing)                   → lj=1
-    #   - sub's k (along)     → cap's k                                      → lk=5
-    #   sub-side code: 315
-    #   cap-side (cap_south.j_lo):
-    #   - cap's i (along)     → sub's j (Jmin, increasing)                   → li=3
-    #   - cap's j (perp Jmin) → sub's i (Imin, increasing inward)            → lj=1
-    #   - cap's k (along)     → sub's k                                      → lk=5
-    #   cap-side code: 315
-    (0, "south"): ("j_lo", "i_lo", 315, 315),
-    # sub1: cap_south[-1, :, :] ← sub1[0, :, :]
-    #   - sub's i (perp Imin) → cap's i (Imax, decreasing inward)            → li=2
-    #   - sub's j (along)     → cap's j (Jmin, increasing)                   → lj=3
-    #   - sub's k (along)     → cap's k                                      → lk=5
-    #   sub-side code: 235
-    #   cap-side (cap_south.i_hi):
-    #   - cap's i (perp Imax) → sub's i (Imin, increasing inward)            → li=1
-    #   - cap's j (along)     → sub's j (Jmin, increasing)                   → lj=3
-    #   - cap's k (along)     → sub's k                                      → lk=5
-    #   cap-side code: 135
-    (1, "south"): ("i_hi", "i_lo", 235, 135),
-    # sub2: cap_south[:, -1, :] ← sub2[0, ::-1, :]
-    #   - sub's i (perp Imin) → cap's j (Jmax, decreasing inward)            → li=4
-    #   - sub's j (along, reversed) → cap's i (Imax, decreasing)             → lj=2
-    #   - sub's k (along)     → cap's k                                      → lk=5
-    #   sub-side code: 425
-    #   cap-side (cap_south.j_hi):
-    #   - cap's i (along)     → sub's j (Jmax, decreasing — reversed)        → li=4
-    #   - cap's j (perp Jmax) → sub's i (Imin, increasing inward)            → lj=1
-    #   - cap's k (along)     → sub's k                                      → lk=5
-    #   cap-side code: 415
-    (2, "south"): ("j_hi", "i_lo", 425, 415),
-    # sub3: cap_south[0, :, :] ← sub3[0, ::-1, :]
-    #   - sub's i (perp Imin) → cap's i (Imin, increasing inward)            → li=1
-    #   - sub's j (along, reversed) → cap's j (Jmax, decreasing)             → lj=4
-    #   - sub's k (along)     → cap's k                                      → lk=5
-    #   sub-side code: 145
-    #   cap-side (cap_south.i_lo):
-    #   - cap's i (perp Imin) → sub's i (Imin, increasing inward)            → li=1
-    #   - cap's j (along)     → sub's j (Jmax, decreasing — reversed)        → lj=4
-    #   - cap's k (along)     → sub's k                                      → lk=5
-    #   cap-side code: 145
-    (3, "south"): ("i_lo", "i_lo", 145, 145),
+_AXIS_TO_INDEX: dict[str, int] = {"i": 0, "j": 1, "k": 2}
+
+# Face name → (perpendicular axis label, partner-side at-max flag).
+# E.g. "i_lo" → ("i", False), "j_hi" → ("j", True).
+_PERP_AXIS_AND_MAX: dict[str, tuple[str, bool]] = {
+    "i_lo": ("i", False),
+    "i_hi": ("i", True),
+    "j_lo": ("j", False),
+    "j_hi": ("j", True),
+    "k_lo": ("k", False),
+    "k_hi": ("k", True),
 }
-
 
 # ---------------------------------------------------------------------------
 # Public dataclasses
@@ -540,70 +420,105 @@ def _face_extents(
 
 
 def _orientation_code(block_label: str, face_name: str, face_payload: dict[str, Any]) -> int:
-    """Choose the cc.par orientation code for a connection patch.
+    """Compute the cc.par 3-digit orientation code from the face's axis_map.
 
-    Same-axis seams (i↔i, j↔j, k↔k) use ``_SAME_AXIS_CODE = 135``.
-    Cross-axis cubed-sphere cap-equator seams look up the per-pair code
-    from :data:`_CAP_EQUATOR_PARTNER`.
+    The code ``lᵢ lⱼ lₖ`` describes how *this side's* axes (i, j, k) map
+    onto the partner block's axes; see the module-level docstring for
+    digit semantics.  We need only:
+
+    - This face's name (gives the perpendicular axis on this side).
+    - The partner face's name (gives the partner-side perpendicular
+      axis and whether it is at min/max — which determines the
+      perpendicular digit).
+    - The :class:`AxisMap` (gives the two along-axis correspondences,
+      including their flip flags).
+
+    Raises
+    ------
+    ParameterError
+        On a connection face missing ``partner`` or ``axis_map`` (the
+        adjacency sidecar reader normally catches this earlier).
     """
-    cap_pair = _cap_equator_lookup(block_label, face_name)
-    if cap_pair is not None:
-        _partner_label, _partner_face, sub_code, cap_code = cap_pair
-        return cap_code if block_label.startswith("cap_") else sub_code
+    partner_payload = face_payload.get("partner")
+    if partner_payload is None:
+        raise ParameterError(
+            f"cc.par: connection face {block_label!r}.{face_name} has no partner "
+            "in the adjacency JSON — every SHARED/DIRICHLET face must record "
+            "its partner block + face name."
+        )
+    partner_face_name = partner_payload["face"]
 
-    # Default: same-axis SHARED / DIRICHLET seam.
-    return _SAME_AXIS_CODE
+    axis_map = _axis_map_from_json(
+        face_payload.get("axis_map"), source=f"cc.par ({block_label}.{face_name})"
+    )
+    if axis_map is None:
+        raise ParameterError(
+            f"cc.par: connection face {block_label!r}.{face_name} has no "
+            "axis_map in the adjacency JSON — every SHARED/DIRICHLET face "
+            "must carry an axis_map (regenerate the sidecar with the "
+            "current SHORE build)."
+        )
+    return _orientation_code_from_axis_map(face_name, partner_face_name, axis_map)
 
 
-def _cap_equator_lookup(block_label: str, face_name: str) -> tuple[str, str, int, int] | None:
-    """Return ``(partner_label, partner_face, sub_code, cap_code)`` for a
-    cubed-sphere cap-equator seam, or ``None`` when *block.face* isn't one.
+def _orientation_code_from_axis_map(
+    face_name: str,
+    partner_face_name: str,
+    axis_map: AxisMap,
+) -> int:
+    """Pure function: derive ``lᵢ lⱼ lₖ`` from face names + axis_map.
+
+    Independent of any topology table; testable in isolation.
     """
-    # Sub-block side: label like 'sub0', 'sub1'... and face is i_lo or i_hi.
-    if block_label.startswith("sub") and face_name in ("i_lo", "i_hi"):
-        try:
-            q = int(block_label[3:].split("_", 1)[0])
-        except ValueError:
-            return None
-        if not (0 <= q <= 3):
-            return None
-        pole = "south" if face_name == "i_lo" else "north"
-        entry = _CAP_EQUATOR_PARTNER.get((q, pole))
-        if entry is None:
-            return None
-        cap_face, _sub_face, sub_code, cap_code = entry
-        cap_label = f"cap_{pole}"
-        return cap_label, cap_face, sub_code, cap_code
+    perp_axis_self, _self_at_max = _PERP_AXIS_AND_MAX[face_name]
+    perp_axis_partner, partner_perp_at_max = _PERP_AXIS_AND_MAX[partner_face_name]
 
-    # Cap side: label like 'cap_north' / 'cap_south', face is i_lo/i_hi/j_lo/j_hi.
-    if block_label in ("cap_north", "cap_south") and face_name in (
-        "i_lo",
-        "i_hi",
-        "j_lo",
-        "j_hi",
-    ):
-        pole = "north" if block_label == "cap_north" else "south"
-        for (q, p), (cap_face_t, sub_face_t, sub_code, cap_code) in _CAP_EQUATOR_PARTNER.items():
-            if p == pole and cap_face_t == face_name:
-                return f"sub{q}", sub_face_t, sub_code, cap_code
-        return None
+    # Build the (partner_axis, flipped) tuple per this side's axis label.
+    # Perpendicular axis on this side maps to the partner's perpendicular
+    # axis: partner is *at* its boundary, so direction is fixed by which
+    # boundary (Imin/Imax/...).
+    self_along: tuple[str, str] = FACE_ALONG_AXES[face_name]  # ("j", "k") for i_lo/i_hi
+    by_axis: dict[str, tuple[str, bool]] = {
+        perp_axis_self: (perp_axis_partner, partner_perp_at_max),
+        self_along[0]: axis_map.along[0],
+        self_along[1]: axis_map.along[1],
+    }
 
-    return None
+    # Compose lᵢ, lⱼ, lₖ for this side's i, j, k respectively.
+    digits: list[int] = []
+    for self_axis in ("i", "j", "k"):
+        partner_axis, flipped = by_axis[self_axis]
+        digits.append(_digit_for(partner_axis, flipped))
+    return digits[0] * 100 + digits[1] * 10 + digits[2]
+
+
+def _digit_for(partner_axis: str, flipped_or_at_max: bool) -> int:
+    """Return the cc.par ``l`` digit for one (partner_axis, direction) pair.
+
+    ``flipped_or_at_max`` overloads two semantics that map to the same
+    digit choice:
+
+    - For an *along-seam* mapping it is the AxisMap flip flag.
+    - For the *perpendicular* mapping it is whether the partner face is
+      at its axis maximum (``*_hi``).
+
+    Both reduce to: ``True`` ⇒ partner-axis at max, decreasing
+    (digits 2/4/6); ``False`` ⇒ partner-axis at min, increasing
+    (digits 1/3/5).
+    """
+    base = _AXIS_TO_INDEX[partner_axis] * 2 + 1  # 1, 3, 5 for i, j, k
+    return base + (1 if flipped_or_at_max else 0)
 
 
 def _partner_for(
     block_label: str, face_name: str, face_payload: dict[str, Any]
 ) -> tuple[str | None, str | None]:
-    """Resolve ``(partner_label, partner_face)`` for a connection face.
+    """Resolve ``(partner_label, partner_face)`` from the adjacency JSON.
 
-    For cap-equator seams the JSON's ``partner`` is unreliable (cap side
-    has ``null``), so consult the cap-equator table first.
+    With v2 sidecars every connection face carries its partner — no
+    topology lookup tables.  Returns ``(None, None)`` when the face has
+    no partner (which is treated as a degraded non-connection patch).
     """
-    cap_pair = _cap_equator_lookup(block_label, face_name)
-    if cap_pair is not None:
-        partner_label, partner_face, _sub_code, _cap_code = cap_pair
-        return partner_label, partner_face
-
     p = face_payload.get("partner")
     if p is None:
         return None, None

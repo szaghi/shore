@@ -12,29 +12,68 @@ Format
 
 The file describes a list of named blocks; each block carries its
 shape and its 6 face boundary conditions.  Faces with a partner
-(SHARED, DIRICHLET, PERIODIC) record the partner's ``label`` and
-``face`` name; faces without a partner (WALL, FREE) carry ``null``.
+(SHARED, DIRICHLET, PERIODIC) record the partner's ``label``,
+``face`` name, and an ``axis_map`` describing how this face's
+along-seam axes map onto the partner face's along-seam axes (see
+:class:`shore.mesh.face.AxisMap`).  Faces without a partner (WALL,
+FREE) carry ``null`` for both ``partner`` and ``axis_map``.
+
+The ``axis_map`` field is a 2-element list of ``[partner_axis, flipped]``
+pairs in the canonical along-axis order for *this face's* name (see
+:data:`shore.mesh.face.FACE_ALONG_AXES`).
 
 Example::
 
     {
-      "version": 1,
+      "version": 2,
       "blocks": [
         {
           "label": "sub0__k0",
           "shape": [20, 9, 5],
           "faces": {
-            "i_lo": {"bc": "DIRICHLET", "partner": {"label": "cap_south", "face": "k_lo"}},
-            "i_hi": {"bc": "DIRICHLET", "partner": {"label": "cap_north", "face": "k_lo"}},
-            "j_lo": {"bc": "SHARED",    "partner": {"label": "sub3__k0", "face": "j_hi"}},
-            "j_hi": {"bc": "SHARED",    "partner": {"label": "sub1__k0", "face": "j_lo"}},
-            "k_lo": {"bc": "WALL",      "partner": null},
-            "k_hi": {"bc": "SHARED",    "partner": {"label": "sub0__k1", "face": "k_lo"}}
+            "i_lo": {
+              "bc": "DIRICHLET",
+              "partner": {"label": "cap_south", "face": "j_lo"},
+              "axis_map": [["i", false], ["k", false]]
+            },
+            "i_hi": {
+              "bc": "DIRICHLET",
+              "partner": {"label": "cap_north", "face": "i_lo"},
+              "axis_map": [["j", false], ["k", false]]
+            },
+            "j_lo": {
+              "bc": "SHARED",
+              "partner": {"label": "sub3__k0", "face": "j_hi"},
+              "axis_map": [["i", false], ["k", false]]
+            },
+            "j_hi": {
+              "bc": "SHARED",
+              "partner": {"label": "sub1__k0", "face": "j_lo"},
+              "axis_map": [["i", false], ["k", false]]
+            },
+            "k_lo": {"bc": "WALL", "partner": null, "axis_map": null},
+            "k_hi": {
+              "bc": "SHARED",
+              "partner": {"label": "sub0__k1", "face": "k_lo"},
+              "axis_map": [["i", false], ["j", false]]
+            }
           }
         },
         ...
       ]
     }
+
+Versioning
+----------
+
+Version 1 (deprecated) stored only ``{label, face}`` partners with no
+axis_map.  This proved insufficient for any consumer that needs to
+write a connection orientation (cc.par, overset connectivity tools)
+because the axis correspondence between two faces of a topology is not
+recoverable from labels alone — see the bug fixed in v2.  Files with
+``version: 1`` are rejected with a clear regenerate-the-sidecar
+message; this is acceptable because adjacency sidecars are derived
+artefacts, not source files.
 """
 
 from __future__ import annotations
@@ -45,9 +84,9 @@ from typing import Any
 
 from shore.exceptions import MeshInputError
 from shore.mesh.block import HexBlock
-from shore.mesh.face import FaceBC, FaceName
+from shore.mesh.face import AxisMap, FaceBC, FaceName
 
-ADJACENCY_VERSION = 1
+ADJACENCY_VERSION = 2
 
 _FACE_NAMES: tuple[FaceName, ...] = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi")
 
@@ -86,12 +125,17 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
         ni, nj, nk, _ = blk.nodes.shape
         face_payload: dict[str, dict[str, Any]] = {}
         for f in blk.faces():
-            partner_obj = None
+            partner_obj: dict[str, str] | None = None
             if f.partner is not None:
                 p_lookup = by_face_id.get(id(f.partner))
                 if p_lookup is not None:
                     partner_obj = {"label": p_lookup[0], "face": p_lookup[1]}
-            face_payload[f.name] = {"bc": f.bc.name, "partner": partner_obj}
+            axis_map_obj = _axis_map_to_json(f.axis_map)
+            face_payload[f.name] = {
+                "bc": f.bc.name,
+                "partner": partner_obj,
+                "axis_map": axis_map_obj,
+            }
         payload["blocks"].append(
             {
                 "label": blk.label,
@@ -102,6 +146,42 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
 
     out.write_text(json.dumps(payload, indent=2) + "\n")
     return out
+
+
+def _axis_map_to_json(axis_map: AxisMap | None) -> list[list[Any]] | None:
+    """Serialise an :class:`AxisMap` to its JSON form, or ``None``."""
+    if axis_map is None:
+        return None
+    return [
+        [axis_map.along[0][0], axis_map.along[0][1]],
+        [axis_map.along[1][0], axis_map.along[1][1]],
+    ]
+
+
+def _axis_map_from_json(payload: Any, *, source: str) -> AxisMap | None:
+    """Parse the JSON form of an :class:`AxisMap`.
+
+    Accepts ``None`` (no map) or a 2-element list of
+    ``[axis_label, flipped_bool]`` pairs.  Raises
+    :class:`MeshInputError` on malformed input — the reader is the last
+    line of defence between a hand-edited or stale sidecar and the
+    consumers (cc.par writer etc.) that depend on the field.
+    """
+    if payload is None:
+        return None
+    if not isinstance(payload, list) or len(payload) != 2:
+        raise MeshInputError(f"{source}: axis_map must be a 2-element list, got {payload!r}")
+    pairs: list[tuple[str, bool]] = []
+    for entry in payload:
+        if not isinstance(entry, list) or len(entry) != 2:
+            raise MeshInputError(f"{source}: axis_map entry must be [axis, flipped], got {entry!r}")
+        axis, flipped = entry
+        if axis not in ("i", "j", "k"):
+            raise MeshInputError(f"{source}: axis_map axis label must be 'i'/'j'/'k', got {axis!r}")
+        if not isinstance(flipped, bool):
+            raise MeshInputError(f"{source}: axis_map flipped flag must be a bool, got {flipped!r}")
+        pairs.append((axis, flipped))
+    return AxisMap.from_pairs(pairs[0], pairs[1])
 
 
 def read_adjacency_json(path: str | Path) -> dict[str, Any]:
@@ -128,6 +208,14 @@ def read_adjacency_json(path: str | Path) -> dict[str, Any]:
         raise MeshInputError(f"{p}: expected a JSON object at top level")
     if "version" not in data:
         raise MeshInputError(f"{p}: missing required key 'version'")
+    if data["version"] == 1:
+        raise MeshInputError(
+            f"{p}: adjacency sidecar is version 1; this build emits and "
+            f"requires version {ADJACENCY_VERSION}.  Version 1 stored "
+            "partner labels but no axis_map, which made cc.par-style "
+            "consumers ambiguous on cross-axis seams.  Regenerate the "
+            "sidecar by re-running the topology / split that produced it."
+        )
     if data["version"] != ADJACENCY_VERSION:
         raise MeshInputError(
             f"{p}: unsupported adjacency version {data['version']!r} "
@@ -135,6 +223,16 @@ def read_adjacency_json(path: str | Path) -> dict[str, Any]:
         )
     if "blocks" not in data:
         raise MeshInputError(f"{p}: missing required key 'blocks'")
+
+    # Validate axis_map shapes eagerly so a malformed sidecar fails here
+    # rather than deep inside the cc.par writer.
+    for blk in data["blocks"]:
+        label = blk.get("label", "<unknown>")
+        for face_name, face in blk.get("faces", {}).items():
+            _axis_map_from_json(
+                face.get("axis_map"),
+                source=f"{p} ({label}.{face_name})",
+            )
     return data
 
 

@@ -69,7 +69,7 @@ from dataclasses import dataclass
 
 from shore.exceptions import ParameterError
 from shore.mesh.block import HexBlock
-from shore.mesh.face import Face, FaceBC, FaceName
+from shore.mesh.face import AxisMap, Face, FaceBC, FaceName
 
 # Axes label → numpy index axis on a (ni, nj, nk, 3) HexBlock node array.
 _AXIS_INDEX = {"i": 0, "j": 1, "k": 2}
@@ -80,6 +80,24 @@ _AXIS_FACES: dict[str, tuple[FaceName, FaceName]] = {
     "j": ("j_lo", "j_hi"),
     "k": ("k_lo", "k_hi"),
 }
+
+
+def _inherit_face(target: HexBlock, source_face: Face) -> None:
+    """Copy a face's BC + partner + axis_map from *source_face* onto *target*.
+
+    Used by both the per-chunk inheritance pass in :func:`_split_one`
+    and by :func:`_clone_block` for unsplit pass-through.  Connection
+    faces (SHARED / DIRICHLET / PERIODIC) carry an axis_map that
+    survives the partner-pointer rewiring untouched: slicing a face
+    along a perpendicular axis does not change the along-axis
+    correspondence at the seam.
+    """
+    target._set_face_bc(
+        source_face.name,
+        source_face.bc,
+        partner=source_face.partner,
+        axis_map=source_face.axis_map,
+    )
 
 
 @dataclass(frozen=True)
@@ -266,15 +284,20 @@ def _split_one(block: HexBlock, sp: BlockSplit) -> list[HexBlock]:
                 continue
             if f.name == hi_face and k != len(starts) - 1:
                 continue
-            new_blk._set_face_bc(f.name, f.bc, partner=f.partner)
+            _inherit_face(new_blk, f)
         new_blocks.append(new_blk)
 
     # Wire internal seams: chunk k's hi_face SHARED with chunk (k+1)'s lo_face.
+    # Same-axis, no-flip seam by construction (numpy view aliasing): identity AxisMap.
     for k in range(len(new_blocks) - 1):
         a = new_blocks[k]
         b = new_blocks[k + 1]
-        a._set_face_bc(hi_face, FaceBC.SHARED, partner=b.face(lo_face))
-        b._set_face_bc(lo_face, FaceBC.SHARED, partner=a.face(hi_face))
+        a._set_face_bc(
+            hi_face, FaceBC.SHARED, partner=b.face(lo_face), axis_map=AxisMap.identity(hi_face)
+        )
+        b._set_face_bc(
+            lo_face, FaceBC.SHARED, partner=a.face(hi_face), axis_map=AxisMap.identity(lo_face)
+        )
 
     return new_blocks
 
@@ -301,7 +324,7 @@ def _clone_block(block: HexBlock) -> HexBlock:
         periodic_j=block.periodic_j,
     )
     for f in block.faces():
-        clone._set_face_bc(f.name, f.bc, partner=f.partner)
+        _inherit_face(clone, f)
     return clone
 
 
@@ -391,6 +414,19 @@ def _wire_external_pair(
     orig_chunks = chunks[orig.label]
     partner_chunks = chunks[partner.label]
 
+    # AxisMaps from the *original* block-pair seam.  Splitting does not
+    # rotate axes, so the original axis_maps apply unchanged to every
+    # rewired chunk pair on the new side.
+    orig_axis_map = orig.face(orig_face).axis_map
+    partner_axis_map = partner.face(partner_face).axis_map
+    if orig_axis_map is None or partner_axis_map is None:
+        raise ParameterError(
+            f"split_blocks: SHARED seam between {orig.label!r}({orig_face}) "
+            f"and {partner.label!r}({partner_face}) is missing an axis_map "
+            f"on the original block — split_blocks requires a fully-wired "
+            f"input topology (run primitives / topology builders first)."
+        )
+
     # The split axis "runs along" a face when the face is one of the two
     # endpoints of that axis: e.g. axis 'i' runs along faces 'i_lo' and
     # 'i_hi'.  Otherwise the split axis is *perpendicular* to the face,
@@ -404,8 +440,12 @@ def _wire_external_pair(
     if orig_split is None and partner_split is None:
         a = orig_chunks[0]
         b = partner_chunks[0]
-        a._set_face_bc(orig_face, FaceBC.SHARED, partner=b.face(partner_face))
-        b._set_face_bc(partner_face, FaceBC.SHARED, partner=a.face(orig_face))
+        a._set_face_bc(
+            orig_face, FaceBC.SHARED, partner=b.face(partner_face), axis_map=orig_axis_map
+        )
+        b._set_face_bc(
+            partner_face, FaceBC.SHARED, partner=a.face(orig_face), axis_map=partner_axis_map
+        )
         return
 
     # Case 2: split runs along the SHARED face on one side but the other
@@ -446,8 +486,12 @@ def _wire_external_pair(
                 "split on both sides."
             )
         for a, b in zip(orig_chunks, partner_chunks, strict=True):
-            a._set_face_bc(orig_face, FaceBC.SHARED, partner=b.face(partner_face))
-            b._set_face_bc(partner_face, FaceBC.SHARED, partner=a.face(orig_face))
+            a._set_face_bc(
+                orig_face, FaceBC.SHARED, partner=b.face(partner_face), axis_map=orig_axis_map
+            )
+            b._set_face_bc(
+                partner_face, FaceBC.SHARED, partner=a.face(orig_face), axis_map=partner_axis_map
+            )
         return
 
     # Cases 4 + 5: split axis aligns with the SHARED face on every split
@@ -462,8 +506,12 @@ def _wire_external_pair(
             "sides of a SHARED seam."
         )
     for a, b in zip(a_chunks, b_chunks, strict=True):
-        a._set_face_bc(orig_face, FaceBC.SHARED, partner=b.face(partner_face))
-        b._set_face_bc(partner_face, FaceBC.SHARED, partner=a.face(orig_face))
+        a._set_face_bc(
+            orig_face, FaceBC.SHARED, partner=b.face(partner_face), axis_map=orig_axis_map
+        )
+        b._set_face_bc(
+            partner_face, FaceBC.SHARED, partner=a.face(orig_face), axis_map=partner_axis_map
+        )
 
 
 def _exposed_chunks(

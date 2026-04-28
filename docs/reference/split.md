@@ -119,7 +119,7 @@ sub-blocks: the j-periodic ring shares each `sub_q.j_lo` with
 ## Adjacency JSON
 
 The sidecar at `<stem>.adjacency.json` is a single object with two
-top-level keys: `version` (currently 1) and `blocks` (a list).
+top-level keys: `version` (currently 2) and `blocks` (a list).
 Each block carries:
 
 ```json
@@ -127,12 +127,32 @@ Each block carries:
   "label": "sub0__k0",
   "shape": [20, 9, 5],
   "faces": {
-    "i_lo": {"bc": "DIRICHLET", "partner": {"label": "cap_south", "face": "k_lo"}},
-    "i_hi": {"bc": "DIRICHLET", "partner": {"label": "cap_north", "face": "k_lo"}},
-    "j_lo": {"bc": "SHARED",    "partner": {"label": "sub3__k0",  "face": "j_hi"}},
-    "j_hi": {"bc": "SHARED",    "partner": {"label": "sub1__k0",  "face": "j_lo"}},
-    "k_lo": {"bc": "WALL",      "partner": null},
-    "k_hi": {"bc": "SHARED",    "partner": {"label": "sub0__k1",  "face": "k_lo"}}
+    "i_lo": {
+      "bc": "DIRICHLET",
+      "partner": {"label": "cap_south", "face": "j_lo"},
+      "axis_map": [["i", false], ["k", false]]
+    },
+    "i_hi": {
+      "bc": "DIRICHLET",
+      "partner": {"label": "cap_north", "face": "i_lo"},
+      "axis_map": [["j", false], ["k", false]]
+    },
+    "j_lo": {
+      "bc": "SHARED",
+      "partner": {"label": "sub3__k0", "face": "j_hi"},
+      "axis_map": [["i", false], ["k", false]]
+    },
+    "j_hi": {
+      "bc": "SHARED",
+      "partner": {"label": "sub1__k0", "face": "j_lo"},
+      "axis_map": [["i", false], ["k", false]]
+    },
+    "k_lo": {"bc": "WALL", "partner": null, "axis_map": null},
+    "k_hi": {
+      "bc": "SHARED",
+      "partner": {"label": "sub0__k1", "face": "k_lo"},
+      "axis_map": [["i", false], ["j", false]]
+    }
   }
 }
 ```
@@ -140,6 +160,20 @@ Each block carries:
 `bc` is one of `WALL`, `FREE`, `SHARED`, `DIRICHLET`, `PERIODIC`.
 `partner` is `null` for `WALL` / `FREE`, otherwise an object with
 `label` and `face`.
+
+`axis_map` is `null` for `WALL` / `FREE`, otherwise a 2-element list
+of `[partner_axis, flipped]` pairs. The order of the pairs matches
+this face's *along-seam axes* — the two axes lying in the face plane
+in canonical order: `("j", "k")` for `i_lo`/`i_hi`, `("i", "k")` for
+`j_lo`/`j_hi`, `("i", "j")` for `k_lo`/`k_hi`. Each pair says which of
+the partner face's axes the corresponding along-axis maps onto, and
+whether the indexing direction is reversed (`true`) or preserved
+(`false`). See `shore.mesh.face.AxisMap` for the in-Python representation.
+
+> **Versioning.** `version: 1` files (which lacked `axis_map`) are
+> rejected by `read_adjacency_json` with a regenerate-the-sidecar
+> message. Sidecars are derived artefacts; re-run the topology /
+> split that produced them.
 
 Read with the standard library:
 

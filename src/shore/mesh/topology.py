@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from shore.mesh.block import HexBlock
-from shore.mesh.face import FaceBC
+from shore.mesh.face import AxisMap, FaceBC, FaceName
 from shore.mesh.spacing import Spacing1D
 from shore.surface.cap import build_cap_k0
 from shore.surface.equator import build_equator
@@ -44,6 +44,34 @@ class Topology(ABC):
             Initialised blocks with k=0 filled and shared views wired.
             Volume layers k=1..nk-1 are allocated but not filled.
         """
+
+
+# Cubed-sphere cap-equator seam tables.  Each entry pairs a sub-block
+# index q (0..3) with (cap_face_name, sub_side_axis_map).  Derived from
+# ``shore.topology.sphere_cap._overwrite_cap_boundaries``: the cap layer
+# k=0 row equals the sub-block's i-extreme row, optionally with j-axis
+# reversal.  AxisMaps live on the *sub* side of the seam (sub.i_hi for
+# north pole, sub.i_lo for south); the cap-side AxisMap is the inverse.
+_CAP_EQUATOR_NORTH: tuple[tuple[FaceName, AxisMap], ...] = (
+    # q=0: cap_north[0, :, :]  = sub0[ni-1, :, :]      (no flip)
+    ("i_lo", AxisMap.from_pairs(("j", False), ("k", False))),
+    # q=1: cap_north[:, -1, :] = sub1[ni-1, :, :]      (cross-axis, no flip)
+    ("j_hi", AxisMap.from_pairs(("i", False), ("k", False))),
+    # q=2: cap_north[-1, :, :] = sub2[ni-1, ::-1, :]   (j-flip)
+    ("i_hi", AxisMap.from_pairs(("j", True), ("k", False))),
+    # q=3: cap_north[:, 0, :]  = sub3[ni-1, ::-1, :]   (cross-axis, j-flip)
+    ("j_lo", AxisMap.from_pairs(("i", True), ("k", False))),
+)
+_CAP_EQUATOR_SOUTH: tuple[tuple[FaceName, AxisMap], ...] = (
+    # q=0: cap_south[:, 0, :]  = sub0[0, :, :]         (cross-axis, no flip)
+    ("j_lo", AxisMap.from_pairs(("i", False), ("k", False))),
+    # q=1: cap_south[-1, :, :] = sub1[0, :, :]         (no flip)
+    ("i_hi", AxisMap.from_pairs(("j", False), ("k", False))),
+    # q=2: cap_south[:, -1, :] = sub2[0, ::-1, :]      (cross-axis, j-flip)
+    ("j_hi", AxisMap.from_pairs(("i", True), ("k", False))),
+    # q=3: cap_south[0, :, :]  = sub3[0, ::-1, :]      (j-flip)
+    ("i_lo", AxisMap.from_pairs(("j", True), ("k", False))),
+)
 
 
 class CubedSphereTopology(Topology):
@@ -260,21 +288,49 @@ class CubedSphereTopology(Topology):
         # Wire face BCs
         # ------------------------------------------------------------------
         # Sub-block adjacency: sub_q.j_hi ↔ sub_{q+1 mod 4}.j_lo (SHARED views).
+        # Same-axis seam, no flips: identity AxisMap on each side.
         for q in range(4):
             q_next = (q + 1) % 4
             f_hi = sub_blocks[q].face("j_hi")
             f_lo = sub_blocks[q_next].face("j_lo")
-            sub_blocks[q]._set_face_bc("j_hi", FaceBC.SHARED, partner=f_lo)
-            sub_blocks[q_next]._set_face_bc("j_lo", FaceBC.SHARED, partner=f_hi)
+            sub_blocks[q]._set_face_bc(
+                "j_hi", FaceBC.SHARED, partner=f_lo, axis_map=AxisMap.identity("j_hi")
+            )
+            sub_blocks[q_next]._set_face_bc(
+                "j_lo", FaceBC.SHARED, partner=f_hi, axis_map=AxisMap.identity("j_lo")
+            )
 
-        # Cap boundaries: DIRICHLET from equatorial pole rows.
-        for blk in sub_blocks:
-            blk._set_face_bc("i_hi", FaceBC.DIRICHLET, partner=cap_north_blk.face("k_lo"))
-            blk._set_face_bc("i_lo", FaceBC.DIRICHLET, partner=cap_south_blk.face("k_lo"))
-
-        for name in ("i_lo", "i_hi", "j_lo", "j_hi"):
-            cap_north_blk._set_face_bc(name, FaceBC.DIRICHLET)
-            cap_south_blk._set_face_bc(name, FaceBC.DIRICHLET)
+        # Cap-equator seams: 8 DIRICHLET face-to-face partnerships.
+        #
+        # Each sub-block's i_hi (north pole) and i_lo (south pole) is a 2D
+        # face that coincides node-by-node with one lateral face of the
+        # corresponding cap block, possibly with j-axis reversal (per
+        # ``shore.topology.sphere_cap._overwrite_cap_boundaries``).  The
+        # cap-side partner is therefore the cap's lateral face — *not*
+        # the cap's k_lo (which is the cap's own wall face).
+        #
+        # Each table entry pairs a sub-block index q with the cap-side
+        # face name and the AxisMap on the *sub side* of the seam.  The
+        # cap-side AxisMap is derived by ``axis_map.inverse(...)``.
+        sub_face: FaceName  # narrows the literal for mypy
+        for sub_face, cap_blk, table in (
+            ("i_hi", cap_north_blk, _CAP_EQUATOR_NORTH),
+            ("i_lo", cap_south_blk, _CAP_EQUATOR_SOUTH),
+        ):
+            for q, (cap_face, sub_axis_map) in enumerate(table):
+                sub_blk = sub_blocks[q]
+                cap_blk._set_face_bc(
+                    cap_face,
+                    FaceBC.DIRICHLET,
+                    partner=sub_blk.face(sub_face),
+                    axis_map=sub_axis_map.inverse(sub_face, cap_face),
+                )
+                sub_blk._set_face_bc(
+                    sub_face,
+                    FaceBC.DIRICHLET,
+                    partner=cap_blk.face(cap_face),
+                    axis_map=sub_axis_map,
+                )
 
         return [*sub_blocks, cap_north_blk, cap_south_blk]
 

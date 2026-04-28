@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from shore.mesh.edge import Edge, EdgeName
-from shore.mesh.face import Face, FaceBC, FaceName
+from shore.mesh.face import AxisMap, Face, FaceBC, FaceName
 from shore.mesh.spacing import Spacing1D
 from shore.mesh.vertex import Vertex
 
@@ -211,10 +211,53 @@ class HexBlock(Block):
         name: FaceName,
         bc: FaceBC,
         partner: Face | None = None,
+        axis_map: AxisMap | None = None,
     ) -> None:
+        """Set this block's face BC and (for connection BCs) partner + axis_map.
+
+        Parameters
+        ----------
+        name :
+            Face to mutate.
+        bc :
+            New :class:`FaceBC`.
+        partner :
+            Partner face when ``bc`` is SHARED / DIRICHLET / PERIODIC;
+            must be ``None`` for WALL / FREE.
+        axis_map :
+            Required when ``partner`` is supplied: describes how this
+            face's along-axes map onto the partner face's along-axes
+            (see :class:`AxisMap`).  Validated against
+            ``partner.name`` here so any topology builder that wires a
+            seam without an axis_map fails loudly at construction
+            rather than silently producing a wrong cc.par downstream.
+        """
+        connection = bc in (FaceBC.SHARED, FaceBC.DIRICHLET, FaceBC.PERIODIC)
+        if connection:
+            if partner is None:
+                raise ValueError(
+                    f"Block {self.label!r}.{name}: bc={bc.name} requires a partner Face"
+                )
+            if axis_map is None:
+                raise ValueError(
+                    f"Block {self.label!r}.{name}: bc={bc.name} requires an axis_map "
+                    f"(partner={partner.name!r}); pass AxisMap.identity({name!r}) "
+                    f"for a same-axis no-flip seam"
+                )
+            axis_map.validate_against_partner(name, partner.name)
+        else:
+            if partner is not None:
+                raise ValueError(
+                    f"Block {self.label!r}.{name}: bc={bc.name} must not have a partner"
+                )
+            if axis_map is not None:
+                raise ValueError(
+                    f"Block {self.label!r}.{name}: bc={bc.name} must not have an axis_map"
+                )
         f = self.face(name)
         f.bc = bc
         f.partner = partner
+        f.axis_map = axis_map
 
     @property
     def periodic(self) -> tuple[bool, bool]:

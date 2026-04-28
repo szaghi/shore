@@ -191,6 +191,102 @@ class TestCubedSphereTopology:
             )
 
 
+class TestCubedSphereAxisMaps:
+    """Every connection face on the cubed sphere must carry a partner +
+    AxisMap so cc.par-style consumers can derive orientation codes
+    without per-topology hardcoded tables."""
+
+    def _build(self, sphere_stl):
+        return Mesh.from_stl(
+            sphere_stl,
+            topology=CubedSphereTopology(),
+            ni=8,
+            nj=16,
+            nk=4,
+        ).blocks
+
+    def test_every_connection_face_has_axis_map(self, sphere_stl):
+        """Both SHARED (sub-sub ring) and DIRICHLET (cap-equator) faces
+        must store both partner and axis_map."""
+        blocks = self._build(sphere_stl)
+        for blk in blocks:
+            for f in blk.faces():
+                if f.bc in (FaceBC.SHARED, FaceBC.DIRICHLET):
+                    assert f.partner is not None, f"{blk.label}.{f.name}"
+                    assert f.axis_map is not None, f"{blk.label}.{f.name}"
+
+    def test_sub_sub_ring_uses_identity(self, sphere_stl):
+        """The 4 sub-sub seams (j_hi ↔ j_lo) are same-axis no-flip."""
+        from shore.mesh.face import AxisMap
+
+        blocks = self._build(sphere_stl)
+        for q in range(4):
+            assert blocks[q].face("j_hi").axis_map == AxisMap.identity("j_hi")
+            assert blocks[q].face("j_lo").axis_map == AxisMap.identity("j_lo")
+
+    @pytest.mark.parametrize(
+        ("q", "expected_cap_face", "expected_pairs"),
+        [
+            (0, "i_lo", (("j", False), ("k", False))),
+            (1, "j_hi", (("i", False), ("k", False))),
+            (2, "i_hi", (("j", True), ("k", False))),
+            (3, "j_lo", (("i", True), ("k", False))),
+        ],
+    )
+    def test_north_pole_cap_equator_axis_maps(
+        self, sphere_stl, q, expected_cap_face, expected_pairs
+    ):
+        """sub_q.i_hi must partner cap_north's matching lateral face with
+        the AxisMap derived from _overwrite_cap_boundaries."""
+        from shore.mesh.face import AxisMap
+
+        blocks = self._build(sphere_stl)
+        sub = blocks[q]
+        i_hi = sub.face("i_hi")
+        assert i_hi.partner is not None
+        assert i_hi.partner.name == expected_cap_face
+        assert i_hi.axis_map == AxisMap.from_pairs(*expected_pairs)
+
+    @pytest.mark.parametrize(
+        ("q", "expected_cap_face", "expected_pairs"),
+        [
+            (0, "j_lo", (("i", False), ("k", False))),
+            (1, "i_hi", (("j", False), ("k", False))),
+            (2, "j_hi", (("i", True), ("k", False))),
+            (3, "i_lo", (("j", True), ("k", False))),
+        ],
+    )
+    def test_south_pole_cap_equator_axis_maps(
+        self, sphere_stl, q, expected_cap_face, expected_pairs
+    ):
+        """sub_q.i_lo must partner cap_south's matching lateral face with
+        the AxisMap derived from _overwrite_cap_boundaries."""
+        from shore.mesh.face import AxisMap
+
+        blocks = self._build(sphere_stl)
+        sub = blocks[q]
+        i_lo = sub.face("i_lo")
+        assert i_lo.partner is not None
+        assert i_lo.partner.name == expected_cap_face
+        assert i_lo.axis_map == AxisMap.from_pairs(*expected_pairs)
+
+    def test_cap_side_axis_map_is_inverse(self, sphere_stl):
+        """For every cap-equator seam, the cap-side AxisMap is the inverse
+        of the sub-side."""
+        blocks = self._build(sphere_stl)
+        for blk in blocks:
+            for f in blk.faces():
+                if f.bc != FaceBC.DIRICHLET or f.partner is None:
+                    continue
+                # f.partner is the OTHER side; its axis_map should be f's inverse.
+                assert f.axis_map is not None
+                assert f.partner.axis_map is not None
+                expected_inverse = f.axis_map.inverse(f.name, f.partner.name)
+                assert f.partner.axis_map == expected_inverse, (
+                    f"{blk.label}.{f.name} ↔ partner.{f.partner.name}: axis_map inverse mismatch"
+                )
+
+
 # ---------------------------------------------------------------------------
 # Mesh.from_stl + march
 # ---------------------------------------------------------------------------

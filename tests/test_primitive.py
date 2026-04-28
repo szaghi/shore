@@ -491,3 +491,155 @@ class TestPrimitiveIO:
         fc.write_geo(tmp_path / "bg")
         for label in ("center", "sub_e", "sub_n", "sub_w", "sub_s"):
             assert (tmp_path / f"bg_{label}.geo").exists()
+
+
+# ---------------------------------------------------------------------------
+# FlatCapsCylinder seam wiring
+# ---------------------------------------------------------------------------
+
+
+class TestFlatCapsAdjacency:
+    """The 8 SHARED seams (4 center↔sub + 4 sub↔sub corners) must be wired
+    with correct partners and AxisMaps.  Without these, the downstream
+    cc.par writer cannot emit the connection patches.
+
+    Geometric ground truth: the four asserts in
+    ``test_inner_edges_match_central_square`` and ``test_corner_seams_match``.
+    """
+
+    def _build(self):
+        return FlatCapsCylinder.build(r_out=2.0, z0=0, z1=4, ni=6, nc=8, nk=3)
+
+    def test_no_disconnected_blocks(self):
+        """No SHARED face should have partner=None (the original bug)."""
+        from shore.mesh.face import FaceBC
+
+        fc = self._build()
+        for blk in fc.blocks:
+            for f in blk.faces():
+                if f.bc == FaceBC.SHARED:
+                    assert f.partner is not None, (
+                        f"{blk.label}.{f.name} is SHARED but partner is None"
+                    )
+                    assert f.axis_map is not None, (
+                        f"{blk.label}.{f.name} is SHARED but axis_map is None"
+                    )
+
+    def test_eight_shared_seams_total(self):
+        """4 center↔sub + 4 sub↔sub corners = 8 seams = 16 SHARED face faces."""
+        from shore.mesh.face import FaceBC
+
+        fc = self._build()
+        n_shared = sum(1 for blk in fc.blocks for f in blk.faces() if f.bc == FaceBC.SHARED)
+        assert n_shared == 16  # 8 seams x 2 sides
+
+    @pytest.mark.parametrize(
+        ("sub_label", "center_face", "expected_axis_map_pairs"),
+        [
+            ("sub_e", "i_hi", (("j", False), ("k", False))),
+            ("sub_n", "j_hi", (("i", True), ("k", False))),
+            ("sub_w", "i_lo", (("j", True), ("k", False))),
+            ("sub_s", "j_lo", (("i", False), ("k", False))),
+        ],
+    )
+    def test_center_sub_seam_partner(self, sub_label, center_face, expected_axis_map_pairs):
+        """Each sub_block.i_lo must partner the right center face with the
+        right axis_map (per test_inner_edges_match_central_square geometry)."""
+        from shore.mesh.face import AxisMap
+
+        fc = self._build()
+        by_label = {b.label: b for b in fc.blocks}
+        sub = by_label[sub_label]
+        i_lo = sub.face("i_lo")
+        assert i_lo.partner is not None
+        assert i_lo.partner.name == center_face
+        assert i_lo.axis_map == AxisMap.from_pairs(*expected_axis_map_pairs)
+
+        # And the center side mirrors it (inverse axis_map).
+        center = by_label["center"]
+        cf = center.face(center_face)
+        assert cf.partner is i_lo
+        # Cap-side AxisMap = sub-side inverse.
+        expected_inv = AxisMap.from_pairs(*expected_axis_map_pairs).inverse("i_lo", center_face)
+        assert cf.axis_map == expected_inv
+
+    @pytest.mark.parametrize(
+        ("a_label", "b_label"),
+        [
+            ("sub_e", "sub_n"),
+            ("sub_n", "sub_w"),
+            ("sub_w", "sub_s"),
+            ("sub_s", "sub_e"),
+        ],
+    )
+    def test_sub_corner_seam_partner(self, a_label, b_label):
+        """Adjacent sub-blocks share j_hi ↔ j_lo with identity AxisMap
+        (same-axis i↔i, k↔k, no flips)."""
+        from shore.mesh.face import AxisMap
+
+        fc = self._build()
+        by_label = {b.label: b for b in fc.blocks}
+        a = by_label[a_label]
+        b = by_label[b_label]
+        a_jhi = a.face("j_hi")
+        b_jlo = b.face("j_lo")
+        assert a_jhi.partner is b_jlo
+        assert b_jlo.partner is a_jhi
+        assert a_jhi.axis_map == AxisMap.identity("j_hi")
+        assert b_jlo.axis_map == AxisMap.identity("j_lo")
+
+    def test_seam_nodes_match_axis_map(self):
+        """For every SHARED face, applying the axis_map must reconstruct the
+        partner face's nodes from this side's node array."""
+        import numpy as np
+
+        from shore.mesh.face import FaceBC
+
+        fc = self._build()
+        for blk in fc.blocks:
+            for f in blk.faces():
+                if f.bc != FaceBC.SHARED or f.partner is None:
+                    continue
+                self_nodes = f.nodes(blk)
+                # Find the partner block (only sub-blocks + center here).
+                # Identity-based lookup — Face.__eq__ is value-based (axis_map
+                # alone disambiguates, but for symmetric same-axis seams two
+                # different blocks can have value-equal faces).
+                partner_blk = next(b for b in fc.blocks if any(g is f.partner for g in b.faces()))
+                partner_nodes = f.partner.nodes(partner_blk)
+                # Build the index permutation+flip described by the axis_map.
+                # Both faces are 2D in (along0, along1, 3) shape; convert
+                # this side's coords to the partner's frame using axis_map
+                # and check equality.
+                amap = f.axis_map
+                assert amap is not None
+                # Partner along-axes in the order described by amap.along.
+                # Step 1: apply flips on this side's view.
+                self_view = self_nodes
+                if amap.along[0][1]:
+                    self_view = self_view[::-1, :, :]
+                if amap.along[1][1]:
+                    self_view = self_view[:, ::-1, :]
+                # Step 2: figure out whether the partner's first along-axis
+                # corresponds to *this side's* first or second along-axis.
+                from shore.mesh.face import FACE_ALONG_AXES
+
+                partner_along = FACE_ALONG_AXES[f.partner.name]
+                # Map: partner_axis -> this side's along index (0 or 1).
+                rev: dict[str, int] = {}
+                for idx, (p_ax, _flip) in enumerate(amap.along):
+                    rev[p_ax] = idx
+                if (rev[partner_along[0]], rev[partner_along[1]]) == (1, 0):
+                    self_view = np.swapaxes(self_view, 0, 1)
+                # Now self_view should equal partner_nodes node-for-node.
+                assert self_view.shape == partner_nodes.shape, (
+                    f"{blk.label}.{f.name} -> {f.partner.name}: shape mismatch "
+                    f"{self_view.shape} vs {partner_nodes.shape}"
+                )
+                np.testing.assert_allclose(
+                    self_view,
+                    partner_nodes,
+                    rtol=0,
+                    atol=1e-12,
+                    err_msg=f"{blk.label}.{f.name} -> partner.{f.partner.name}",
+                )

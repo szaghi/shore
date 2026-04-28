@@ -97,6 +97,17 @@ class TestSplitSingleBlock:
         # Bit-exact node coincidence at the seam.
         np.testing.assert_array_equal(a.nodes[-1, :, :, :], b.nodes[0, :, :, :])
 
+    def test_internal_seam_carries_identity_axis_map(self):
+        """Splitting along i creates an identity (j↔j, k↔k, no flips)
+        axis_map on each side of the new seam — the chunks share node
+        memory, so there is no axis swap or reversal."""
+        from shore.mesh.face import AxisMap
+
+        new = split_blocks(_box(), [BlockSplit("box", "i", [6])])
+        a, b = new
+        assert a.face("i_hi").axis_map == AxisMap.identity("i_hi")
+        assert b.face("i_lo").axis_map == AxisMap.identity("i_lo")
+
     def test_external_face_bcs_preserved_per_chunk(self):
         new = split_blocks(_box(), [BlockSplit("box", "i", [6])])
         a, b = new
@@ -234,6 +245,61 @@ class TestAdjacencyJSON:
         p = tmp_path / "bad.json"
         p.write_text(json.dumps({"version": 99, "blocks": []}))
         with pytest.raises(MeshInputError, match="unsupported adjacency version"):
+            read_adjacency_json(p)
+
+    def test_read_rejects_v1_with_regenerate_message(self, tmp_path):
+        """v1 sidecars (no axis_map) are unambiguous data loss; reject with
+        a clear regenerate-it message rather than silently mis-emitting
+        cc.par on cross-axis seams."""
+        from shore.exceptions import MeshInputError
+
+        p = tmp_path / "v1.json"
+        p.write_text(json.dumps({"version": 1, "blocks": []}))
+        with pytest.raises(MeshInputError, match=r"version 1.*[Rr]egenerate"):
+            read_adjacency_json(p)
+
+    def test_axis_map_round_trip(self, tmp_path):
+        """SHARED faces must serialise their axis_map and read it back
+        bit-identical."""
+        new = split_blocks(_box(), [BlockSplit("box", "i", [6])])
+        out = write_adjacency_json(new, tmp_path / "adj")
+
+        payload = read_adjacency_json(out)
+        i0 = next(b for b in payload["blocks"] if b["label"] == "box__i0")
+        # Internal seam (i_hi between consecutive chunks) is same-axis no-flip:
+        # along (j, k) -> partner along (j, k), no flips.
+        assert i0["faces"]["i_hi"]["axis_map"] == [["j", False], ["k", False]]
+        # Non-connection faces have axis_map=None.
+        assert i0["faces"]["k_lo"]["axis_map"] is None
+
+    def test_read_rejects_malformed_axis_map(self, tmp_path):
+        """A 2-element list with bad axis labels must fail at read time."""
+        from shore.exceptions import MeshInputError
+
+        bad = {
+            "version": 2,
+            "blocks": [
+                {
+                    "label": "x",
+                    "shape": [3, 3, 3],
+                    "faces": {
+                        "i_lo": {"bc": "WALL", "partner": None, "axis_map": None},
+                        "i_hi": {
+                            "bc": "SHARED",
+                            "partner": {"label": "y", "face": "i_lo"},
+                            "axis_map": [["bad", False], ["k", False]],
+                        },
+                        "j_lo": {"bc": "FREE", "partner": None, "axis_map": None},
+                        "j_hi": {"bc": "FREE", "partner": None, "axis_map": None},
+                        "k_lo": {"bc": "WALL", "partner": None, "axis_map": None},
+                        "k_hi": {"bc": "FREE", "partner": None, "axis_map": None},
+                    },
+                }
+            ],
+        }
+        p = tmp_path / "bad.json"
+        p.write_text(json.dumps(bad))
+        with pytest.raises(MeshInputError, match="axis_map axis label"):
             read_adjacency_json(p)
 
 
