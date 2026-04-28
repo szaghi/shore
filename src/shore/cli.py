@@ -1583,3 +1583,110 @@ def cc_par(
         block_metadata=meta,
     )
     _console.print(f"[green]✓[/green] Wrote {out}")
+
+
+# ---------------------------------------------------------------------------
+# shore grd-merge
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="grd-merge")
+def grd_merge(
+    inputs: Annotated[
+        list[Path],
+        typer.Argument(
+            help=(
+                "Two-or-more input .grd files, in the desired output order.  "
+                "Use the same ordering when running shore cc-par-merge."
+            ),
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Output merged .grd file path."),
+    ],
+) -> None:
+    """Concatenate multiple .grd files into one for an Xall multi-mesh run.
+
+    Used when an Xall job combines several independent Chimera components
+    (e.g. wall + background): the merged .grd lists every block from
+    inputs[0] first, then inputs[1], etc., with the header block count
+    rewritten to the sum.  Block payloads are passed through byte-for-byte.
+    """
+    from shore.io.grd import merge_grd
+
+    if len(inputs) < 2:
+        _err.print("[red]Error:[/red] need at least 2 input .grd files.")
+        raise typer.Exit(1) from None
+    for p in inputs:
+        if not p.exists():
+            _err.print(f"[red]Error:[/red] file not found: {p}")
+            raise typer.Exit(1) from None
+
+    try:
+        out = merge_grd(inputs, output)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _console.print(f"[green]✓[/green] Wrote {out} ({len(inputs)} inputs merged)")
+
+
+# ---------------------------------------------------------------------------
+# shore cc-par-merge
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="cc-par-merge")
+def cc_par_merge(
+    inputs: Annotated[
+        list[Path],
+        typer.Argument(
+            help=(
+                "Two-or-more input cc.par files, in the desired output order.  "
+                "Must match the ordering used for shore grd-merge."
+            ),
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Output merged cc.par path."),
+    ],
+    grd_filename: Annotated[
+        str,
+        typer.Option(
+            "--grd",
+            help="Name of the merged .grd file (written into header line 1, "
+            "overriding inputs[0]'s value).",
+        ),
+    ],
+) -> None:
+    """Concatenate multiple cc.par files into one for an Xall multi-mesh run.
+
+    Block indices and patch family pointers in inputs[1:] are shifted by
+    the cumulative block / patch counts of the preceding inputs so the
+    merged file is internally consistent.  Header fields other than the
+    .grd filename are taken from inputs[0]; if any input disagrees, a
+    warning is printed but the merge proceeds.
+
+    Block-section comments are auto-prefixed with each input's stem (e.g.
+    'wall.sub0', 'background.center') so blocks from different topologies
+    are distinguishable in the merged file.
+    """
+    from shore.io.cc_par import merge_cc_par
+
+    if len(inputs) < 2:
+        _err.print("[red]Error:[/red] need at least 2 input cc.par files.")
+        raise typer.Exit(1) from None
+    for p in inputs:
+        if not p.exists():
+            _err.print(f"[red]Error:[/red] file not found: {p}")
+            raise typer.Exit(1) from None
+
+    try:
+        out = merge_cc_par(inputs, output, grd_filename=grd_filename)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _console.print(f"[green]✓[/green] Wrote {out} ({len(inputs)} inputs merged)")

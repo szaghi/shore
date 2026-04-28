@@ -753,3 +753,284 @@ class TestCLI:
         )
         assert r.exit_code == 1
         assert "object" in " ".join(r.output.split()).lower()
+
+
+# ---------------------------------------------------------------------------
+# merge_cc_par
+# ---------------------------------------------------------------------------
+
+
+def _write_two_cc_pars(tmp_path) -> tuple:
+    """Generate two cc.par files from two independent two-block payloads.
+
+    Returns (a_path, b_path, n_patches_each).  Each input has 2 blocks
+    and 12 patches (one SHARED seam pair on j; everything else
+    WALL/FREE).  The two files are independent — no cross-file
+    adjacency, exactly the expected use case for merge_cc_par.
+    """
+    a_payload = _two_block_shared_payload()  # blocks "a", "b"
+    a_path = tmp_path / "a.cc.par"
+    write_cc_par(a_payload, a_path, grd_filename="a.grd")
+
+    # Build a second payload with different labels so we can verify
+    # the auto-prefix behaviour distinguishes them.
+    b_payload = {
+        "version": _VERSION,
+        "blocks": [
+            {
+                "label": "x",
+                "shape": [4, 4, 4],
+                "faces": {
+                    "i_lo": _face("WALL"),
+                    "i_hi": _face("FREE"),
+                    "j_lo": _face("FREE"),
+                    "j_hi": _face("SHARED", ("y", "j_lo"), _identity_map("j_hi")),
+                    "k_lo": _face("FREE"),
+                    "k_hi": _face("FREE"),
+                },
+            },
+            {
+                "label": "y",
+                "shape": [4, 4, 4],
+                "faces": {
+                    "i_lo": _face("WALL"),
+                    "i_hi": _face("FREE"),
+                    "j_lo": _face("SHARED", ("x", "j_hi"), _identity_map("j_lo")),
+                    "j_hi": _face("FREE"),
+                    "k_lo": _face("FREE"),
+                    "k_hi": _face("FREE"),
+                },
+            },
+        ],
+    }
+    b_path = tmp_path / "b.cc.par"
+    write_cc_par(b_payload, b_path, grd_filename="b.grd")
+    return a_path, b_path
+
+
+def _parse_block_lines(text: str) -> list[tuple]:
+    """Pull out (level, group, priority, comment) tuples from block section."""
+    out = []
+    in_blocks = False
+    n_expected = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if "blocks number" in stripped:
+            n_expected = int(stripped.split("!", 1)[0].strip())
+            in_blocks = True
+            continue
+        if in_blocks and "patches number" in stripped:
+            break
+        if not in_blocks or not stripped or "!" not in stripped:
+            continue
+        head, _, tail = stripped.partition("!")
+        parts = head.split()
+        if len(parts) != 3:
+            continue
+        level, group, priority = (int(x) for x in parts)
+        comment = tail.split(":", 1)[-1].strip() if ":" in tail else ""
+        out.append((level, group, priority, comment))
+        if n_expected is not None and len(out) == n_expected:
+            break
+    return out
+
+
+class TestMergeCCPar:
+    def test_merged_block_count_is_sum(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        text = out.read_text()
+        assert "4 ! blocks number" in text
+
+    def test_merged_patch_count_is_sum(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        text = out.read_text()
+        # 12 patches per file (6 per block * 2 blocks).
+        assert "24 ! patches number" in text
+
+    def test_grd_filename_overrides_inputs0(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="merged.grd")
+        first_line = out.read_text().splitlines()[0]
+        assert first_line == "'merged.grd'"
+
+    def test_block_comments_auto_prefixed(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        block_lines = _parse_block_lines(out.read_text())
+        comments = [bl[3] for bl in block_lines]
+        # File stems are 'a' and 'b' (the trailing .cc is stripped).
+        assert comments == ["a.a", "a.b", "b.x", "b.y"]
+
+    def test_block_indices_are_sequential(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        text = out.read_text()
+        # Block-section trailing comments include "1 :", "2 :", ... in order.
+        for n in (1, 2, 3, 4):
+            assert f"! {n} :" in text
+
+    def test_patch_block_index_shifted(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        patches = _parse_patches(out.read_text())
+        # b's blocks (originally 1, 2) are now blocks 3, 4.
+        b_blocks = {p["block"] for p in patches if p["idx"] > 12}
+        assert b_blocks == {3, 4}
+
+    def test_patch_family_pointers_remain_symmetric(self, tmp_path):
+        """Every connection (BC≥100) patch must still pair symmetrically
+        after the merge offset is applied."""
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        patches = _parse_patches(out.read_text())
+        by_idx = {p["idx"]: p for p in patches}
+        for p in patches:
+            if p["bc"] < 100 or p["family"] == 0:
+                continue
+            partner = by_idx[p["family"]]
+            assert partner["family"] == p["idx"], (
+                f"asymmetric pairing: patch {p['idx']} -> {p['family']}, "
+                f"but {p['family']} -> {partner['family']}"
+            )
+
+    def test_a_side_family_unchanged(self, tmp_path):
+        """Patches inside inputs[0] reference partners inside inputs[0],
+        so their family pointers must NOT be shifted."""
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        # Read the original a-only patches.
+        a_only = _parse_patches(a.read_text())
+        a_family_by_idx = {p["idx"]: p["family"] for p in a_only}
+
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        merged = _parse_patches(out.read_text())
+        for p in merged:
+            if p["idx"] > 12:
+                break
+            assert p["family"] == a_family_by_idx[p["idx"]], (
+                f"a-side patch {p['idx']} family changed unexpectedly"
+            )
+
+    def test_b_side_family_offset_by_a_count(self, tmp_path):
+        """Patches inside inputs[1] reference partners inside inputs[1];
+        their family pointers must shift by len(a's patches) = 12."""
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = _write_two_cc_pars(tmp_path)
+        b_only = _parse_patches(b.read_text())
+        b_family_by_idx = {p["idx"]: p["family"] for p in b_only}
+
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        merged = _parse_patches(out.read_text())
+        for p in merged:
+            if p["idx"] <= 12:
+                continue
+            original_idx = p["idx"] - 12
+            original_family = b_family_by_idx[original_idx]
+            expected = original_family + 12 if original_family > 0 else 0
+            assert p["family"] == expected
+
+    def test_warns_on_header_drift(self, tmp_path):
+        """Disagreement between input headers (other than grd filename)
+        emits a UserWarning but the merge proceeds."""
+        from shore.io.cc_par import merge_cc_par
+
+        a_payload = _two_block_shared_payload()
+        b_payload = _two_block_shared_payload()
+        a = tmp_path / "a.cc.par"
+        b = tmp_path / "b.cc.par"
+        write_cc_par(a, a, grd_filename="a.grd") if False else None
+        write_cc_par(a_payload, a, grd_filename="a.grd", multigrid_levels=(4, 1))
+        write_cc_par(b_payload, b, grd_filename="b.grd", multigrid_levels=(3, 1))
+        with pytest.warns(UserWarning, match="header line"):
+            merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+
+    def test_rejects_single_input(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, _ = _write_two_cc_pars(tmp_path)
+        with pytest.raises(ValueError, match="at least 2"):
+            merge_cc_par([a], tmp_path / "merged.cc.par", grd_filename="m.grd")
+
+    def test_rejects_missing_file(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, _ = _write_two_cc_pars(tmp_path)
+        with pytest.raises(FileNotFoundError, match="not found"):
+            merge_cc_par(
+                [a, tmp_path / "nope.cc.par"], tmp_path / "merged.cc.par", grd_filename="m.grd"
+            )
+
+
+class TestCLICCParMerge:
+    def test_basic_invocation(self, tmp_path):
+        a, b = _write_two_cc_pars(tmp_path)
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par-merge",
+                str(a),
+                str(b),
+                "-o",
+                str(tmp_path / "merged.cc.par"),
+                "--grd",
+                "merged.grd",
+            ],
+        )
+        assert r.exit_code == 0, r.output
+        text = (tmp_path / "merged.cc.par").read_text()
+        assert "4 ! blocks number" in text
+        assert "'merged.grd'" in text.splitlines()[0]
+
+    def test_single_input_rejected(self, tmp_path):
+        a, _ = _write_two_cc_pars(tmp_path)
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par-merge",
+                str(a),
+                "-o",
+                str(tmp_path / "merged.cc.par"),
+                "--grd",
+                "m.grd",
+            ],
+        )
+        assert r.exit_code == 1
+        assert "at least 2" in r.output
+
+    def test_missing_input_exits_1(self, tmp_path):
+        a, _ = _write_two_cc_pars(tmp_path)
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par-merge",
+                str(a),
+                str(tmp_path / "nope.cc.par"),
+                "-o",
+                str(tmp_path / "merged.cc.par"),
+                "--grd",
+                "m.grd",
+            ],
+        )
+        assert r.exit_code == 1
+        assert "not found" in r.output.lower()

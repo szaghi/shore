@@ -176,3 +176,168 @@ class TestCLIGrd:
         r = runner.invoke(app, ["grd", str(bad), "--output", str(tmp_path / "out.grd")])
         assert r.exit_code == 1
         assert ".geo" in r.output
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — merge_grd
+# ---------------------------------------------------------------------------
+
+
+class TestMergeGrd:
+    """Concatenating two .grd files (independent Chimera components in
+    one Xall run) must produce a file whose block list is the
+    sum of inputs in order, with payloads byte-identical."""
+
+    def _write_two_grids(self, tmp_path):
+        # First file: 2 blocks of (4,5,6) and (3,4,5).
+        a_geos = []
+        for i, shape in enumerate([(4, 5, 6), (3, 4, 5)]):
+            g = tmp_path / f"a_{i}.geo"
+            write_geo(g, _make_grid(*shape))
+            a_geos.append(g)
+        a_grd = write_grd(tmp_path / "a.grd", a_geos)
+        # Second file: 1 block of (5,5,5).
+        b_geos = [tmp_path / "b_0.geo"]
+        write_geo(b_geos[0], _make_grid(5, 5, 5))
+        b_grd = write_grd(tmp_path / "b.grd", b_geos)
+        return a_grd, b_grd
+
+    def test_merged_block_count_is_sum(self, tmp_path):
+        from shore.io.grd import merge_grd
+
+        a_grd, b_grd = self._write_two_grids(tmp_path)
+        out = merge_grd([a_grd, b_grd], tmp_path / "merged.grd")
+        with out.open("rb") as f:
+            (nb_bytes,) = struct.unpack("=i", _read_fortran_record(f))
+        assert nb_bytes == 3
+
+    def test_merged_shapes_in_order(self, tmp_path):
+        from shore.io.grd import merge_grd
+
+        a_grd, b_grd = self._write_two_grids(tmp_path)
+        out = merge_grd([a_grd, b_grd], tmp_path / "merged.grd")
+        with out.open("rb") as f:
+            _read_fortran_record(f)  # nb
+            shapes = []
+            for _ in range(3):
+                rec = _read_fortran_record(f)
+                shapes.append(struct.unpack("=iii", rec))
+        # Shapes are stored as (ni-1, nj-1, nk-1) cell counts.
+        assert shapes == [(3, 4, 5), (2, 3, 4), (4, 4, 4)]
+
+    def test_coord_records_byte_identical_to_originals(self, tmp_path):
+        """Coord payloads must be passed through unchanged."""
+        from shore.io.grd import merge_grd
+
+        a_grd, b_grd = self._write_two_grids(tmp_path)
+        out = merge_grd([a_grd, b_grd], tmp_path / "merged.grd")
+
+        # Read every coord record from the merged file.
+        with out.open("rb") as f:
+            _read_fortran_record(f)  # nb
+            for _ in range(3):
+                _read_fortran_record(f)  # shapes
+            merged_coords: list[bytes] = []
+            for _ in range(3 * 3):  # 3 blocks * (X, Y, Z)
+                merged_coords.append(_read_fortran_record(f))
+
+        # Read coords from each original file.
+        original_coords: list[bytes] = []
+        for path, n_blocks in [(a_grd, 2), (b_grd, 1)]:
+            with path.open("rb") as f:
+                _read_fortran_record(f)  # nb
+                for _ in range(n_blocks):
+                    _read_fortran_record(f)  # shapes
+                for _ in range(n_blocks * 3):
+                    original_coords.append(_read_fortran_record(f))
+
+        # Merged coords are inputs[0]'s coords followed by inputs[1]'s.
+        assert merged_coords == original_coords
+
+    def test_extension_added_when_missing(self, tmp_path):
+        from shore.io.grd import merge_grd
+
+        a_grd, b_grd = self._write_two_grids(tmp_path)
+        out = merge_grd([a_grd, b_grd], tmp_path / "no_ext")
+        assert out.suffix == ".grd"
+
+    def test_rejects_single_input(self, tmp_path):
+        from shore.io.grd import merge_grd
+
+        a_grd, _ = self._write_two_grids(tmp_path)
+        with pytest.raises(ValueError, match="at least 2"):
+            merge_grd([a_grd], tmp_path / "merged.grd")
+
+    def test_rejects_missing_file(self, tmp_path):
+        from shore.io.grd import merge_grd
+
+        a_grd, _ = self._write_two_grids(tmp_path)
+        with pytest.raises(FileNotFoundError, match="not found"):
+            merge_grd([a_grd, tmp_path / "nope.grd"], tmp_path / "merged.grd")
+
+    def test_rejects_malformed_input(self, tmp_path):
+        """A file whose first record isn't a single int32 must be rejected."""
+        from shore.io.grd import merge_grd
+
+        a_grd, _ = self._write_two_grids(tmp_path)
+        bad = tmp_path / "bad.grd"
+        bad.write_bytes(b"\x08\x00\x00\x00" + b"\x00" * 8 + b"\x08\x00\x00\x00")
+        with pytest.raises(ValueError, match="header record length"):
+            merge_grd([a_grd, bad], tmp_path / "merged.grd")
+
+
+class TestCLIGrdMerge:
+    def test_basic_invocation(self, tmp_path):
+        # Two standalone .grd files.
+        for name, shape in [("a", (4, 5, 6)), ("b", (3, 4, 5))]:
+            g = tmp_path / f"{name}.geo"
+            write_geo(g, _make_grid(*shape))
+            write_grd(tmp_path / f"{name}.grd", [g])
+
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "grd-merge",
+                str(tmp_path / "a.grd"),
+                str(tmp_path / "b.grd"),
+                "-o",
+                str(tmp_path / "merged.grd"),
+            ],
+        )
+        assert r.exit_code == 0, r.output
+        merged = tmp_path / "merged.grd"
+        assert merged.exists()
+        with merged.open("rb") as f:
+            (nb,) = struct.unpack("=i", _read_fortran_record(f))
+        assert nb == 2
+
+    def test_single_input_rejected(self, tmp_path):
+        g = tmp_path / "a.geo"
+        write_geo(g, _make_grid(4, 5, 6))
+        write_grd(tmp_path / "a.grd", [g])
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            ["grd-merge", str(tmp_path / "a.grd"), "-o", str(tmp_path / "out.grd")],
+        )
+        assert r.exit_code == 1
+        assert "at least 2" in r.output
+
+    def test_missing_input_exits_1(self, tmp_path):
+        g = tmp_path / "a.geo"
+        write_geo(g, _make_grid(4, 5, 6))
+        write_grd(tmp_path / "a.grd", [g])
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "grd-merge",
+                str(tmp_path / "a.grd"),
+                str(tmp_path / "nope.grd"),
+                "-o",
+                str(tmp_path / "out.grd"),
+            ],
+        )
+        assert r.exit_code == 1
+        assert "not found" in r.output.lower()

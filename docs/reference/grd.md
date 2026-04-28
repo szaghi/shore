@@ -119,8 +119,47 @@ shore grd wall_sub0.geo wall_sub1.geo wall_sub2.geo wall_sub3.geo \
 shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd
 ```
 
+## Merging multiple `.grd` files (`shore grd-merge`)
+
+When an Xall job combines several independent Chimera components — for
+example a near-body wall mesh plus a far-field background — each
+component is generated as its own `.grd` + `cc.par` pair. Running them
+through Xall as one job needs both pairs concatenated into a single
+`assembly.grd` and a single `assembly.cc.par` whose patch indices are
+shifted to refer to the merged block list.
+
+`shore grd-merge` does the file half:
+
+```bash
+shore grd-merge background.grd wall.grd -o assembly.grd
+```
+
+The merged file lists every block from `inputs[0]` first, then
+`inputs[1]`, etc. The header block count is rewritten to the sum;
+shape and coordinate records are passed through byte-for-byte (no
+node values are touched). Order is the caller's choice — it matters
+because Xall's overset solver uses block ordering to break level /
+priority ties — but it **must** match the order used for the
+companion [`shore cc-par-merge`](./cc-par#merging-multiple-cc-par-files-shore-cc-par-merge).
+
+### Python API
+
+```python
+from shore.io.grd import merge_grd
+
+merge_grd(
+    ["background.grd", "wall.grd"],
+    "assembly.grd",
+)
+```
+
+Raises `ValueError` for fewer than 2 inputs or a malformed `.grd` file.
+
 ## See also
 
 - [`shore cc-par`](./cc-par) — generate the companion Xall chimera descriptor.
+- [`shore cc-par-merge`](./cc-par#merging-multiple-cc-par-files-shore-cc-par-merge) —
+  the companion merge for chimera descriptors. Always invoke `grd-merge`
+  and `cc-par-merge` as a pair, with the same input ordering.
 - [`shore split`](./split) — subdivide blocks and produce the `.adjacency.json` sidecar.
 - [`shore export`](./export) — export `.geo` files to VTK XML (ParaView), not Xall format.

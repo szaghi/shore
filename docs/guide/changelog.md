@@ -31,6 +31,8 @@ title: Changelog
 ### Added
 - `shore.mesh.face.AxisMap`: frozen dataclass describing how a face's along-seam axes map onto its partner's along-seam axes (axis correspondence + per-axis flip flags). Required on every connection face; `_set_face_bc` validates it against the partner face name at wiring time so a topology that omits the field fails loudly instead of silently producing wrong cc.par downstream.
 - `shore.mesh.face.FACE_ALONG_AXES`: canonical along-axis order per face name, used for `AxisMap` interpretation.
+- `shore grd-merge` + `shore.io.grd.merge_grd`: concatenate two-or-more `.grd` files for an Xall multi-mesh job (e.g. wall + background as one 11-block run). Block payloads are passed through byte-for-byte; the header block count is rewritten to the sum.
+- `shore cc-par-merge` + `shore.io.cc_par.merge_cc_par`: concatenate two-or-more `cc.par` files with the right block-index and patch-`family` shifts so the merged file is internally consistent. Header taken from `inputs[0]` (with `--grd` overriding header line 1); block comments auto-prefixed with each input's stem (`background.center`, `wall.sub0`, …). Header drift between inputs warns but does not block. The matching `grd-merge` and `cc-par-merge` calls must use the same input ordering.
 
 ### Documented
 - Per-edge spacing section in `algorithm/spacing-laws.md` with the full support table by topology / primitive.

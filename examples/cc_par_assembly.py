@@ -2,15 +2,20 @@
 
 This example is a direct continuation of ``assembly_sphere_in_cylinder.py``.
 It re-builds the same two meshes, writes their adjacency sidecars, exports
-VTK MultiBlock files for ParaView inspection, then converts each sidecar to
-an Xall ``cc.par`` file.
+VTK MultiBlock files for ParaView inspection, converts each sidecar to an
+Xall ``cc.par`` file, then **merges** the two ``cc.par`` + ``.grd`` pairs
+into one ``assembly.cc.par`` + ``assembly.grd`` for an Xall run that
+consumes both Chimera components as a single 11-block job.
 
 The two meshes are independent Chimera components — they share a domain in
-world-space but have no SHARED faces between them.  Each therefore gets its
-own ``cc.par``.  The near-body cubed-sphere uses per-block ``BlockMeta`` to
-assign different ``free_face_bc`` values to wall blocks vs. cap blocks,
-demonstrating that ``write_cc_par``'s ``block_metadata`` argument (and the
-CLI ``--meta`` flag) give full per-block control:
+world-space but have no SHARED faces between them.  Each gets its own
+``cc.par`` first; the merge step concatenates them with the right block /
+patch index shifts so a single Xall job can consume the assembly.
+
+The near-body cubed-sphere uses per-block ``BlockMeta`` to assign different
+``free_face_bc`` values to wall blocks vs. cap blocks, demonstrating that
+``write_cc_par``'s ``block_metadata`` argument (and the CLI ``--meta``
+flag) give full per-block control:
 
 - ``sub{0..3}`` — equatorial sub-blocks, chimera handoff → BC ``40`` (offgen).
 - ``cap_north / cap_south`` — polar cap blocks, same → BC ``40``.
@@ -33,6 +38,8 @@ Output
       background.adjacency.json
       wall.cc.par
       background.cc.par
+      assembly.grd                               # merged: background + wall
+      assembly.cc.par                            # merged: background + wall
 
 Run from the project root after activating .venv::
 
@@ -357,11 +364,40 @@ def main() -> None:
         block_metadata=bg_meta,
     )
 
-    # 8. Spot-check printout
+    # 8. Merge into a single Xall multi-mesh job.
+    #
+    # The wall (6 blocks) and background (5 blocks) are independent
+    # Chimera components — they overlap in world space but share no
+    # SHARED faces.  Xall consumes them as one .grd + one cc.par with
+    # 11 blocks; the merge utilities concatenate the two outputs and
+    # shift cc.par block / family indices to keep the merged file
+    # internally consistent.
+    #
+    # Order: background first, wall second.  Either is valid; the
+    # convention matters because Xall's overset solver uses block
+    # ordering to break level / priority ties.
+    from shore.io.cc_par import merge_cc_par
+    from shore.io.grd import merge_grd
+
+    print("\nMerging into one assembly grid + cc.par:")
+    assembly_grd = merge_grd(
+        [out_dir / "background.grd", out_dir / "wall.grd"],
+        out_dir / "assembly.grd",
+    )
+    print(f"  wrote {assembly_grd}  (5 + 6 = 11 blocks)")
+    assembly_ccpar = merge_cc_par(
+        [out_dir / "background.cc.par", out_dir / "wall.cc.par"],
+        out_dir / "assembly.cc.par",
+        grd_filename="assembly.grd",
+    )
+    print(f"  wrote {assembly_ccpar}  (block comments auto-prefixed background.* / wall.*)")
+
+    # 9. Spot-check printout
     print_cc_par_summary(nb_ccpar)
     print_cc_par_summary(bg_ccpar)
+    print_cc_par_summary(assembly_ccpar)
 
-    # 9. Equivalent CLI commands (for reference)
+    # 10. Equivalent CLI commands (for reference)
     import json
 
     nb_meta_json = json.dumps({k: {"free_face_bc": v.free_face_bc} for k, v in nb_meta.items()})
@@ -369,11 +405,18 @@ def main() -> None:
     print("\nEquivalent CLI commands:")
     print(f"  shore cc-par {nb_adj} {nb_ccpar} --grd wall.grd --meta '{nb_meta_json}'")
     print(f"  shore cc-par {bg_adj} {bg_ccpar} --grd background.grd --meta '{bg_meta_json}'")
+    print(
+        f"  shore grd-merge {out_dir / 'background.grd'} {out_dir / 'wall.grd'} -o {assembly_grd}"
+    )
+    print(
+        f"  shore cc-par-merge {out_dir / 'background.cc.par'} {out_dir / 'wall.cc.par'} "
+        f"-o {assembly_ccpar} --grd assembly.grd"
+    )
 
     if not args.view and args.screenshot is None:
         return
 
-    # 10. Optional visualisation (one near-body cap block)
+    # 11. Optional visualisation (one near-body cap block)
     try:
         from shore.io.geo import read_geo
         from shore.vis import save_screenshot, view_geo

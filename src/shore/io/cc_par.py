@@ -620,3 +620,305 @@ def _format_cc_par(
     lines.append("")
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Multi-component merge
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _CCParParsed:
+    """Internal: a parsed cc.par split into the three regions a merger cares about.
+
+    The header lines run from line 1 up to (but not including) the
+    ``N ! blocks number`` line.  ``blocks_lines`` are the per-block
+    metadata records (level/group/priority/comment).  ``patch_lines``
+    are the parsed patch records as ``_PatchTuple`` instances; the
+    ``_orientation_code`` BC values are passed through unchanged.
+    """
+
+    header: list[str]
+    blocks_lines: list[_BlockLine]
+    patch_lines: list[_PatchLine]
+
+
+@dataclass
+class _BlockLine:
+    """One parsed block-section line."""
+
+    level: int
+    group: int
+    priority: int
+    comment: str  # text after "<idx> :" in the trailing comment
+
+
+@dataclass
+class _PatchLine:
+    """One parsed patch-section line."""
+
+    block_index: int
+    face_index: int
+    bc: int
+    family: int
+    extents: tuple[int, int, int, int, int, int]
+
+
+def merge_cc_par(
+    inputs: list[str | Path],
+    out: str | Path,
+    *,
+    grd_filename: str,
+) -> Path:
+    """Concatenate multiple ``cc.par`` files into one for an Xall multi-mesh run.
+
+    Used together with :func:`shore.io.grd.merge_grd` when an Xall job
+    combines several independent Chimera components (e.g. wall +
+    background): the merged ``cc.par`` lists every block and patch from
+    *inputs[0]* first, then *inputs[1]*, etc.  All block indices and
+    patch ``family`` references in inputs[1:] are shifted by the
+    cumulative block / patch counts of the preceding inputs so the
+    merged file is internally consistent.
+
+    Parameters
+    ----------
+    inputs :
+        Two-or-more input ``cc.par`` paths, in the desired output order.
+        The same order **must** be used when calling
+        :func:`shore.io.grd.merge_grd` — ``cc.par`` patch block-indices
+        are 1-based positions into the ``.grd`` block list.
+    out :
+        Output path; ``.par`` extension is **not** auto-appended (cc.par
+        filenames are conventional, not extension-driven).
+    grd_filename :
+        Name of the merged ``.grd`` file, written into header line 1
+        (overriding whatever filename inputs[0]'s header carried).
+
+    Returns
+    -------
+    Path
+        The path actually written.
+
+    Notes
+    -----
+    Header reconciliation: every header field other than ``grd_filename``
+    is taken from inputs[0] verbatim (output basename, ghost-cells flag,
+    multigrid levels, BL thickness, numerical beach).  When inputs disagree
+    on those fields a ``UserWarning`` is emitted and inputs[0]'s values
+    are used; surface drift loudly without blocking.
+
+    Block-comment prefixing: each block's comment is prefixed with the
+    input file's stem (e.g. ``wall.sub0``, ``background.center``) so
+    blocks from different topologies are distinguishable in the merged
+    file.  The cc.par format treats comments as advisory only — Xall
+    indexes blocks by their 1-based position.
+
+    Raises
+    ------
+    ValueError
+        If ``inputs`` has fewer than 2 entries or any input is malformed.
+    """
+    if len(inputs) < 2:
+        raise ValueError(f"merge_cc_par: need at least 2 input files, got {len(inputs)}")
+
+    out_path = Path(out)
+    paths = [Path(p) for p in inputs]
+    parsed = [_parse_cc_par_for_merge(p) for p in paths]
+
+    _check_header_consistency(parsed, paths)
+
+    # Apply per-input block-comment prefix: "<stem>.<original-comment>".
+    for p, pp in zip(paths, parsed, strict=True):
+        prefix = p.stem
+        # ``p.stem`` for "wall.cc.par" is "wall.cc"; strip the trailing
+        # ".cc" if present so the prefix matches the user's intent.
+        if prefix.endswith(".cc"):
+            prefix = prefix[:-3]
+        for bl in pp.blocks_lines:
+            bl.comment = f"{prefix}.{bl.comment}" if bl.comment else prefix
+
+    # Build merged header: take inputs[0]'s header and overwrite line 1
+    # with the new grd filename.
+    merged_header = list(parsed[0].header)
+    merged_header[0] = f"'{grd_filename}'"
+
+    # Build merged block list.
+    merged_blocks: list[_BlockLine] = []
+    for pp in parsed:
+        merged_blocks.extend(pp.blocks_lines)
+
+    # Build merged patch list with index shifts.
+    merged_patches: list[_PatchLine] = []
+    block_offset = 0
+    patch_offset = 0
+    for pp in parsed:
+        for patch in pp.patch_lines:
+            shifted = _PatchLine(
+                block_index=patch.block_index + block_offset,
+                face_index=patch.face_index,
+                bc=patch.bc,
+                family=patch.family + patch_offset if patch.family > 0 else patch.family,
+                extents=patch.extents,
+            )
+            merged_patches.append(shifted)
+        block_offset += len(pp.blocks_lines)
+        patch_offset += len(pp.patch_lines)
+
+    out_path.write_text(_format_merged_cc_par(merged_header, merged_blocks, merged_patches))
+    return out_path
+
+
+def _check_header_consistency(parsed: list[_CCParParsed], paths: list[Path]) -> None:
+    """Warn (don't raise) when header fields beyond line 1 differ across inputs."""
+    if len(parsed) < 2:
+        return
+    ref_header = parsed[0].header
+    ref_path = paths[0]
+    # Compare every header line except line 0 (the grd filename, which
+    # the caller is overriding anyway).
+    for pp, path in zip(parsed[1:], paths[1:], strict=True):
+        for idx in range(1, min(len(ref_header), len(pp.header))):
+            if pp.header[idx].strip() != ref_header[idx].strip():
+                warnings.warn(
+                    f"merge_cc_par: header line {idx + 1} differs between "
+                    f"{ref_path.name!r} and {path.name!r}: "
+                    f"{ref_header[idx]!r} vs {pp.header[idx]!r}.  "
+                    f"Using {ref_path.name!r}'s value.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+                # One warning per file pair; don't drown the user.
+                break
+
+
+def _parse_cc_par_for_merge(path: Path) -> _CCParParsed:
+    """Parse a ``cc.par`` file into ``(header, block_lines, patch_lines)``.
+
+    A minimal parser scoped to the merge use case: round-trips the
+    sections SHORE itself writes (header, blocks, patches, edges=0,
+    boxes=0).  Tolerant of trailing whitespace and blank lines; rejects
+    files whose blocks-count or patches-count line is malformed.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"merge_cc_par: {path} not found")
+    raw_lines = path.read_text().splitlines()
+
+    # 1. Header runs up to the "N ! blocks number" line.
+    blocks_count_idx = _find_count_line(raw_lines, "blocks number")
+    header = raw_lines[:blocks_count_idx]
+    nb = int(raw_lines[blocks_count_idx].split("!", 1)[0].strip())
+
+    # 2. Block lines: nb non-blank records following the count line.
+    block_lines: list[_BlockLine] = []
+    cursor = blocks_count_idx + 1
+    while len(block_lines) < nb and cursor < len(raw_lines):
+        line = raw_lines[cursor].strip()
+        cursor += 1
+        if not line:
+            continue
+        block_lines.append(_parse_block_line(line, path, cursor))
+
+    if len(block_lines) != nb:
+        raise ValueError(
+            f"merge_cc_par: {path} declares {nb} blocks but only {len(block_lines)} "
+            "block records were parsed"
+        )
+
+    # 3. Patches count line.
+    patches_count_idx = _find_count_line(raw_lines, "patches number", start=cursor)
+    npat = int(raw_lines[patches_count_idx].split("!", 1)[0].strip())
+
+    # 4. Patch lines: npat non-blank records.
+    patch_lines: list[_PatchLine] = []
+    cursor = patches_count_idx + 1
+    while len(patch_lines) < npat and cursor < len(raw_lines):
+        line = raw_lines[cursor].strip()
+        cursor += 1
+        if not line:
+            continue
+        patch_lines.append(_parse_patch_line(line, path, cursor))
+
+    if len(patch_lines) != npat:
+        raise ValueError(
+            f"merge_cc_par: {path} declares {npat} patches but only "
+            f"{len(patch_lines)} patch records were parsed"
+        )
+
+    return _CCParParsed(header=header, blocks_lines=block_lines, patch_lines=patch_lines)
+
+
+def _find_count_line(lines: list[str], marker: str, start: int = 0) -> int:
+    """Return the index of the first line containing ``marker`` from *start*."""
+    for idx in range(start, len(lines)):
+        if marker in lines[idx]:
+            return idx
+    raise ValueError(f"merge_cc_par: no {marker!r} line found in input")
+
+
+def _parse_block_line(line: str, path: Path, lineno: int) -> _BlockLine:
+    """Parse one ``level group priority ! idx : comment`` block-section line."""
+    head, _, tail = line.partition("!")
+    parts = head.split()
+    if len(parts) != 3:
+        raise ValueError(
+            f"merge_cc_par: {path}:{lineno}: expected 3 ints in block line, "
+            f"got {len(parts)} ({line!r})"
+        )
+    level, group, priority = (int(x) for x in parts)
+    # Trailing comment: "<idx> : <comment>"; the idx is positional and
+    # gets re-derived on output, so we drop it here.
+    comment = tail.strip()
+    if ":" in comment:
+        _, _, comment = comment.partition(":")
+        comment = comment.strip()
+    return _BlockLine(level=level, group=group, priority=priority, comment=comment)
+
+
+def _parse_patch_line(line: str, path: Path, lineno: int) -> _PatchLine:
+    """Parse one ``block face bc family Imin Imax Jmin Jmax Kmin Kmax ! idx`` line."""
+    head, _, _tail = line.partition("!")
+    parts = head.split()
+    if len(parts) != 10:
+        raise ValueError(
+            f"merge_cc_par: {path}:{lineno}: expected 10 ints in patch line, "
+            f"got {len(parts)} ({line!r})"
+        )
+    block_index, face_index, bc, family, *ext = (int(x) for x in parts)
+    return _PatchLine(
+        block_index=block_index,
+        face_index=face_index,
+        bc=bc,
+        family=family,
+        extents=(ext[0], ext[1], ext[2], ext[3], ext[4], ext[5]),
+    )
+
+
+def _format_merged_cc_par(
+    header: list[str],
+    blocks: list[_BlockLine],
+    patches: list[_PatchLine],
+) -> str:
+    """Serialise a merged cc.par to text in SHORE's canonical layout."""
+    lines: list[str] = list(header)
+
+    lines.append(f"{len(blocks):d} ! blocks number")
+    lines.append("")
+    for idx, bl in enumerate(blocks, start=1):
+        lines.append(f"{bl.level:9d} {bl.group:9d} {bl.priority:9d} ! {idx} : {bl.comment}")
+    lines.append("")
+
+    lines.append(f"{len(patches):d} ! patches number")
+    lines.append("")
+    for idx, pt in enumerate(patches, start=1):
+        ext = pt.extents
+        lines.append(
+            f"{pt.block_index:9d} {pt.face_index:9d} {pt.bc:9d} "
+            f"{pt.family:9d} {ext[0]:9d} {ext[1]:9d} {ext[2]:9d} "
+            f"{ext[3]:9d} {ext[4]:9d} {ext[5]:9d} ! {idx:9d}"
+        )
+    lines.append("")
+    lines.append("0 ! edges number")
+    lines.append("")
+    lines.append("0 ! boxes number")
+    lines.append("")
+    return "\n".join(lines)
