@@ -18,7 +18,9 @@ title: Changelog
 - Per-block k-spacing override through `Mesh.march()` — replace the four k-edges' `Spacing1D` instance to override `(ds, growth)`. Identity-check resolver enforces a single schedule across all blocks (k-coupled SHARED / DIRICHLET seams). Works on cubed-sphere and O-grid topologies.
 - Per-edge i/j/k on `BoxMesh` and i/j on `AnnularCylinderMesh` via `edge_pins` kwarg; constructor builds a transfinite-interpolation (TFI) blend of the four parallel edges' distributions when they disagree, collapses to legacy tensor-product when they don't.
 - Examples: `per_edge_ij_box.py`, `per_edge_k_spacing_cubed_sphere.py` (renamed from `per_edge_k_spacing.py`), `per_edge_k_spacing_ogrid.py`.
+- `shore cc-par` command + `shore.io.cc_par` module: translate the SHORE `.adjacency.json` sidecar into the Xnavis `cc.par` chimera pre-processor input format. WALL/FREE/SHARED/DIRICHLET map to Xnavis BC codes; same-axis SHARED seams emit `135`/`135` paired patches; cubed-sphere cap-equator cross-axis seams use a hard-coded 8-entry orientation table derived from `_overwrite_cap_boundaries`. `BlockMeta` dataclass exposes per-block level / group / priority / comment + `free_face_bc` for body-fitted (40) vs background (-9, -3, -4) meshes.
 
 ### Documented
 - Per-edge spacing section in `algorithm/spacing-laws.md` with the full support table by topology / primitive.
 - `topologies/cubed-sphere.md`, `topologies/o-grid.md`, `topologies/primitives.md`, `reference/primitive.md` updated with per-edge guidance and the structural reasons each axis is or isn't wired.
+- New `reference/cc-par.md` covering the `shore cc-par` command, BC-code mapping, orientation-digit decoder, and the cubed-sphere cap-equator orientation table.

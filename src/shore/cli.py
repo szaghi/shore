@@ -1379,3 +1379,102 @@ def split(
         f"[green]✓[/green] Wrote {len(new_blocks)} blocks "
         f"+ {adj_path.name} ({len(directives)} split directive(s))"
     )
+
+
+# ---------------------------------------------------------------------------
+# shore cc-par
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="cc-par")
+def cc_par(
+    adjacency: Annotated[
+        Path,
+        typer.Argument(
+            help="Input .adjacency.json sidecar (produced by shore split or shore mesh).",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Argument(
+            help="Output cc.par path.",
+        ),
+    ],
+    grd_filename: Annotated[
+        str,
+        typer.Option(
+            "--grd",
+            help="Name of the .grd file Xnavis should pair with this cc.par "
+            "(written into header line 1).",
+        ),
+    ],
+    output_basename: Annotated[
+        str,
+        typer.Option(
+            "--output-basename",
+            help="Output basename Xnavis uses for derived files (header line 2).",
+        ),
+    ] = "cc.",
+    free_face_bc: Annotated[
+        int,
+        typer.Option(
+            "--free-bc",
+            help="BC code emitted for FREE faces.  Default 40 (chimera "
+            "cell-center, body-fitted/buffer meshes).  Use a negative natural "
+            "BC for far-field background blocks: -3 inflow, -4 inoutflow, -9 "
+            "extrapolation.",
+        ),
+    ] = 40,
+    multigrid_levels: Annotated[
+        tuple[int, int],
+        typer.Option(
+            "--mgl",
+            help="Multigrid levels: 'N_levels finest_level_active'.  Header line 7.",
+        ),
+    ] = (4, 1),
+    boundary_layer_thickness: Annotated[
+        float,
+        typer.Option(
+            "--boundary-layer-thickness",
+            help="Header boundary-layer thickness (line 9).",
+        ),
+    ] = -0.1,
+    numerical_beach: Annotated[
+        float,
+        typer.Option(
+            "--numerical-beach",
+            help="Header numerical-beach extension (line 10).",
+        ),
+    ] = -1.0,
+) -> None:
+    """Convert a SHORE .adjacency.json sidecar to an Xnavis cc.par file.
+
+    Maps SHORE's per-face boundary conditions to Xnavis cc.par codes:
+    WALL -> 1 (parete), FREE -> --free-bc (default 40), SHARED / DIRICHLET
+    -> connection orientation codes with paired patch indices.  Cubed-sphere
+    cap-equator cross-axis seams use the hard-coded orientation table from
+    shore.io.cc_par.
+    """
+    from shore.io.adjacency import read_adjacency_json
+    from shore.io.cc_par import BlockMeta, write_cc_par
+
+    if not adjacency.exists():
+        _err.print(f"[red]Error:[/red] {adjacency} not found.")
+        raise typer.Exit(1)
+
+    payload = read_adjacency_json(adjacency)
+    meta = {
+        blk["label"]: BlockMeta(comment=blk["label"], free_face_bc=free_face_bc)
+        for blk in payload["blocks"]
+    }
+    out = write_cc_par(
+        payload,
+        output,
+        grd_filename=grd_filename,
+        output_basename=output_basename,
+        multigrid_levels=multigrid_levels,
+        boundary_layer_thickness=boundary_layer_thickness,
+        numerical_beach=numerical_beach,
+        block_metadata=meta,
+    )
+    _console.print(f"[green]✓[/green] Wrote {out}")
