@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Python** 3.10 or later
+- **Python** 3.11 or later
 - **pip** or any PEP 517-compatible installer
 
 All Python dependencies are installed automatically:

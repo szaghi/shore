@@ -5,7 +5,7 @@
 [![Latest Version](https://img.shields.io/pypi/v/shore.svg)](https://pypi.org/project/shore/)
 [![Build Status](https://github.com/szaghi/shore/actions/workflows/python-package.yml/badge.svg)](https://github.com/szaghi/shore/actions)
 [![Coverage](https://img.shields.io/endpoint?url=https://szaghi.github.io/shore/coverage-badge.json)](https://szaghi.github.io/shore/)
-[![Supported Python versions](https://img.shields.io/badge/Py-%203.10,%203.11,%203.12-blue.svg)]()
+[![Supported Python versions](https://img.shields.io/badge/Py-%203.11,%203.12-blue.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 > Generate structured body-fitted O-grid volumes from raw triangulated surfaces via hyperbolic normal extrusion.
