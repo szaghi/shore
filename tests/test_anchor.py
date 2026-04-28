@@ -28,6 +28,7 @@ def ellipsoid() -> trimesh.Trimesh:
 # Strategy: centroid
 # ---------------------------------------------------------------------------
 
+
 class TestCentroid:
     def test_centroid_inside_sphere(self, unit_sphere):
         anchor = resolve_anchor(unit_sphere, strategy="centroid")
@@ -42,6 +43,7 @@ class TestCentroid:
 # ---------------------------------------------------------------------------
 # Strategy: bbox
 # ---------------------------------------------------------------------------
+
 
 class TestBbox:
     def test_bbox_inside_sphere(self, unit_sphere):
@@ -64,6 +66,7 @@ class TestBbox:
 # Strategy: incenter
 # ---------------------------------------------------------------------------
 
+
 class TestIncenter:
     def test_incenter_inside_sphere(self, unit_sphere):
         anchor = resolve_anchor(unit_sphere, strategy="incenter")
@@ -78,6 +81,7 @@ class TestIncenter:
 # ---------------------------------------------------------------------------
 # Strategy: auto
 # ---------------------------------------------------------------------------
+
 
 class TestAuto:
     def test_auto_returns_inside_point(self, unit_sphere):
@@ -99,6 +103,7 @@ class TestAuto:
 # Strategy: user
 # ---------------------------------------------------------------------------
 
+
 class TestUser:
     def test_user_valid_point(self, unit_sphere):
         pt = np.array([0.0, 0.0, 0.0])
@@ -119,6 +124,7 @@ class TestUser:
 # Unknown strategy
 # ---------------------------------------------------------------------------
 
+
 class TestUnknown:
     def test_unknown_strategy_raises(self, unit_sphere):
         with pytest.raises(ParameterError, match="Unknown anchor strategy"):
@@ -128,6 +134,7 @@ class TestUnknown:
 # ---------------------------------------------------------------------------
 # Multi-strategy agreement on sphere
 # ---------------------------------------------------------------------------
+
 
 class TestStrategyAgreement:
     def test_all_strategies_agree_on_sphere(self, unit_sphere):

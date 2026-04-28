@@ -47,6 +47,7 @@ from shore.volume.jacobian import jacobian_field
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_plotter(jupyter: bool, off_screen: bool = False) -> pv.Plotter:
     """Create a plotter configured for the chosen backend."""
     if jupyter:
@@ -65,6 +66,7 @@ def _jacobian_clim(grid: np.ndarray) -> tuple[float, float]:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def view_geo(
     grid: np.ndarray,

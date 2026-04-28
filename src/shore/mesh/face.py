@@ -17,11 +17,11 @@ FaceName = Literal["i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi"]
 class FaceBC(enum.Enum):
     """Boundary condition type for a block face."""
 
-    WALL = "wall"           # k=0 body surface, Dirichlet from projection
-    FREE = "free"           # outer boundary, marched freely
-    SHARED = "shared"       # shared with another block via numpy view
-    DIRICHLET = "dirichlet" # pinned from a partner face (cap boundaries)
-    PERIODIC = "periodic"   # wraps to another face on the same block
+    WALL = "wall"  # k=0 body surface, Dirichlet from projection
+    FREE = "free"  # outer boundary, marched freely
+    SHARED = "shared"  # shared with another block via numpy view
+    DIRICHLET = "dirichlet"  # pinned from a partner face (cap boundaries)
+    PERIODIC = "periodic"  # wraps to another face on the same block
 
 
 @dataclass
@@ -58,18 +58,18 @@ class Face:
 
 def _face_slice(block: Block, name: FaceName) -> np.ndarray:
     """Extract the node sub-array for a named face from block.nodes."""
-    nd = block.nodes   # (ni, nj, nk, 3)
+    nd = block.nodes  # (ni, nj, nk, 3)
     match name:
         case "i_lo":
-            return nd[0,  :, :, :]
+            return nd[0, :, :, :]
         case "i_hi":
             return nd[-1, :, :, :]
         case "j_lo":
-            return nd[:,  0, :, :]
+            return nd[:, 0, :, :]
         case "j_hi":
             return nd[:, -1, :, :]
         case "k_lo":
-            return nd[:, :,  0, :]
+            return nd[:, :, 0, :]
         case "k_hi":
             return nd[:, :, -1, :]
         case _:

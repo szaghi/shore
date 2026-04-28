@@ -42,14 +42,14 @@ class TestJacobianField:
         """The cell at j=nj-1 must be present in the output (nj cells, not nj-1)."""
         grid = _box_grid(4, 8, 3)
         jac = jacobian_field(grid)
-        assert jac.shape[1] == 8   # nj cells (periodic)
+        assert jac.shape[1] == 8  # nj cells (periodic)
 
 
 class TestJacobianFieldOpen:
     def test_shape(self):
         grid = _box_grid(5, 6, 4)
         jac = _jacobian_field_open(grid)
-        assert jac.shape == (4, 5, 3)   # non-periodic j → nj-1
+        assert jac.shape == (4, 5, 3)  # non-periodic j → nj-1
 
     def test_sphere_shell_positive(self):
         grid = _sphere_shell(10, 12, [1.0, 1.2, 1.5])

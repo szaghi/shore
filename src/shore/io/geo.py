@@ -36,11 +36,11 @@ def write_geo(path: str | Path, grid: np.ndarray) -> None:
 
     with path.open("w") as f:
         f.write(f"{ni} {nj} {nk}\n")
-        for coord in range(3):         # x, then y, then z
+        for coord in range(3):  # x, then y, then z
             flat = grid[:, :, :, coord].ravel(order="F")  # Fortran (i-major)
             # 6 values per line for readability
             for start in range(0, len(flat), 6):
-                line = "  ".join(f"{v:.10e}" for v in flat[start:start + 6])
+                line = "  ".join(f"{v:.10e}" for v in flat[start : start + 6])
                 f.write(line + "\n")
 
 
@@ -63,15 +63,10 @@ def read_geo(path: str | Path) -> np.ndarray:
 
     n = ni * nj * nk
     if data.size != 3 * n:
-        raise MeshInputError(
-            f"Expected {3 * n} values for ({ni},{nj},{nk}) grid, "
-            f"got {data.size}."
-        )
+        raise MeshInputError(f"Expected {3 * n} values for ({ni},{nj},{nk}) grid, got {data.size}.")
 
     grid = np.empty((ni, nj, nk, 3), dtype=np.float64)
     for coord in range(3):
-        grid[:, :, :, coord] = data[coord * n : (coord + 1) * n].reshape(
-            (ni, nj, nk), order="F"
-        )
+        grid[:, :, :, coord] = data[coord * n : (coord + 1) * n].reshape((ni, nj, nk), order="F")
 
     return grid

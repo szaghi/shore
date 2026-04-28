@@ -54,15 +54,12 @@ def resolve_anchor(
     """
     if strategy not in _STRATEGIES:
         raise ParameterError(
-            f"Unknown anchor strategy {strategy!r}.  "
-            f"Choose from {sorted(_STRATEGIES)}."
+            f"Unknown anchor strategy {strategy!r}.  Choose from {sorted(_STRATEGIES)}."
         )
 
     if strategy == "user":
         if user_point is None:
-            raise ParameterError(
-                "strategy='user' requires user_point to be supplied."
-            )
+            raise ParameterError("strategy='user' requires user_point to be supplied.")
         anchor = np.asarray(user_point, dtype=np.float64).copy()
         _validate_anchor(mesh, anchor, label="user-supplied")
         return anchor
@@ -103,6 +100,7 @@ def resolve_anchor(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
 
 def _bbox_center(mesh: trimesh.Trimesh) -> np.ndarray:
     return np.mean(mesh.bounds, axis=0).copy()

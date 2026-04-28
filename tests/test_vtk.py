@@ -28,7 +28,7 @@ class TestGeotoPyvista:
         grid = _make_volume(6, 8, 4)
         sg = geo_to_pyvista(grid)
         ni, nj, nk, _ = grid.shape
-        assert sg.dimensions == (ni, nj + 1, nk)   # j is closed
+        assert sg.dimensions == (ni, nj + 1, nk)  # j is closed
 
     def test_point_count(self):
         grid = _make_volume(6, 8, 4)

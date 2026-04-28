@@ -13,6 +13,7 @@ from pathlib import Path
 # info
 # ---------------------------------------------------------------------------
 
+
 def info_geo(path: str | Path) -> dict:
     """Return metadata for a single-block ``.geo`` file.
 
@@ -27,6 +28,7 @@ def info_geo(path: str | Path) -> dict:
     ``xyz_min``, ``xyz_max``.
     """
     from shore.io.geo import read_geo
+
     grid = read_geo(path)
     ni, nj, nk, _ = grid.shape
     pts = grid.reshape(-1, 3)
@@ -52,6 +54,7 @@ def info_surface(path: str | Path) -> dict:
     dict with keys ``shape``, ``n_points``, ``xyz_min``, ``xyz_max``.
     """
     from shore.mesh.body import Body
+
     k0 = Body.load_surface(path)
     ni, nj, _ = k0.shape
     pts = k0.reshape(-1, 3)
@@ -66,6 +69,7 @@ def info_surface(path: str | Path) -> dict:
 # ---------------------------------------------------------------------------
 # check
 # ---------------------------------------------------------------------------
+
 
 def check_geo(
     path: str | Path,
@@ -92,12 +96,13 @@ def check_geo(
     """
     from shore.io.geo import read_geo
     from shore.volume.jacobian import _jacobian_field_open, jacobian_field
-    grid  = read_geo(path)
-    nk    = grid.shape[2]
+
+    grid = read_geo(path)
+    nk = grid.shape[2]
     jfunc = jacobian_field if periodic_j else _jacobian_field_open
-    jac   = jfunc(grid)   # (ni-1, nj[-1], nk-1)
+    jac = jfunc(grid)  # (ni-1, nj[-1], nk-1)
     jmins = [float(jac[:, :, k].min()) for k in range(nk - 1)]
-    any_neg  = any(j <= 0.0 for j in jmins)
+    any_neg = any(j <= 0.0 for j in jmins)
     any_warn = any(0.0 < j < warn_threshold for j in jmins)
     return {
         "ok": not any_neg,
@@ -110,6 +115,7 @@ def check_geo(
 # ---------------------------------------------------------------------------
 # export
 # ---------------------------------------------------------------------------
+
 
 def export_geo(
     path: str | Path,
@@ -134,9 +140,10 @@ def export_geo(
     """
     from shore.io.geo import read_geo
     from shore.io.vtk import write_vts
-    path   = Path(path)
-    out    = Path(output) if output else path.with_suffix(".vts")
-    grid   = read_geo(path)
+
+    path = Path(path)
+    out = Path(output) if output else path.with_suffix(".vts")
+    grid = read_geo(path)
     write_vts(out, grid, with_jacobian=with_jacobian)
     return out
 
@@ -161,9 +168,10 @@ def export_surface(
     """
     from shore.io.vtk import write_surface_vts
     from shore.mesh.body import Body
+
     path = Path(path)
-    out  = Path(output) if output else path.with_suffix(".vts")
-    k0   = Body.load_surface(path)
+    out = Path(output) if output else path.with_suffix(".vts")
+    k0 = Body.load_surface(path)
     write_surface_vts(out, k0)
     return out
 
@@ -171,6 +179,7 @@ def export_surface(
 # ---------------------------------------------------------------------------
 # view
 # ---------------------------------------------------------------------------
+
 
 def view_geo_file(
     path: str | Path,
@@ -204,6 +213,7 @@ def view_geo_file(
     """
     from shore.io.geo import read_geo
     from shore.vis import view_geo
+
     grid = read_geo(path)
     return view_geo(
         grid,
@@ -244,6 +254,7 @@ def view_surface_file(
     """
     from shore.mesh.body import Body
     from shore.vis import view_surface
+
     k0 = Body.load_surface(path)
     return view_surface(
         k0,

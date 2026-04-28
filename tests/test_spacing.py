@@ -19,6 +19,7 @@ from shore.volume.spacing import (
 # Low-level primitives
 # ---------------------------------------------------------------------------
 
+
 class TestUniform:
     def test_shape(self):
         assert uniform(10, 0.0, 1.0).shape == (10,)
@@ -87,6 +88,7 @@ class TestTanhTwoSided:
 # ---------------------------------------------------------------------------
 # Domain builders
 # ---------------------------------------------------------------------------
+
 
 class TestBuildICoords:
     def test_uniform_default(self):

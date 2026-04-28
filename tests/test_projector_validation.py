@@ -19,6 +19,7 @@ def unit_sphere() -> trimesh.Trimesh:
 # Each failure status code hit by a crafted fixture
 # ---------------------------------------------------------------------------
 
+
 class TestStatusCodes:
     def test_hit_status_on_clean_projection(self, unit_sphere):
         proj = Projector(unit_sphere, np.zeros(3))
@@ -56,6 +57,7 @@ class TestStatusCodes:
 # ---------------------------------------------------------------------------
 # on_failure modes
 # ---------------------------------------------------------------------------
+
 
 class TestOnFailure:
     def test_raise_mode_raises_mesh_input_error(self, unit_sphere):
@@ -95,10 +97,12 @@ class TestOnFailure:
         # Use an anchor that is inside the sphere so +x direction hits
         proj = Projector(unit_sphere, np.zeros(3))
         # Create a direction field on the equatorial plane; all should hit
-        dirs = np.array([
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ])
+        dirs = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ]
+        )
         result = proj.project(dirs)
         assert result.all_hit
 
@@ -116,6 +120,7 @@ class TestOnFailure:
 # ---------------------------------------------------------------------------
 # Projector identity: same BVH object reused across calls
 # ---------------------------------------------------------------------------
+
 
 class TestProjectorBvhReuse:
     def test_intersector_cached(self, unit_sphere):

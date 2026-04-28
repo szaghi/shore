@@ -13,6 +13,7 @@ from shore.surface.projector import ProjectionResult, ProjectionStatus, Projecto
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def unit_sphere() -> trimesh.Trimesh:
     return trimesh.creation.icosphere(subdivisions=3, radius=1.0)
@@ -37,6 +38,7 @@ def inverted_sphere(unit_sphere) -> trimesh.Trimesh:
 # Basic hit behaviour
 # ---------------------------------------------------------------------------
 
+
 class TestProjectorHits:
     def test_single_axis_hit(self, sphere_proj):
         dirs = np.array([[1.0, 0.0, 0.0]])
@@ -49,11 +51,14 @@ class TestProjectorHits:
         lats = np.linspace(0.2, np.pi - 0.2, ni)
         lons = np.linspace(0, 2 * np.pi, nj, endpoint=False)
         la, lo = np.meshgrid(lats, lons, indexing="ij")
-        dirs = np.stack([
-            np.sin(la) * np.cos(lo),
-            np.sin(la) * np.sin(lo),
-            np.cos(la),
-        ], axis=-1).reshape(-1, 3)
+        dirs = np.stack(
+            [
+                np.sin(la) * np.cos(lo),
+                np.sin(la) * np.sin(lo),
+                np.cos(la),
+            ],
+            axis=-1,
+        ).reshape(-1, 3)
         result = sphere_proj.project(dirs)
         assert result.all_hit
 
@@ -88,6 +93,7 @@ class TestProjectorHits:
 # ---------------------------------------------------------------------------
 # Missed rays
 # ---------------------------------------------------------------------------
+
 
 class TestProjectorMissed:
     def test_raises_by_default(self, unit_sphere):
@@ -125,6 +131,7 @@ class TestProjectorMissed:
 # Backface detection
 # ---------------------------------------------------------------------------
 
+
 class TestProjectorBackface:
     def test_inverted_mesh_produces_backface(self, inverted_sphere):
         # Anchor at origin, inverted mesh → normals point inward.
@@ -145,6 +152,7 @@ class TestProjectorBackface:
 # TOO_NEAR detection
 # ---------------------------------------------------------------------------
 
+
 class TestProjectorTooNear:
     def test_anchor_on_surface_triggers_too_near(self, unit_sphere):
         # Anchor just inside the surface; hit distance < 0.05 * bbox_diag
@@ -160,6 +168,7 @@ class TestProjectorTooNear:
 # ---------------------------------------------------------------------------
 # ProjectionResult helpers
 # ---------------------------------------------------------------------------
+
 
 class TestProjectionResult:
     def test_all_hit_true_when_all_hit(self):
@@ -192,11 +201,13 @@ class TestProjectionResult:
 # Phase 0 equivalence — ported functions produce same output
 # ---------------------------------------------------------------------------
 
+
 class TestEquivalence:
     def test_project_sphere_to_surface_shape(self, sphere_stl):
         import trimesh as _tm
 
         from shore.surface.remesh import project_sphere_to_surface
+
         mesh = _tm.load(str(sphere_stl), force="mesh")
         result = project_sphere_to_surface(mesh, ni=8, nj=12)
         assert result.shape == (8, 12, 3)
@@ -205,6 +216,7 @@ class TestEquivalence:
         import trimesh as _tm
 
         from shore.surface.remesh import project_sphere_to_surface
+
         mesh = _tm.load(str(sphere_stl), force="mesh")
         result = project_sphere_to_surface(mesh, ni=8, nj=12)
         radii = np.linalg.norm(result.reshape(-1, 3), axis=-1)
@@ -215,6 +227,7 @@ class TestEquivalence:
         import trimesh as _tm
 
         from shore.surface.remesh import project_caps_to_surface
+
         mesh = _tm.load(str(sphere_stl), force="mesh")
         surface, nc_cap = project_caps_to_surface(mesh, ni=8, nj=12)
         assert surface.ndim == 3
@@ -225,6 +238,7 @@ class TestEquivalence:
         import trimesh as _tm
 
         from shore.surface.remesh import project_caps_to_surface
+
         mesh = _tm.load(str(sphere_stl), force="mesh")
         surface, _ = project_caps_to_surface(mesh, ni=8, nj=12)
         radii = np.linalg.norm(surface.reshape(-1, 3), axis=-1)
@@ -236,6 +250,7 @@ class TestEquivalence:
 
         from shore.surface.projector import Projector
         from shore.surface.remesh import project_sphere_to_surface
+
         mesh = _tm.load(str(sphere_stl), force="mesh")
         proj = Projector(mesh, mesh.centroid)
         result_with = project_sphere_to_surface(mesh, ni=8, nj=12, projector=proj)

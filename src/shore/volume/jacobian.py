@@ -36,13 +36,13 @@ def jacobian_field(grid: np.ndarray) -> np.ndarray:
         (one per column, with the last column wrapping to j=0).
     """
     nj = grid.shape[1]
-    jp1 = (np.arange(nj) + 1) % nj   # periodic j+1 index
+    jp1 = (np.arange(nj) + 1) % nj  # periodic j+1 index
 
-    lk  = grid[:-1, :,   :-1, :]          # (ni-1, nj, nk-1, 3) — corner
-    lk1 = grid[:-1, :,    1:, :]          # k+1 neighbour
-    e1  = grid[:-1, jp1, :-1, :] - lk    # j-tangent  (periodic)
-    e2  = grid[1:,  :,   :-1, :] - lk    # i-tangent
-    e3  = lk1 - lk                        # k-tangent
+    lk = grid[:-1, :, :-1, :]  # (ni-1, nj, nk-1, 3) — corner
+    lk1 = grid[:-1, :, 1:, :]  # k+1 neighbour
+    e1 = grid[:-1, jp1, :-1, :] - lk  # j-tangent  (periodic)
+    e2 = grid[1:, :, :-1, :] - lk  # i-tangent
+    e3 = lk1 - lk  # k-tangent
 
     return np.einsum("ijkl,ijkl->ijk", np.cross(e2, e1), e3)
 
@@ -62,10 +62,10 @@ def _jacobian_field_open(grid: np.ndarray) -> np.ndarray:
     -------
     numpy.ndarray, shape (ni-1, nj-1, nk-1)
     """
-    lk  = grid[:-1, :-1, :-1, :]           # (ni-1, nj-1, nk-1, 3)
-    lk1 = grid[:-1, :-1,  1:, :]
-    e1  = grid[:-1, 1:,  :-1, :] - lk      # j-tangent  (no wrap)
-    e2  = grid[1:,  :-1, :-1, :] - lk      # i-tangent
-    e3  = lk1 - lk                          # k-tangent
+    lk = grid[:-1, :-1, :-1, :]  # (ni-1, nj-1, nk-1, 3)
+    lk1 = grid[:-1, :-1, 1:, :]
+    e1 = grid[:-1, 1:, :-1, :] - lk  # j-tangent  (no wrap)
+    e2 = grid[1:, :-1, :-1, :] - lk  # i-tangent
+    e3 = lk1 - lk  # k-tangent
 
     return np.einsum("ijkl,ijkl->ijk", np.cross(e2, e1), e3)

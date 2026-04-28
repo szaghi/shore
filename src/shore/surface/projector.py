@@ -170,9 +170,7 @@ class Projector:
         if n_fail > 0:
             if on_failure == "raise":
                 counts_map = Counter(status[not_hit_mask].tolist())
-                counts_str = ", ".join(
-                    f"{k.value}={v}" for k, v in counts_map.items()
-                )
+                counts_str = ", ".join(f"{k.value}={v}" for k, v in counts_map.items())
                 raise MeshInputError(
                     f"{n_fail} of {n_rays} rays failed ({counts_str}).  "
                     "The body may not be star-shaped w.r.t. the anchor, or the "
@@ -183,9 +181,7 @@ class Projector:
                 query = self.anchor + flat_dirs[fail_idx] * self._bbox_diag
                 close_pts, _, _ = trimesh.proximity.closest_point(self.mesh, query)
                 locations[fail_idx] = close_pts
-                distances[fail_idx] = np.linalg.norm(
-                    close_pts - self.anchor, axis=-1
-                )
+                distances[fail_idx] = np.linalg.norm(close_pts - self.anchor, axis=-1)
             # on_failure == "skip": leave locations as NaN
 
         return ProjectionResult(

@@ -16,6 +16,7 @@ from shore.surface.io import load_stl
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _export_stl(mesh: trimesh.Trimesh, path: Path) -> Path:
     mesh.export(str(path))
     return path
@@ -24,6 +25,7 @@ def _export_stl(mesh: trimesh.Trimesh, path: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Basic load
 # ---------------------------------------------------------------------------
+
 
 class TestLoadStlBasic:
     def test_loads_clean_stl(self, sphere_stl):
@@ -40,6 +42,7 @@ class TestLoadStlBasic:
 # Hygiene: degenerate face removal
 # ---------------------------------------------------------------------------
 
+
 class TestDegenerateFaceRemoval:
     def test_degenerate_faces_removed(self, tmp_path):
         """A mesh with a duplicated zero-area face should have it removed."""
@@ -47,8 +50,9 @@ class TestDegenerateFaceRemoval:
         # Add a degenerate triangle (three identical vertices → zero area)
         v0 = sphere.vertices[0]
         new_verts = np.vstack([sphere.vertices, [v0, v0, v0]])
-        degenerate_face = np.array([[len(sphere.vertices), len(sphere.vertices) + 1,
-                                     len(sphere.vertices) + 2]])
+        degenerate_face = np.array(
+            [[len(sphere.vertices), len(sphere.vertices) + 1, len(sphere.vertices) + 2]]
+        )
         new_faces = np.vstack([sphere.faces, degenerate_face])
         dirty = trimesh.Trimesh(vertices=new_verts, faces=new_faces, process=False)
         path = _export_stl(dirty, tmp_path / "dirty.stl")
@@ -72,6 +76,7 @@ class TestDegenerateFaceRemoval:
 # Hygiene: duplicate vertex merging
 # ---------------------------------------------------------------------------
 
+
 class TestVertexMerge:
     def test_duplicate_vertices_merged(self, tmp_path):
         """A mesh exported with per-face vertices (duplicated) should have vertices merged."""
@@ -79,9 +84,7 @@ class TestVertexMerge:
         # Explicitly split every face (creates 3x faces x 3 duplicated vertices)
         verts_split = sphere.vertices[sphere.faces.reshape(-1)]
         faces_split = np.arange(len(verts_split)).reshape(-1, 3)
-        split_mesh = trimesh.Trimesh(
-            vertices=verts_split, faces=faces_split, process=False
-        )
+        split_mesh = trimesh.Trimesh(vertices=verts_split, faces=faces_split, process=False)
         n_vert_before = len(split_mesh.vertices)
         path = _export_stl(split_mesh, tmp_path / "split.stl")
 
@@ -93,6 +96,7 @@ class TestVertexMerge:
 # ---------------------------------------------------------------------------
 # Non-watertight warning
 # ---------------------------------------------------------------------------
+
 
 class TestNonWatertightWarning:
     def test_open_mesh_emits_warning(self, tmp_path):

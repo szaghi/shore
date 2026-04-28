@@ -70,33 +70,33 @@ class Edge:
 
 def _edge_slice(block: Block, name: EdgeName) -> np.ndarray:
     """Extract the node arc for a named edge from block.nodes."""
-    nd = block.nodes   # (ni, nj, nk, 3)
+    nd = block.nodes  # (ni, nj, nk, 3)
     match name:
         # along-i edges (j and k fixed)
         case "j_lo_k_lo":
-            return nd[:, 0,  0,  :]
+            return nd[:, 0, 0, :]
         case "j_hi_k_lo":
-            return nd[:, -1, 0,  :]
+            return nd[:, -1, 0, :]
         case "j_lo_k_hi":
-            return nd[:, 0,  -1, :]
+            return nd[:, 0, -1, :]
         case "j_hi_k_hi":
             return nd[:, -1, -1, :]
         # along-j edges (i and k fixed)
         case "i_lo_k_lo":
-            return nd[0,  :, 0,  :]
+            return nd[0, :, 0, :]
         case "i_hi_k_lo":
-            return nd[-1, :, 0,  :]
+            return nd[-1, :, 0, :]
         case "i_lo_k_hi":
-            return nd[0,  :, -1, :]
+            return nd[0, :, -1, :]
         case "i_hi_k_hi":
             return nd[-1, :, -1, :]
         # along-k edges (i and j fixed)
         case "i_lo_j_lo":
-            return nd[0,  0,  :, :]
+            return nd[0, 0, :, :]
         case "i_hi_j_lo":
-            return nd[-1, 0,  :, :]
+            return nd[-1, 0, :, :]
         case "i_lo_j_hi":
-            return nd[0,  -1, :, :]
+            return nd[0, -1, :, :]
         case "i_hi_j_hi":
             return nd[-1, -1, :, :]
         case _:

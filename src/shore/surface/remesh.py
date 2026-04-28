@@ -75,9 +75,7 @@ def sphere_latlon_directions(
     """
     n_supplied = sum(x is not None for x in (theta_cap, theta_cap_deg, theta_margin))
     if n_supplied > 1:
-        raise ParameterError(
-            "Supply at most one of theta_cap, theta_cap_deg, theta_margin."
-        )
+        raise ParameterError("Supply at most one of theta_cap, theta_cap_deg, theta_margin.")
     if theta_cap_deg is not None:
         theta_cap = np.deg2rad(theta_cap_deg)
     elif theta_margin is not None:
@@ -155,7 +153,8 @@ def project_sphere_to_surface(
     from shore.surface.projector import Projector
 
     directions = sphere_latlon_directions(
-        ni, nj,
+        ni,
+        nj,
         theta_cap=theta_cap,
         theta_cap_deg=theta_cap_deg,
         theta_margin=theta_margin,
@@ -235,9 +234,7 @@ def project_caps_to_surface(
     from shore.surface.projector import Projector
 
     if theta_cap is not None and theta_cap_deg is not None:
-        raise ParameterError(
-            "Supply at most one of theta_cap and theta_cap_deg."
-        )
+        raise ParameterError("Supply at most one of theta_cap and theta_cap_deg.")
     if theta_cap_deg is not None:
         theta_cap = np.deg2rad(theta_cap_deg)
     if theta_cap is None:
@@ -250,8 +247,11 @@ def project_caps_to_surface(
     ni_total = ni + 2 * (nc_cap - 1)
 
     lats = build_i_coords(
-        ni_total, pole_eps, np.pi - pole_eps,
-        spacing=i_spacing, beta=i_beta,
+        ni_total,
+        pole_eps,
+        np.pi - pole_eps,
+        spacing=i_spacing,
+        beta=i_beta,
     )
     lons = build_j_coords(nj, spacing=j_spacing, beta=j_beta, cluster_lon=j_cluster_lon)
 
@@ -266,5 +266,3 @@ def project_caps_to_surface(
     surface_pts = result.locations.reshape(ni_total, nj, 3)
 
     return surface_pts, nc_cap
-
-
