@@ -46,10 +46,9 @@ typos surface immediately rather than being silently ignored.
 from __future__ import annotations
 
 import sys
+import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-
-import tomllib
 
 from shore.exceptions import ParameterError
 

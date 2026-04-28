@@ -50,6 +50,11 @@ jobs:
       - name: Install package
         run: pip install -e .
       - name: Smoke-test shore CLI
+        env:
+          # Windows' default cp1252 stdout codec can't encode the Rich-style
+          # ✓/✗ glyphs SHORE prints from `shore check` and friends; force
+          # UTF-8 so the smoke test on windows-latest runs cleanly.
+          PYTHONIOENCODING: utf-8
         run: |
           python --version
           pip list

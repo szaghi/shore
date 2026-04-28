@@ -50,7 +50,7 @@ from shore.primitive import (
 
 app = typer.Typer(
     name="shore",
-    help="SHORE — Structured Hyperbolic Overlapping Remeshing Engine.",
+    help="SHORE - Structured Hyperbolic Overlapping Remeshing Engine.",
     add_completion=False,
     no_args_is_help=True,
 )
@@ -96,7 +96,7 @@ _CAP_PULL = Annotated[
     float | None,
     typer.Option(
         "--cap-pull",
-        help="[DEPRECATED, Phase 4] Ignored — cap interior is now built by "
+        help="[DEPRECATED, Phase 4] Ignored - cap interior is now built by "
         "Shirley + stereographic projection with C1 seam continuity.",
         hidden=True,
     ),
@@ -105,7 +105,7 @@ _CAP_SQUARENESS = Annotated[
     float | None,
     typer.Option(
         "--cap-squareness",
-        help="[DEPRECATED] Ignored — cap k=0 is now built by gnomonic "
+        help="[DEPRECATED] Ignored - cap k=0 is now built by gnomonic "
         "flat-square projection, which produces square cells by construction.",
         hidden=True,
     ),
@@ -307,7 +307,7 @@ def mesh(
     ] = "cubed_sphere",
     verbose: _VERBOSE = False,
 ) -> None:
-    """Full pipeline: STL → structured volume → geo files.
+    """Full pipeline: STL -> structured volume -> geo files.
 
     Two topologies are supported:
 
@@ -316,7 +316,7 @@ def mesh(
     - ``ogrid``: single-block lat-lon grid, j-periodic; writes one
       ``<stem>.geo`` file.
 
-    Parameter precedence (highest first): explicit CLI flag → config file → built-in default.
+    Parameter precedence (highest first): explicit CLI flag -> config file -> built-in default.
     """
     cfg: MeshConfig | None = None
     if config is not None:
@@ -715,7 +715,7 @@ def check(
 
     result = check_geo(input, warn_threshold=warn_threshold)
 
-    table = Table(title=f"Jacobian check — {input}", show_header=True, header_style="bold cyan")
+    table = Table(title=f"Jacobian check - {input}", show_header=True, header_style="bold cyan")
     table.add_column("Layer", justify="right", style="dim")
     table.add_column("jmin", justify="right")
     table.add_column("Status")
@@ -1167,7 +1167,7 @@ def primitive_flat_caps(
         typer.Option(
             "--inner-frac",
             help=(
-                "Ratio r_inner/r_out — the central square's corner radius "
+                "Ratio r_inner/r_out - the central square's corner radius "
                 "as a fraction of the outer disk radius (must lie in (0, 1))."
             ),
         ),
@@ -1187,7 +1187,7 @@ def primitive_flat_caps(
     c_beta: Annotated[float, typer.Option("--c-beta")] = 3.0,
     k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
 ) -> None:
-    """Build a 5-block flat-caps cylinder (no central hole — Chimera-free background)."""
+    """Build a 5-block flat-caps cylinder (no central hole - Chimera-free background)."""
     cfg = _load_prim_config(config)
     if cfg is not None and cfg.geometry.type != "flat_caps":
         _err.print(
