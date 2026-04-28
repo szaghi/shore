@@ -512,3 +512,121 @@ class TestCLI:
         # Click may wrap the error line at the terminal width; collapse
         # whitespace before matching so the test is invariant to wrap pos.
         assert "not found" in " ".join(r.output.split())
+
+    def test_cc_par_cli_meta_inline_json(self, tmp_path):
+        """--meta as an inline JSON string overrides per-block free_face_bc."""
+        adj = tmp_path / "two.adjacency.json"
+        adj.write_text(json.dumps(_two_block_shared_payload()))
+        ccpar = tmp_path / "two.cc.par"
+
+        meta = json.dumps({"a": {"free_face_bc": -9}, "b": {"free_face_bc": 40}})
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            ["cc-par", str(adj), str(ccpar), "--grd", "x.grd", "--meta", meta],
+        )
+        assert r.exit_code == 0, r.output
+        patches = _parse_patches(ccpar.read_text())
+        # Block 1 (a) FREE faces -> -9; block 2 (b) FREE faces -> 40.
+        a_free = [p for p in patches if p["block"] == 1 and p["bc"] == -9]
+        b_free = [p for p in patches if p["block"] == 2 and p["bc"] == 40]
+        assert len(a_free) == 4
+        assert len(b_free) == 4
+
+    def test_cc_par_cli_meta_file(self, tmp_path):
+        """--meta as a path to a JSON file produces the same result as inline."""
+        adj = tmp_path / "two.adjacency.json"
+        adj.write_text(json.dumps(_two_block_shared_payload()))
+        meta_file = tmp_path / "meta.json"
+        meta_file.write_text(json.dumps({"a": {"free_face_bc": -9}, "b": {"free_face_bc": 40}}))
+        ccpar = tmp_path / "two.cc.par"
+
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            ["cc-par", str(adj), str(ccpar), "--grd", "x.grd", "--meta", str(meta_file)],
+        )
+        assert r.exit_code == 0, r.output
+        patches = _parse_patches(ccpar.read_text())
+        a_free = [p for p in patches if p["block"] == 1 and p["bc"] == -9]
+        b_free = [p for p in patches if p["block"] == 2 and p["bc"] == 40]
+        assert len(a_free) == 4
+        assert len(b_free) == 4
+
+    def test_cc_par_cli_meta_level_and_comment(self, tmp_path):
+        """--meta level and comment fields are written to the blocks section."""
+        adj = tmp_path / "two.adjacency.json"
+        adj.write_text(json.dumps(_two_block_shared_payload()))
+        ccpar = tmp_path / "two.cc.par"
+
+        meta = json.dumps({"a": {"level": 3, "group": 1, "priority": 7, "comment": "body"}})
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            ["cc-par", str(adj), str(ccpar), "--grd", "x.grd", "--meta", meta],
+        )
+        assert r.exit_code == 0, r.output
+        text = ccpar.read_text()
+        assert "        3         1         7 ! body" in text
+
+    def test_cc_par_cli_meta_not_json_not_file(self, tmp_path):
+        """--meta with a value that is neither valid JSON nor an existing file exits 1."""
+        adj = tmp_path / "two.adjacency.json"
+        adj.write_text(json.dumps(_two_block_shared_payload()))
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "two.cc.par"),
+                "--grd",
+                "x.grd",
+                "--meta",
+                "not-json-not-a-file",
+            ],
+        )
+        assert r.exit_code == 1
+        assert "not valid JSON" in " ".join(r.output.split())
+
+    def test_cc_par_cli_meta_invalid_json_file(self, tmp_path):
+        """--meta pointing at a file whose content is not valid JSON exits 1."""
+        adj = tmp_path / "two.adjacency.json"
+        adj.write_text(json.dumps(_two_block_shared_payload()))
+        bad_file = tmp_path / "bad.json"
+        bad_file.write_text("this is not json {{{")
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "two.cc.par"),
+                "--grd",
+                "x.grd",
+                "--meta",
+                str(bad_file),
+            ],
+        )
+        assert r.exit_code == 1
+        assert "not valid JSON" in " ".join(r.output.split())
+
+    def test_cc_par_cli_meta_non_object_json(self, tmp_path):
+        """--meta whose JSON value is not an object (e.g. a list) exits 1."""
+        adj = tmp_path / "two.adjacency.json"
+        adj.write_text(json.dumps(_two_block_shared_payload()))
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "two.cc.par"),
+                "--grd",
+                "x.grd",
+                "--meta",
+                "[1, 2, 3]",
+            ],
+        )
+        assert r.exit_code == 1
+        assert "object" in " ".join(r.output.split()).lower()

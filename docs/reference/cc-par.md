@@ -331,7 +331,7 @@ above for the full Xnavis BC vocabulary.
 | SHORE `FaceBC` | `cc.par` BC code | `family` field | Notes |
 |---|---|---|---|
 | `WALL` | `1` (`parete`, viscous wall) | `0` | Body wall. |
-| `FREE` | `--free-bc` (default `40`) | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a natural BC: `-3` inflow, `-4` inoutflow, `-9` extrapolation. |
+| `FREE` | `--free-bc` (default `40`), or per-block `free_face_bc` via `--meta` | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a natural BC: `-3` inflow, `-4` inoutflow, `-9` extrapolation. Per-block overrides via `--meta` take precedence over `--free-bc`. |
 | `SHARED` | orientation code (≥ 100) | partner patch index | Same-axis (i↔i, j↔j, k↔k, no flip) emits `135` on both sides — see [orientation digits](#orientation-digits-in-detail). |
 | `DIRICHLET` | orientation code | partner patch index | Cubed-sphere cap-equator seams are *cross-axis*; per-pair codes are derived from the topology — see below. |
 | `PERIODIC` | `40` + `UserWarning` | `0` | `cc.par` has no first-class periodic BC; use Xnavis chimera boxes for periodic stitching. |
@@ -366,14 +366,39 @@ introduce additional cross-axis seams must extend the table in
 |---|---|---|
 | `--grd TEXT` | *required* | Name of the `.grd` mesh file Xnavis pairs with this `cc.par` (header line 1). |
 | `--output-basename TEXT` | `"cc."` | Output basename Xnavis uses for derived files (header line 2). |
-| `--free-bc INT` | `40` | BC code for `FREE` faces. Use `-3`/`-4`/`-9` etc. for far-field background blocks. |
+| `--free-bc INT` | `40` | BC code for `FREE` faces on every block that has no entry in `--meta`. Use `-3`/`-4`/`-9` etc. for far-field background blocks. |
+| `--meta TEXT` | `null` | Per-block `BlockMeta` overrides. Accepts an inline JSON object or a path to a JSON file (inline JSON is tried first). Keys are block labels; values are objects with any subset of `{level, group, priority, comment, free_face_bc}`. Missing keys inherit their defaults. Any block absent from the map uses `--free-bc` for its FREE faces. |
 | `--mgl INT INT` | `4 1` | Multigrid levels: total, finest active. |
 | `--boundary-layer-thickness FLOAT` | `-0.1` | Header line 9. |
 | `--numerical-beach FLOAT` | `-1.0` | Header line 10. |
 
-Per-block metadata (level, group, priority, comment, individual
-`free_face_bc`) is currently exposed only via the Python API; see
-`shore.io.cc_par.BlockMeta`.
+### `--meta` format
+
+`--meta` accepts either an inline JSON string or a path to a JSON file.
+Resolution order: the value is first parsed as JSON; if that fails it is
+treated as a file path (the file's content is then parsed as JSON). This
+means inline JSON is always unambiguous regardless of the working
+directory.
+
+The JSON value must be an **object** mapping block labels to partial
+`BlockMeta` fields:
+
+```json
+{
+  "sub0":      { "level": 1, "group": 0, "priority": 1, "free_face_bc": 40 },
+  "cap_north": { "level": 2, "free_face_bc": -9 }
+}
+```
+
+Any field can be omitted; omitted fields fall back to their defaults
+(`level=1`, `group=0`, `priority=1`, `free_face_bc=--free-bc`). Blocks
+absent from the map entirely get all defaults plus `free_face_bc` from
+`--free-bc`.
+
+Error cases:
+- Value is not valid JSON **and** is not a path to an existing file → exit 1.
+- Value is a valid file path but the file content is not valid JSON → exit 1.
+- Value parses as JSON but is not an object (e.g. a JSON array) → exit 1.
 
 ## Examples
 
@@ -381,9 +406,18 @@ Per-block metadata (level, group, priority, comment, individual
 # Body-fitted near-body mesh (FREE faces are chimera fringes)
 shore cc-par sphere.adjacency.json sphere.cc.par --grd sphere.grd
 
-# Far-field background block (FREE faces are extrapolation outflows)
+# Far-field background mesh — all FREE faces are extrapolation
 shore cc-par background.adjacency.json background.cc.par \
   --grd background.grd --free-bc -9
+
+# Mixed near-body: caps get a different overset level and far-field BC
+shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd \
+  --meta '{"cap_north": {"level": 2, "free_face_bc": -9},
+           "cap_south": {"level": 2, "free_face_bc": -9}}'
+
+# Same, loading the metadata from a JSON file
+shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd \
+  --meta wall_meta.json
 ```
 
 ## Python API
@@ -392,20 +426,29 @@ shore cc-par background.adjacency.json background.cc.par \
 from shore.io.cc_par import BlockMeta, write_cc_par
 
 write_cc_par(
-    "sphere.adjacency.json",   # path or parsed dict
-    "sphere.cc.par",
-    grd_filename="sphere.grd",
+    "wall.adjacency.json",     # path or parsed dict
+    "wall.cc.par",
+    grd_filename="wall.grd",
     output_basename="cc.",
     multigrid_levels=(4, 1),
     boundary_layer_thickness=-0.1,
     numerical_beach=-1.0,
     block_metadata={
-        # Per-block metadata; missing labels get BlockMeta() defaults
-        "sub0": BlockMeta(level=1, group=0, priority=1, free_face_bc=40),
-        "background": BlockMeta(level=2, group=1, priority=1, free_face_bc=-9),
+        # Equatorial sub-blocks — chimera cell-centre handoff
+        "sub0": BlockMeta(free_face_bc=40),
+        "sub1": BlockMeta(free_face_bc=40),
+        "sub2": BlockMeta(free_face_bc=40),
+        "sub3": BlockMeta(free_face_bc=40),
+        # Polar caps — different overset level, far-field BC
+        "cap_north": BlockMeta(level=2, free_face_bc=-9),
+        "cap_south": BlockMeta(level=2, free_face_bc=-9),
     },
 )
 ```
+
+The `block_metadata` dict is optional; any block not listed gets a
+default `BlockMeta()` (level=1, group=0, priority=1, free_face_bc=40).
+The `--meta` CLI flag exposes the same control without writing Python.
 
 ## Limitations
 

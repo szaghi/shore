@@ -198,8 +198,8 @@ Output:
 ```
 examples_out/
   sphere.stl                        # in-memory icosphere
-  fuselage_sub0..3.geo              # 6 cubed-sphere blocks
-  fuselage_cap_north/south.geo
+  wall_sub0..3.geo                  # 6 cubed-sphere blocks
+  wall_cap_north/south.geo
   background_center.geo             # 5 flat-caps blocks
   background_sub_e/n/w/s.geo
   assembly.vtm                      # 11-block ParaView MultiBlock
@@ -210,6 +210,40 @@ The walkthrough — including the rationale for the parameter
 choices, ParaView inspection workflow, and the explicit boundary
 between what SHORE produces and what the downstream solver does —
 lives in [Assembly walkthrough](/guide/assembly).
+
+### `examples/cc_par_assembly.py` — assembly + Xnavis `cc.par` generation
+
+Extends the assembly example by adding adjacency JSON sidecars, VTK
+MultiBlock exports, and `cc.par` generation for both meshes.  Viewer is
+off by default; pass `--view` to open it.
+
+```bash
+# Generate everything headlessly.
+python examples/cc_par_assembly.py
+
+# Custom output directory.
+python examples/cc_par_assembly.py -o my_run
+
+# Open the interactive viewer after generation.
+python examples/cc_par_assembly.py --view
+```
+
+Output:
+
+```
+examples_out/
+  sphere.stl
+  wall_sub0..3.geo              # near-body cubed-sphere blocks
+  wall_cap_north/south.geo
+  wall.vtm                      # near-body ParaView MultiBlock
+  background_center.geo         # background flat-caps blocks
+  background_sub_e/n/w/s.geo
+  background.vtm                # background ParaView MultiBlock
+  wall.adjacency.json
+  background.adjacency.json
+  wall.cc.par                   # near-body Xnavis cc.par
+  background.cc.par             # background Xnavis cc.par
+```
 
 ### `examples/visualize.ipynb` — Jupyter Notebook
 

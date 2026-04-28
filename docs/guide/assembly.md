@@ -66,8 +66,8 @@ By default the script:
    writes it to `examples_out/sphere.stl`.
 2. Builds the cubed-sphere near-body mesh through `Mesh.from_stl(...)`
    with `CubedSphereTopology()`, marches it outward, writes 6 `.geo`
-   files (`fuselage_sub0..3.geo`, `fuselage_cap_north.geo`,
-   `fuselage_cap_south.geo`).
+   files (`wall_sub0..3.geo`, `wall_cap_north.geo`,
+   `wall_cap_south.geo`).
 3. Builds the flat-caps cylinder background through
    `FlatCapsCylinder.build(...)`, writes 5 `.geo` files
    (`background_center.geo`, `background_sub_e/n/w/s.geo`).
@@ -80,8 +80,8 @@ Output layout:
 ```
 examples_out/
   sphere.stl                         # in-memory icosphere
-  fuselage_sub0..sub3.geo            # 4 cubed-sphere equatorial blocks
-  fuselage_cap_north/south.geo       # 2 cubed-sphere cap blocks
+  wall_sub0..sub3.geo            # 4 cubed-sphere equatorial blocks
+  wall_cap_north/south.geo       # 2 cubed-sphere cap blocks
   background_center.geo              # flat-caps central square
   background_sub_e/n/w/s.geo         # flat-caps 4 trapezoidal sub-blocks
   assembly.vtm                       # 11-block ParaView MultiBlock manifest
@@ -118,7 +118,7 @@ shore config validate examples/config_assembly_background.toml
 Each config can also be used standalone with the corresponding CLI:
 
 ```bash
-shore mesh -c examples/config_assembly_near_body.toml -o fuselage
+shore mesh -c examples/config_assembly_near_body.toml -o wall
 # (will fail because input STL doesn't exist; the orchestrator overrides
 #  the input key with the in-memory icosphere it generates)
 
@@ -170,9 +170,76 @@ across layers and avoids this trap. The example uses
 first cell ~30 % of the surface cell scale. The corner cells march
 cleanly.
 
-For larger bodies (fuselage, wing) the tanh-clustered law works as
+For larger bodies (wall, wing) the tanh-clustered law works as
 expected — it's the geometric-scale ratio of `ds` to surface cell
 size that matters, not the law per se.
+
+## Generating Xnavis `cc.par` files
+
+Once the geometry is verified in ParaView, convert each mesh to an
+Xnavis chimera pre-processor input with
+`examples/cc_par_assembly.py` — a direct continuation of this example
+that adds three steps: adjacency JSON sidecars, VTK MultiBlock exports,
+and `cc.par` generation.
+
+```bash
+# Generate everything headlessly (no viewer).
+python examples/cc_par_assembly.py
+
+# Custom output directory.
+python examples/cc_par_assembly.py -o my_run
+
+# Open the interactive viewer after generation.
+python examples/cc_par_assembly.py --view
+```
+
+The script uses `shore.io.cc_par.BlockMeta` to assign **per-block** BC
+codes — demonstrating that `write_cc_par`'s `block_metadata` argument
+(and the matching CLI `--meta` flag) give full per-block control:
+
+```python
+from shore.io.cc_par import BlockMeta, write_cc_par
+
+# Near-body: equatorial sub-blocks and caps all use chimera BC 40.
+nb_meta = {
+    "sub0":      BlockMeta(free_face_bc=40),
+    "sub1":      BlockMeta(free_face_bc=40),
+    "sub2":      BlockMeta(free_face_bc=40),
+    "sub3":      BlockMeta(free_face_bc=40),
+    "cap_north": BlockMeta(free_face_bc=40),
+    "cap_south": BlockMeta(free_face_bc=40),
+}
+
+# Background: all blocks get far-field extrapolation BC -9.
+bg_meta = {blk.label: BlockMeta(free_face_bc=-9) for blk in bg_blocks}
+
+write_cc_par(nb_adj, "wall.cc.par", grd_filename="wall.grd", block_metadata=nb_meta)
+write_cc_par(bg_adj, "background.cc.par", grd_filename="background.grd", block_metadata=bg_meta)
+```
+
+The same result from the CLI using `--meta`:
+
+```bash
+shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd
+
+shore cc-par background.adjacency.json background.cc.par \
+  --grd background.grd --free-bc -9
+```
+
+Additional output files:
+
+```
+examples_out/
+  wall.adjacency.json          # near-body adjacency sidecar
+  background.adjacency.json    # background adjacency sidecar
+  wall.vtm                     # near-body ParaView MultiBlock
+  background.vtm               # background ParaView MultiBlock
+  wall.cc.par                  # near-body Xnavis cc.par
+  background.cc.par            # background Xnavis cc.par
+```
+
+See [`shore cc-par`](/reference/cc-par) for the full CLI reference,
+including the `--meta` flag format and BC code table.
 
 ## What's deliberately not in this example
 

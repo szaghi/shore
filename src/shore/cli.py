@@ -1419,12 +1419,24 @@ def cc_par(
         int,
         typer.Option(
             "--free-bc",
-            help="BC code emitted for FREE faces.  Default 40 (chimera "
-            "cell-center, body-fitted/buffer meshes).  Use a negative natural "
-            "BC for far-field background blocks: -3 inflow, -4 inoutflow, -9 "
-            "extrapolation.",
+            help="BC code emitted for FREE faces on every block that has no "
+            "entry in --meta.  Default 40 (chimera cell-center, body-fitted/"
+            "buffer meshes).  Use a negative natural BC for far-field background "
+            "blocks: -3 inflow, -4 inoutflow, -9 extrapolation.",
         ),
     ] = 40,
+    block_meta_json: Annotated[
+        str | None,
+        typer.Option(
+            "--meta",
+            help="Per-block BlockMeta overrides as a JSON object or a path to a "
+            "JSON file.  Keys are block labels; values are objects with any "
+            "subset of {level, group, priority, comment, free_face_bc}.  "
+            "Missing keys inherit the block's defaults (level=1, group=0, "
+            "priority=1, free_face_bc=--free-bc).  "
+            'Example: \'{"cap_north": {"level": 2, "free_face_bc": -9}}\'',
+        ),
+    ] = None,
     multigrid_levels: Annotated[
         tuple[int, int],
         typer.Option(
@@ -1454,7 +1466,13 @@ def cc_par(
     -> connection orientation codes with paired patch indices.  Cubed-sphere
     cap-equator cross-axis seams use the hard-coded orientation table from
     shore.io.cc_par.
+
+    Use --meta to override per-block metadata (level, group, priority,
+    free_face_bc) for selected blocks.  Any block not listed inherits the
+    global --free-bc default.
     """
+    import json as _json
+
     from shore.io.adjacency import read_adjacency_json
     from shore.io.cc_par import BlockMeta, write_cc_par
 
@@ -1462,11 +1480,46 @@ def cc_par(
         _err.print(f"[red]Error:[/red] {adjacency} not found.")
         raise typer.Exit(1)
 
+    # Parse --meta: try inline JSON first; if that fails treat the value as
+    # a file path.  This order avoids the ambiguity where a valid JSON string
+    # that also happens to match a filename in the working directory would
+    # silently be misinterpreted as a path.
+    meta_overrides: dict[str, dict] = {}
+    if block_meta_json is not None:
+        try:
+            meta_overrides = _json.loads(block_meta_json)
+        except _json.JSONDecodeError:
+            meta_path = Path(block_meta_json)
+            if not meta_path.exists():
+                _err.print(
+                    f"[red]Error:[/red] --meta is not valid JSON and not an existing file: "
+                    f"{block_meta_json!r}"
+                )
+                raise typer.Exit(1) from None
+            try:
+                meta_overrides = _json.loads(meta_path.read_text())
+            except _json.JSONDecodeError as exc:
+                _err.print(f"[red]Error:[/red] --meta file {meta_path} is not valid JSON: {exc}")
+                raise typer.Exit(1) from None
+        if not isinstance(meta_overrides, dict):
+            _err.print(
+                "[red]Error:[/red] --meta must be a JSON object mapping block labels to "
+                f"BlockMeta fields, got {type(meta_overrides).__name__}"
+            )
+            raise typer.Exit(1) from None
+
     payload = read_adjacency_json(adjacency)
-    meta = {
-        blk["label"]: BlockMeta(comment=blk["label"], free_face_bc=free_face_bc)
-        for blk in payload["blocks"]
-    }
+    meta = {}
+    for blk in payload["blocks"]:
+        lbl = blk["label"]
+        ov = meta_overrides.get(lbl, {})
+        meta[lbl] = BlockMeta(
+            level=ov.get("level", 1),
+            group=ov.get("group", 0),
+            priority=ov.get("priority", 1),
+            comment=ov.get("comment", lbl),
+            free_face_bc=ov.get("free_face_bc", free_face_bc),
+        )
     out = write_cc_par(
         payload,
         output,
