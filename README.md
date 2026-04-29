@@ -218,9 +218,16 @@ For chimera assemblies, SHORE generates marker boxes from the body STL via voxel
 - [ ] Box-shaped outer-boundary morphing (alternative to background overlap)
 - [ ] Other CFD formats (Plot3D, CGNS)
 
-## Author
+## Authors
 
-**Stefano Zaghi** — [GitHub](https://github.com/szaghi)
+**[Stefano Zaghi](https://github.com/szaghi)** · stefano.zaghi@cnr.it
+> *Chief Yak Shaver, Accidental Research Scientist, and HPC Farmer* — CFD researcher who decided that one more day debugging Fortran build systems was one day too many, opened a Python REPL "just to prototype," and now finds himself maintaining a meshing library, a chimera assembler, an MPI load balancer, and the seven blog tabs he keeps meaning to read.
+
+**Andrea Di Mascio** · andrea.dimascio@univaq.it
+> *Sommo Vate & Resident Gandalf* — responsible for the deep CFD intuitions SHORE pretends to know.
+
+**[Claude](https://claude.ai)** (Anthropic)
+> *Omniscient Code Oracle & Tireless Rubber Duck* — AI pair programmer, responsible for writing the boring parts so humans don't have to.
 
 ## License
 
