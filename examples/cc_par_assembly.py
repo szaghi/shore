@@ -36,8 +36,9 @@ Output
       background.grd                             # background Xall binary grid
       wall.adjacency.json
       background.adjacency.json
-      wall.cc.par
+      wall.cc.par                                # includes marker boxes from sphere.stl
       background.cc.par
+      sphere_boxes.vtm                           # standalone box visualisation
       assembly.grd                               # merged: background + wall
       assembly.cc.par                            # merged: background + wall
 
@@ -144,8 +145,13 @@ def build_background(out_stem: Path) -> list:
 # ---------------------------------------------------------------------------
 
 
-def write_vtm(blocks: list, vtm_path: Path, prefix: str) -> Path | None:
-    """Bundle *blocks* into a ParaView MultiBlock .vtm file."""
+def write_vtm(
+    blocks: list,
+    vtm_path: Path,
+    prefix: str,
+    boxes: list | None = None,
+) -> Path | None:
+    """Bundle *blocks* (optionally + *boxes*) into a ParaView MultiBlock .vtm file."""
     try:
         from shore.io.geo import read_geo
         from shore.io.vtk import write_caps_vtm
@@ -161,9 +167,11 @@ def write_vtm(blocks: list, vtm_path: Path, prefix: str) -> Path | None:
         p = geo_dir / f"{stem}_{blk.label}.geo"
         grids.append(read_geo(p))
         labels.append(blk.label)
-    write_caps_vtm(vtm_path, grids, with_jacobian=True, labels=labels)
+    write_caps_vtm(vtm_path, grids, with_jacobian=True, labels=labels, boxes=boxes)
     preview = ", ".join(labels[:3]) + ("..." if len(labels) > 3 else "")
-    print(f"  wrote {vtm_path}  ({len(grids)} blocks: {preview})")
+    n_boxes = len(boxes) if boxes else 0
+    box_suffix = f" + {n_boxes} box(es)" if n_boxes else ""
+    print(f"  wrote {vtm_path}  ({len(grids)} blocks: {preview}{box_suffix})")
     return vtm_path
 
 
@@ -220,6 +228,7 @@ def write_cc_par_file(
     *,
     grd_filename: str,
     block_metadata: dict,
+    boxes: list | None = None,
 ) -> Path:
     """Convert an adjacency JSON sidecar to a ``cc.par`` file.
 
@@ -235,6 +244,9 @@ def write_cc_par_file(
     block_metadata :
         ``{label: BlockMeta}`` dict giving per-block level / group / priority /
         free_face_bc.  Any block not present gets ``BlockMeta()`` defaults.
+    boxes :
+        Optional list of :class:`shore.io.boxes.Box` instances written
+        as the cc.par boxes section.  Default: no boxes.
     """
     from shore.io.adjacency import read_adjacency_json
     from shore.io.cc_par import write_cc_par
@@ -245,9 +257,11 @@ def write_cc_par_file(
         ccpar_path,
         grd_filename=grd_filename,
         block_metadata=block_metadata,
+        boxes=boxes,
     )
     n_blocks = len(payload["blocks"])
-    print(f"  wrote {out}  ({n_blocks} blocks)")
+    n_boxes = len(boxes) if boxes else 0
+    print(f"  wrote {out}  ({n_blocks} blocks, {n_boxes} boxes)")
     return out
 
 
@@ -316,22 +330,76 @@ def main() -> None:
     # 3. Background flat-caps cylinder mesh
     bg_blocks = build_background(out_dir / "background")
 
-    # 4. VTK MultiBlock exports
+    # 4. Generate marker boxes from the body STL.
+    #
+    # The boxes flag cells inside the sphere body as "internal wall"
+    # for the chimera hole-cutter — when the background mesh's cells
+    # land inside one of these boxes they get marked as donors-only
+    # rather than active flow cells.  The boxes therefore must:
+    #
+    #   - contain the STL surface (so every body-interior background
+    #     cell gets caught), and
+    #   - fit inside the wall mesh's near-mesh outer extent (so they
+    #     don't spuriously hole-cut legitimate near-body cells).
+    #
+    # ``max_outward_gap`` is the crucial knob: max distance from any
+    # box-surface point to the STL surface (outward only).  The wall
+    # is ~0.214 thick here (ds=0.01, growth=1.1, nk=13), so 0.10
+    # leaves a comfortable safety margin against the wall outer
+    # extent at radius 0.5+0.214≈0.71.
+    #
+    # We use method='voxel-fill' (the default): voxelise the body's
+    # AABB at side length 2*gap/sqrt(3), test each voxel-centre with
+    # ``trimesh.contains``, emit each strictly-inside-body voxel as
+    # an axis-aligned Box.  This guarantees body-volume coverage
+    # (every body-interior cell-centre lies in some box) while
+    # keeping every box vertex within ``max_outward_gap`` of the STL
+    # surface.  Single-OBB methods cannot satisfy both constraints
+    # for non-cubic bodies (a sphere's bounding cube corners sit at
+    # r*(sqrt(3)-1) past the body surface).
+    from shore.boxes import boxes_from_stl
+
+    print("\nGenerating marker boxes from the body STL:")
+    body_boxes = boxes_from_stl(
+        stl_path,
+        associated_block="sub0",
+        max_outward_gap=0.10,
+        method="voxel-fill",
+    )
+    print(f"  {len(body_boxes)} box(es) from method='voxel-fill' (max_outward_gap=0.10)")
+
+    # 5. VTK MultiBlock exports.
+    #
+    # ``wall.vtm`` layers the marker boxes onto the cubed-sphere blocks
+    # so ParaView shows the box's outward gap to the body and inward
+    # gap to the near-mesh side-by-side.  ``sphere_boxes.vtm`` is a
+    # standalone export of just the boxes, useful when comparing
+    # against the merged ``assembly.vtm`` in a separate ParaView pane.
     print("\nWriting VTK MultiBlock files:")
-    write_vtm(nb_blocks, out_dir / "wall.vtm", prefix="wall")
+    write_vtm(nb_blocks, out_dir / "wall.vtm", prefix="wall", boxes=body_boxes)
     write_vtm(bg_blocks, out_dir / "background.vtm", prefix="background")
 
-    # 5. Binary .grd files for Xall
+    try:
+        from shore.io.vtk import write_boxes_vtm
+
+        sphere_boxes_vtm = write_boxes_vtm(body_boxes, out_dir / "sphere_boxes.vtm")
+        print(f"  wrote {sphere_boxes_vtm}  (standalone, {len(body_boxes)} box(es))")
+    except ImportError:
+        # pyvista not installed — write_vtm already warned for this
+        # invocation, so we silently skip the standalone too.
+        pass
+
+    # 6. Binary .grd files for Xall
     print("\nWriting binary .grd files:")
     write_grd_file(nb_blocks, out_dir, "wall")
     write_grd_file(bg_blocks, out_dir, "background")
 
-    # 6. Adjacency JSON sidecars
+    # 7. Adjacency JSON sidecars
     print("\nWriting adjacency sidecars:")
     nb_adj = write_adjacency(nb_blocks, out_dir / "wall.adjacency.json")
     bg_adj = write_adjacency(bg_blocks, out_dir / "background.adjacency.json")
 
-    # 7. cc.par files — one per independent Chimera component.
+    # 8. cc.par files — one per independent Chimera component.
     #
     # Near-body: per-block BlockMeta assigns chimera cell-centre BC (40) to
     # every sub-block and cap; this is also the write_cc_par default, but we
@@ -356,6 +424,7 @@ def main() -> None:
         out_dir / "wall.cc.par",
         grd_filename="wall.grd",
         block_metadata=nb_meta,
+        boxes=body_boxes,
     )
     bg_ccpar = write_cc_par_file(
         bg_adj,
@@ -364,7 +433,7 @@ def main() -> None:
         block_metadata=bg_meta,
     )
 
-    # 8. Merge into a single Xall multi-mesh job.
+    # 9. Merge into a single Xall multi-mesh job.
     #
     # The wall (6 blocks) and background (5 blocks) are independent
     # Chimera components — they overlap in world space but share no
@@ -392,18 +461,26 @@ def main() -> None:
     )
     print(f"  wrote {assembly_ccpar}  (block comments auto-prefixed background.* / wall.*)")
 
-    # 9. Spot-check printout
+    # 10. Spot-check printout
     print_cc_par_summary(nb_ccpar)
     print_cc_par_summary(bg_ccpar)
     print_cc_par_summary(assembly_ccpar)
 
-    # 10. Equivalent CLI commands (for reference)
+    # 11. Equivalent CLI commands (for reference)
     import json
 
     nb_meta_json = json.dumps({k: {"free_face_bc": v.free_face_bc} for k, v in nb_meta.items()})
     bg_meta_json = json.dumps({k: {"free_face_bc": v.free_face_bc} for k, v in bg_meta.items()})
     print("\nEquivalent CLI commands:")
-    print(f"  shore cc-par {nb_adj} {nb_ccpar} --grd wall.grd --meta '{nb_meta_json}'")
+    print(
+        f"  shore boxes-from-stl {stl_path} --block sub0 --max-outward-gap 0.10 "
+        f"-o {out_dir / 'sphere_boxes.json'}"
+    )
+    print(f"  shore boxes-export {out_dir / 'sphere_boxes.json'} -o {out_dir / 'sphere_boxes.vtm'}")
+    print(
+        f"  shore cc-par {nb_adj} {nb_ccpar} --grd wall.grd --meta '{nb_meta_json}' "
+        f"--boxes {out_dir / 'sphere_boxes.json'}"
+    )
     print(f"  shore cc-par {bg_adj} {bg_ccpar} --grd background.grd --meta '{bg_meta_json}'")
     print(
         f"  shore grd-merge {out_dir / 'background.grd'} {out_dir / 'wall.grd'} -o {assembly_grd}"
@@ -416,7 +493,7 @@ def main() -> None:
     if not args.view and args.screenshot is None:
         return
 
-    # 11. Optional visualisation (one near-body cap block)
+    # 12. Optional visualisation (one near-body cap block)
     try:
         from shore.io.geo import read_geo
         from shore.vis import save_screenshot, view_geo

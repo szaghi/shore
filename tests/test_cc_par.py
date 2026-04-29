@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pytest
 from typer.testing import CliRunner
 
@@ -1034,3 +1035,460 @@ class TestCLICCParMerge:
         )
         assert r.exit_code == 1
         assert "not found" in r.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# write_cc_par(boxes=...) — boxes section emission
+# ---------------------------------------------------------------------------
+
+
+def _parse_box_records(text: str) -> list[dict]:
+    """Pull box records out of the boxes section.
+
+    Each record: ``{"type": int, "block": int, "vertices": (8, 3) array}``.
+    Skips non-type-9 boxes (returns them as ``{"type": int, "block": int}``).
+    Returns an empty list when ``boxes number`` = 0.
+    """
+    import numpy as np
+
+    out: list[dict] = []
+    lines = text.splitlines()
+    in_boxes = False
+    nbox = None
+    cursor = 0
+    for idx, line in enumerate(lines):
+        if "boxes number" in line:
+            nbox = int(line.split("!", 1)[0].strip())
+            in_boxes = True
+            cursor = idx + 1
+            break
+    if not in_boxes or nbox == 0:
+        return out
+
+    while len(out) < nbox and cursor < len(lines):
+        line = lines[cursor].strip()
+        cursor += 1
+        if not line:
+            continue
+        head = line.split("!", 1)[0]
+        parts = head.split()
+        if len(parts) != 2:
+            continue
+        box_type, block_idx = int(parts[0]), int(parts[1])
+        if box_type == 9:
+            verts = np.empty((8, 3), dtype=np.float64)
+            v = 0
+            while v < 8 and cursor < len(lines):
+                vline = lines[cursor].strip()
+                cursor += 1
+                if not vline:
+                    continue
+                vparts = vline.split("!", 1)[0].split()
+                verts[v] = [float(x) for x in vparts]
+                v += 1
+            out.append({"type": 9, "block": block_idx, "vertices": verts})
+        else:
+            out.append({"type": box_type, "block": block_idx})
+    return out
+
+
+class TestWriteCCParBoxes:
+    def test_no_boxes_emits_zero_count(self, tmp_path):
+        """Default behaviour (boxes=None) emits '0 ! boxes number'."""
+        payload = _two_block_shared_payload()
+        out = write_cc_par(payload, tmp_path / "cc.par", grd_filename="x.grd")
+        text = out.read_text()
+        assert "0 ! boxes number" in text
+        assert _parse_box_records(text) == []
+
+    def test_single_box_emits_correct_section(self, tmp_path):
+        from shore.io.boxes import Box
+
+        payload = _two_block_shared_payload()
+        boxes = [Box.from_aabb((-0.5, -0.5, -0.5), (0.5, 0.5, 0.5), "a")]
+        out = write_cc_par(
+            payload,
+            tmp_path / "cc.par",
+            grd_filename="x.grd",
+            boxes=boxes,
+        )
+        text = out.read_text()
+        assert "1 ! boxes number" in text
+        records = _parse_box_records(text)
+        assert len(records) == 1
+        # Block 'a' is index 1 in the payload.
+        assert records[0]["type"] == 9
+        assert records[0]["block"] == 1
+        # Canonical AABB vertex ordering.
+        assert records[0]["vertices"][0].tolist() == [-0.5, -0.5, -0.5]
+        assert records[0]["vertices"][7].tolist() == [0.5, 0.5, 0.5]
+
+    def test_multiple_boxes_block_index_resolution(self, tmp_path):
+        """Block labels resolve to their 1-based positions in the payload."""
+        from shore.io.boxes import Box
+
+        payload = _two_block_shared_payload()  # blocks "a", "b"
+        boxes = [
+            Box.from_aabb((0, 0, 0), (1, 1, 1), "a"),  # block index 1
+            Box.from_aabb((10, 0, 0), (11, 1, 1), "b"),  # block index 2
+            Box.from_aabb((-1, -1, -1), (0, 0, 0), "a"),  # block index 1 again
+        ]
+        out = write_cc_par(
+            payload,
+            tmp_path / "cc.par",
+            grd_filename="x.grd",
+            boxes=boxes,
+        )
+        records = _parse_box_records(out.read_text())
+        assert [r["block"] for r in records] == [1, 2, 1]
+
+    def test_unknown_block_label_rejected(self, tmp_path):
+        """Box pointing at a label not in the adjacency must raise."""
+        from shore.io.boxes import Box
+
+        payload = _two_block_shared_payload()
+        boxes = [Box.from_aabb((0, 0, 0), (1, 1, 1), "ghost")]
+        with pytest.raises(ParameterError, match="unknown block"):
+            write_cc_par(
+                payload,
+                tmp_path / "cc.par",
+                grd_filename="x.grd",
+                boxes=boxes,
+            )
+
+    def test_boxes_dont_affect_other_sections(self, tmp_path):
+        """Adding boxes must not change the blocks / patches sections."""
+        from shore.io.boxes import Box
+
+        payload = _two_block_shared_payload()
+        out_no = write_cc_par(payload, tmp_path / "no.cc.par", grd_filename="x.grd")
+        out_yes = write_cc_par(
+            payload,
+            tmp_path / "yes.cc.par",
+            grd_filename="x.grd",
+            boxes=[Box.from_aabb((0, 0, 0), (1, 1, 1), "a")],
+        )
+        # Same blocks + patches; differ only after the patches section.
+        text_no = out_no.read_text()
+        text_yes = out_yes.read_text()
+        edges_no = text_no.index("0 ! edges number")
+        edges_yes = text_yes.index("0 ! edges number")
+        assert text_no[:edges_no] == text_yes[:edges_yes]
+
+
+class TestMergeCCParBoxes:
+    """The merger must concatenate boxes too, with each box's
+    associated-block index shifted by the cumulative block offset of
+    the preceding inputs.
+    """
+
+    def _write_pair(self, tmp_path, *, boxes_in_a: int, boxes_in_b: int):
+        from shore.io.boxes import Box
+
+        a_payload = _two_block_shared_payload()  # blocks a, b
+        a_boxes = [
+            Box.from_aabb((i, 0, 0), (i + 0.5, 0.5, 0.5), "a" if i % 2 == 0 else "b")
+            for i in range(boxes_in_a)
+        ]
+        a_path = tmp_path / "A.cc.par"
+        write_cc_par(a_payload, a_path, grd_filename="A.grd", boxes=a_boxes or None)
+
+        b_payload = {
+            "version": _VERSION,
+            "blocks": [
+                {
+                    "label": "x",
+                    "shape": [4, 4, 4],
+                    "faces": {
+                        "i_lo": _face("WALL"),
+                        "i_hi": _face("FREE"),
+                        "j_lo": _face("FREE"),
+                        "j_hi": _face("SHARED", ("y", "j_lo"), _identity_map("j_hi")),
+                        "k_lo": _face("FREE"),
+                        "k_hi": _face("FREE"),
+                    },
+                },
+                {
+                    "label": "y",
+                    "shape": [4, 4, 4],
+                    "faces": {
+                        "i_lo": _face("WALL"),
+                        "i_hi": _face("FREE"),
+                        "j_lo": _face("SHARED", ("x", "j_hi"), _identity_map("j_lo")),
+                        "j_hi": _face("FREE"),
+                        "k_lo": _face("FREE"),
+                        "k_hi": _face("FREE"),
+                    },
+                },
+            ],
+        }
+        b_boxes = [
+            Box.from_aabb(
+                (100 + i, 0, 0),
+                (100 + i + 0.5, 0.5, 0.5),
+                "x" if i % 2 == 0 else "y",
+            )
+            for i in range(boxes_in_b)
+        ]
+        b_path = tmp_path / "B.cc.par"
+        write_cc_par(b_payload, b_path, grd_filename="B.grd", boxes=b_boxes or None)
+        return a_path, b_path
+
+    def test_zero_boxes_each_side_passes_through(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = self._write_pair(tmp_path, boxes_in_a=0, boxes_in_b=0)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        text = out.read_text()
+        assert "0 ! boxes number" in text
+
+    def test_boxes_only_in_a(self, tmp_path):
+        """When only inputs[0] has boxes, they appear unchanged in the merge."""
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = self._write_pair(tmp_path, boxes_in_a=2, boxes_in_b=0)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        records = _parse_box_records(out.read_text())
+        assert len(records) == 2
+        # A's block indices (1, 2) should be unchanged in the merge.
+        assert {r["block"] for r in records} == {1, 2}
+
+    def test_boxes_only_in_b_get_offset(self, tmp_path):
+        """B's box block indices shift by len(A.blocks) = 2."""
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = self._write_pair(tmp_path, boxes_in_a=0, boxes_in_b=2)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        records = _parse_box_records(out.read_text())
+        assert len(records) == 2
+        # B's blocks (1, 2) become (3, 4) in the merged file.
+        assert {r["block"] for r in records} == {3, 4}
+
+    def test_boxes_in_both_concatenated_and_offset(self, tmp_path):
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = self._write_pair(tmp_path, boxes_in_a=1, boxes_in_b=1)
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        records = _parse_box_records(out.read_text())
+        assert len(records) == 2
+        # First box from A: block 1 (i=0 → "a").
+        assert records[0]["block"] == 1
+        # Second box from B: B's "x" was 1, shifted by 2 → 3.
+        assert records[1]["block"] == 3
+
+    def test_box_vertices_byte_identical(self, tmp_path):
+        """Vertex coordinates pass through untouched."""
+        from shore.io.boxes import Box
+        from shore.io.cc_par import merge_cc_par
+
+        a, b = self._write_pair(tmp_path, boxes_in_a=0, boxes_in_b=0)
+        # Re-write A with a known box so we can compare.
+        payload = _two_block_shared_payload()
+        verts = np.array(
+            [
+                [-0.5, -0.5, -0.5],
+                [0.5, -0.5, -0.5],
+                [-0.5, 0.5, -0.5],
+                [0.5, 0.5, -0.5],
+                [-0.5, -0.5, 0.5],
+                [0.5, -0.5, 0.5],
+                [-0.5, 0.5, 0.5],
+                [0.5, 0.5, 0.5],
+            ]
+        )
+        write_cc_par(
+            payload, a, grd_filename="A.grd", boxes=[Box(vertices=verts, associated_block="a")]
+        )
+
+        out = merge_cc_par([a, b], tmp_path / "merged.cc.par", grd_filename="m.grd")
+        records = _parse_box_records(out.read_text())
+        assert len(records) == 1
+        np.testing.assert_array_equal(records[0]["vertices"], verts)
+
+
+# ---------------------------------------------------------------------------
+# CLI: --boxes flag on shore cc-par
+# ---------------------------------------------------------------------------
+
+
+class TestCLICCParBoxes:
+    def _payload_path(self, tmp_path):
+        adj = tmp_path / "two.adjacency.json"
+        adj.write_text(json.dumps(_two_block_shared_payload()))
+        return adj
+
+    def test_inline_boxes_json(self, tmp_path):
+        adj = self._payload_path(tmp_path)
+        boxes_json = json.dumps(
+            [
+                {
+                    "associated_block": "a",
+                    "vertices": [
+                        [-0.5, -0.5, -0.5],
+                        [0.5, -0.5, -0.5],
+                        [-0.5, 0.5, -0.5],
+                        [0.5, 0.5, -0.5],
+                        [-0.5, -0.5, 0.5],
+                        [0.5, -0.5, 0.5],
+                        [-0.5, 0.5, 0.5],
+                        [0.5, 0.5, 0.5],
+                    ],
+                }
+            ]
+        )
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "out.cc.par"),
+                "--grd",
+                "x.grd",
+                "--boxes",
+                boxes_json,
+            ],
+        )
+        assert r.exit_code == 0, r.output
+        text = (tmp_path / "out.cc.par").read_text()
+        assert "1 ! boxes number" in text
+
+    def test_boxes_from_file(self, tmp_path):
+        adj = self._payload_path(tmp_path)
+        boxes_file = tmp_path / "boxes.json"
+        boxes_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "associated_block": "b",
+                        "vertices": [
+                            [0, 0, 0],
+                            [1, 0, 0],
+                            [0, 1, 0],
+                            [1, 1, 0],
+                            [0, 0, 1],
+                            [1, 0, 1],
+                            [0, 1, 1],
+                            [1, 1, 1],
+                        ],
+                    }
+                ]
+            )
+        )
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "out.cc.par"),
+                "--grd",
+                "x.grd",
+                "--boxes",
+                str(boxes_file),
+            ],
+        )
+        assert r.exit_code == 0, r.output
+        records = _parse_box_records((tmp_path / "out.cc.par").read_text())
+        assert records[0]["block"] == 2  # "b" is the second block
+
+    def test_unknown_block_label_exits_1(self, tmp_path):
+        adj = self._payload_path(tmp_path)
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "out.cc.par"),
+                "--grd",
+                "x.grd",
+                "--boxes",
+                json.dumps(
+                    [
+                        {
+                            "associated_block": "ghost",
+                            "vertices": [
+                                [0, 0, 0],
+                                [1, 0, 0],
+                                [0, 1, 0],
+                                [1, 1, 0],
+                                [0, 0, 1],
+                                [1, 0, 1],
+                                [0, 1, 1],
+                                [1, 1, 1],
+                            ],
+                        }
+                    ]
+                ),
+            ],
+        )
+        assert r.exit_code == 1
+        assert "unknown block" in r.output
+
+    def test_invalid_box_geometry_exits_1(self, tmp_path):
+        """Coplanar vertices are rejected at Box construction; the CLI
+        surfaces the ParameterError as a non-zero exit."""
+        adj = self._payload_path(tmp_path)
+        # Eight points all on z=0 (degenerate).
+        flat = [
+            [0, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+            [1, 1, 0],
+            [0.1, 0.1, 0],
+            [0.9, 0.1, 0],
+            [0.1, 0.9, 0],
+            [0.9, 0.9, 0],
+        ]
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "out.cc.par"),
+                "--grd",
+                "x.grd",
+                "--boxes",
+                json.dumps([{"associated_block": "a", "vertices": flat}]),
+            ],
+        )
+        assert r.exit_code == 1
+        assert "Box" in r.output or "degenerate" in r.output.lower()
+
+    def test_non_list_json_exits_1(self, tmp_path):
+        adj = self._payload_path(tmp_path)
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "out.cc.par"),
+                "--grd",
+                "x.grd",
+                "--boxes",
+                json.dumps({"not": "a list"}),
+            ],
+        )
+        assert r.exit_code == 1
+        assert "list" in r.output.lower()
+
+    def test_invalid_json_not_a_file_exits_1(self, tmp_path):
+        adj = self._payload_path(tmp_path)
+        runner = CliRunner()
+        r = runner.invoke(
+            app,
+            [
+                "cc-par",
+                str(adj),
+                str(tmp_path / "out.cc.par"),
+                "--grd",
+                "x.grd",
+                "--boxes",
+                "not-json-not-a-file",
+            ],
+        )
+        assert r.exit_code == 1
+        assert "not valid JSON" in r.output

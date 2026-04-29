@@ -1489,6 +1489,17 @@ def cc_par(
             'Example: \'{"cap_north": {"level": 2, "free_face_bc": -9}}\'',
         ),
     ] = None,
+    boxes_json: Annotated[
+        str | None,
+        typer.Option(
+            "--boxes",
+            help="Hexahedral marker boxes for the cc.par boxes section, as a "
+            "JSON list or a path to a JSON file.  Each entry is an object "
+            "with keys 'associated_block' (block label) and 'vertices' "
+            "(list of 8 [x, y, z] triples in canonical i-fastest order).  "
+            "See shore.io.boxes for the vertex-order convention.",
+        ),
+    ] = None,
     multigrid_levels: Annotated[
         tuple[int, int],
         typer.Option(
@@ -1525,6 +1536,7 @@ def cc_par(
     """
     import json as _json
 
+    from shore.exceptions import ParameterError
     from shore.io.adjacency import read_adjacency_json
     from shore.io.cc_par import BlockMeta, write_cc_par
 
@@ -1560,6 +1572,32 @@ def cc_par(
             )
             raise typer.Exit(1) from None
 
+    # Parse --boxes the same way as --meta: inline JSON first, then file path.
+    boxes_payload: list[dict] | None = None
+    if boxes_json is not None:
+        try:
+            boxes_payload = _json.loads(boxes_json)
+        except _json.JSONDecodeError:
+            boxes_path = Path(boxes_json)
+            if not boxes_path.exists():
+                _err.print(
+                    f"[red]Error:[/red] --boxes is not valid JSON and not an existing "
+                    f"file: {boxes_json!r}"
+                )
+                raise typer.Exit(1) from None
+            try:
+                boxes_payload = _json.loads(boxes_path.read_text())
+            except _json.JSONDecodeError as exc:
+                _err.print(f"[red]Error:[/red] --boxes file {boxes_path} is not valid JSON: {exc}")
+                raise typer.Exit(1) from None
+        if not isinstance(boxes_payload, list):
+            _err.print(
+                "[red]Error:[/red] --boxes must be a JSON list of "
+                "{associated_block, vertices} entries, got "
+                f"{type(boxes_payload).__name__}"
+            )
+            raise typer.Exit(1) from None
+
     payload = read_adjacency_json(adjacency)
     meta = {}
     for blk in payload["blocks"]:
@@ -1572,16 +1610,32 @@ def cc_par(
             comment=ov.get("comment", lbl),
             free_face_bc=ov.get("free_face_bc", free_face_bc),
         )
-    out = write_cc_par(
-        payload,
-        output,
-        grd_filename=grd_filename,
-        output_basename=output_basename,
-        multigrid_levels=multigrid_levels,
-        boundary_layer_thickness=boundary_layer_thickness,
-        numerical_beach=numerical_beach,
-        block_metadata=meta,
-    )
+
+    boxes_arg = None
+    if boxes_payload is not None:
+        from shore.io.boxes import box_from_json
+
+        try:
+            boxes_arg = [box_from_json(entry) for entry in boxes_payload]
+        except (ParameterError, TypeError, ValueError) as exc:
+            _err.print(f"[red]Error:[/red] --boxes: {_esc(str(exc))}")
+            raise typer.Exit(1) from None
+
+    try:
+        out = write_cc_par(
+            payload,
+            output,
+            grd_filename=grd_filename,
+            output_basename=output_basename,
+            multigrid_levels=multigrid_levels,
+            boundary_layer_thickness=boundary_layer_thickness,
+            numerical_beach=numerical_beach,
+            block_metadata=meta,
+            boxes=boxes_arg,
+        )
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
     _console.print(f"[green]✓[/green] Wrote {out}")
 
 
@@ -1690,3 +1744,192 @@ def cc_par_merge(
         raise typer.Exit(1) from None
 
     _console.print(f"[green]✓[/green] Wrote {out} ({len(inputs)} inputs merged)")
+
+
+# ---------------------------------------------------------------------------
+# shore boxes-from-stl
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="boxes-from-stl")
+def boxes_from_stl_cmd(
+    stl: Annotated[
+        Path,
+        typer.Argument(
+            help="Body STL file to enclose in marker boxes.",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output",
+            help="Output JSON file in the shore cc-par --boxes schema.",
+        ),
+    ],
+    associated_block: Annotated[
+        str,
+        typer.Option(
+            "--block",
+            help="SHORE block label every generated box references.  Resolved "
+            "to a 1-based index when shore cc-par writes the box section.",
+        ),
+    ],
+    max_outward_gap: Annotated[
+        float,
+        typer.Option(
+            "--max-outward-gap",
+            help="Max distance (STL units) from any box-surface point to the "
+            "nearest STL surface, measured outward only.  Strictly positive; "
+            "should be smaller than the body's near-mesh wall-normal thickness.  "
+            "voxel-fill chooses voxel size = 2 * gap / sqrt(3) so every "
+            "voxel-corner stays within the gap of the body surface.",
+        ),
+    ],
+    method: Annotated[
+        str,
+        typer.Option(
+            "--method",
+            help="Box-generation algorithm: 'voxel-fill' (default — voxelise "
+            "the body's AABB, emit each inside-body voxel as a Box; full "
+            "body-volume coverage), 'aabb' (single world AABB, best effort), "
+            "'obb' (single oriented bounding box, best effort).",
+        ),
+    ] = "voxel-fill",
+    face_samples_per_axis: Annotated[
+        int,
+        typer.Option(
+            "--face-samples-per-axis",
+            help="aabb / obb only.  Box-surface sampling density for the "
+            "outward-gap post-check: each face sampled on a k-by-k grid "
+            "(total = 8 corners + 6*k*k samples per box).  Default 4 is "
+            "fast and accurate; raise to 6-8 for sharply concave geometries.  "
+            "Ignored by voxel-fill.",
+        ),
+    ] = 4,
+) -> None:
+    """Generate marker boxes from a body STL, ready for shore cc-par --boxes.
+
+    Output is a JSON list of {associated_block, vertices} entries —
+    the same schema cc-par --boxes consumes.  Pipe the two together
+    in a typical workflow:
+
+        shore boxes-from-stl sphere.stl --block sub0 --max-outward-gap 0.10 \\
+                             -o sphere_boxes.json
+        shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd \\
+                     --boxes sphere_boxes.json
+    """
+    import json as _json
+
+    from shore.boxes import boxes_from_stl
+    from shore.exceptions import MeshInputError, ParameterError
+    from shore.io.boxes import box_to_json
+
+    if not stl.exists():
+        _err.print(f"[red]Error:[/red] STL file not found: {stl}")
+        raise typer.Exit(1) from None
+
+    if method not in ("aabb", "obb", "voxel-fill"):
+        _err.print(
+            f"[red]Error:[/red] --method must be 'aabb', 'obb', or 'voxel-fill'; got {method!r}"
+        )
+        raise typer.Exit(1) from None
+
+    try:
+        boxes = boxes_from_stl(
+            stl,
+            associated_block,
+            max_outward_gap=max_outward_gap,
+            method=method,  # type: ignore[arg-type]
+            face_samples_per_axis=face_samples_per_axis,
+        )
+    except (ParameterError, MeshInputError) as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    payload = [box_to_json(box) for box in boxes]
+    output.write_text(_json.dumps(payload, indent=2) + "\n")
+    _console.print(f"[green]✓[/green] Wrote {output} ({len(boxes)} box(es), method={method!r})")
+
+
+# ---------------------------------------------------------------------------
+# shore boxes-export
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="boxes-export")
+def boxes_export(
+    boxes_json: Annotated[
+        Path,
+        typer.Argument(
+            help=(
+                "Input boxes JSON file in the shore cc-par --boxes / shore boxes-from-stl schema."
+            ),
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output",
+            help="Output .vtm path for ParaView.",
+        ),
+    ],
+) -> None:
+    """Export marker boxes to a PyVista MultiBlock (.vtm) for ParaView.
+
+    Reads the same JSON format ``shore cc-par --boxes`` consumes and
+    ``shore boxes-from-stl`` produces; writes one ``vtkUnstructuredGrid``
+    cell (``VTK_HEXAHEDRON``) per box wrapped in a MultiBlock so each
+    box can be selected individually in ParaView.  Each cell carries
+    ``associated_block`` (string) and ``box_index`` (int) cell data
+    for colouring or filtering.
+
+    Closes the loop alongside ``shore boxes-from-stl``::
+
+        shore boxes-from-stl sphere.stl --block sub0 --max-outward-gap 0.05 \\
+                             -o sphere_boxes.json
+        shore boxes-export sphere_boxes.json -o sphere_boxes.vtm
+    """
+    import json as _json
+
+    from shore.exceptions import ParameterError
+    from shore.io.boxes import box_from_json
+
+    if not boxes_json.exists():
+        _err.print(f"[red]Error:[/red] {boxes_json} not found.")
+        raise typer.Exit(1) from None
+
+    try:
+        payload = _json.loads(boxes_json.read_text())
+    except _json.JSONDecodeError as exc:
+        _err.print(f"[red]Error:[/red] {boxes_json} is not valid JSON: {exc}")
+        raise typer.Exit(1) from None
+    if not isinstance(payload, list):
+        _err.print(
+            "[red]Error:[/red] boxes JSON must be a list of "
+            "{associated_block, vertices} entries, got "
+            f"{type(payload).__name__}"
+        )
+        raise typer.Exit(1) from None
+    if not payload:
+        _err.print(f"[red]Error:[/red] {boxes_json} contains zero boxes.")
+        raise typer.Exit(1) from None
+
+    try:
+        boxes = [box_from_json(entry) for entry in payload]
+    except (ParameterError, TypeError, ValueError) as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    try:
+        from shore.io.vtk import write_boxes_vtm
+    except ImportError as exc:
+        _err.print(
+            f"[red]Error:[/red] VTK export requires pyvista — install "
+            f"with `pip install shore[vis]`.  ({_esc(str(exc))})"
+        )
+        raise typer.Exit(1) from None
+
+    out = write_boxes_vtm(boxes, output)
+    _console.print(f"[green]✓[/green] Wrote {out} ({len(boxes)} box(es))")

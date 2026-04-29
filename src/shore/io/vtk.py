@@ -205,6 +205,7 @@ def write_caps_vtm(
     blocks: list[np.ndarray],
     with_jacobian: bool = True,
     labels: list[str] | None = None,
+    boxes: list | None = None,
 ) -> None:
     """Export a list of structured grids as a PyVista MultiBlock (.vtm).
 
@@ -224,6 +225,13 @@ def write_caps_vtm(
     labels :
         Optional list of block labels (used as the keys of the resulting
         ``MultiBlock``).  Must match ``len(blocks)`` when given.
+    boxes :
+        Optional list of :class:`shore.io.boxes.Box` instances (the
+        ``cc.par`` marker boxes for this topology).  When provided,
+        each box is appended as an additional MultiBlock child with
+        label ``"box_<n>"`` (1-based) so ParaView shows the meshes
+        and the marker boxes together.  See :func:`write_boxes_vtm`
+        for the standalone form.
     """
     path = Path(path)
     if path.suffix not in {".vtm", ".vtmb"}:
@@ -238,4 +246,75 @@ def write_caps_vtm(
     mb = pv.MultiBlock()
     for label, block in zip(labels, blocks, strict=True):
         mb[label] = open_to_pyvista(block, with_jacobian=with_jacobian)
+    if boxes:
+        for q, box in enumerate(boxes, start=1):
+            mb[f"box_{q}"] = _box_to_unstructured(box, box_index=q)
     mb.save(str(path))
+
+
+# ---------------------------------------------------------------------------
+# Marker boxes (cc.par boxes section) → VTK
+# ---------------------------------------------------------------------------
+
+# SHORE canonical (i, j, k) bit-layout vertex order → VTK hexahedron
+# winding (bottom quad CCW, then top quad CCW, looking from +k).  See
+# :class:`shore.io.boxes.Box` for the SHORE convention.
+_SHORE_TO_VTK_HEX_ORDER: tuple[int, ...] = (0, 1, 3, 2, 4, 5, 7, 6)
+
+
+def _box_to_unstructured(box, box_index: int) -> pv.UnstructuredGrid:
+    """Build a 1-cell ``pv.UnstructuredGrid`` (VTK_HEXAHEDRON) from a Box.
+
+    The single cell carries ``associated_block`` (string) and
+    ``box_index`` (int, 1-based) as cell data so ParaView users can
+    colour by block or pick a specific box.
+    """
+    # Reorder vertices SHORE → VTK and emit a single 8-node connectivity.
+    points = np.asarray(box.vertices, dtype=np.float64)[list(_SHORE_TO_VTK_HEX_ORDER)]
+    # PyVista cells: [n_pts_in_cell, p0, p1, ..., p_{n-1}].
+    cells = np.array([8, 0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int64)
+    cell_types = np.array([pv.CellType.HEXAHEDRON], dtype=np.uint8)
+    grid = pv.UnstructuredGrid(cells, cell_types, points)
+    grid.cell_data["associated_block"] = np.array([box.associated_block], dtype=object)
+    grid.cell_data["box_index"] = np.array([box_index], dtype=np.int64)
+    return grid
+
+
+def write_boxes_vtm(
+    boxes: list,
+    path: str | Path,
+) -> Path:
+    """Export ``cc.par`` marker boxes as a PyVista MultiBlock (.vtm).
+
+    Each :class:`shore.io.boxes.Box` becomes one ``vtkUnstructuredGrid``
+    with a single ``VTK_HEXAHEDRON`` cell, exposed under the
+    MultiBlock key ``"box_<n>"`` (1-based).  Cell data fields:
+    ``associated_block`` and ``box_index``.
+
+    Parameters
+    ----------
+    boxes :
+        Non-empty list of :class:`Box` instances.
+    path :
+        Output path; ``.vtm`` is used when no extension is given.
+
+    Returns
+    -------
+    Path
+        The path actually written.
+
+    Raises
+    ------
+    ValueError
+        On an empty ``boxes`` list.
+    """
+    if not boxes:
+        raise ValueError("write_boxes_vtm: boxes list must not be empty")
+    out = Path(path)
+    if out.suffix not in {".vtm", ".vtmb"}:
+        out = out.with_suffix(".vtm")
+    mb = pv.MultiBlock()
+    for q, box in enumerate(boxes, start=1):
+        mb[f"box_{q}"] = _box_to_unstructured(box, box_index=q)
+    mb.save(str(out))
+    return out

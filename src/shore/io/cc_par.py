@@ -35,8 +35,10 @@ Format reference
    patch's 1-based index, and the BC value's three digits encode the
    partner-axis orientation (see :func:`_orientation_code`).
 4. **Edges**: always ``0`` for SHORE-generated meshes.
-5. **Boxes**: hole-cutting boxes (user-supplied for chimera donor
-   zones).  SHORE has no boxes, so we always emit ``0``.
+5. **Boxes**: hexahedral marker volumes that flag cells as
+   "internal wall" for the chimera hole-cutter.  Optional; pass a
+   list of :class:`shore.io.boxes.Box` via ``boxes=...`` to emit
+   them.  Defaults to ``0 ! boxes number``.
 
 Reference implementation: ``overset_exploded_cc_par_object.F90`` in
 ``Xnavis-projects/overset-exploded`` (the Fortran writer this Python
@@ -60,10 +62,12 @@ Mapping from SHORE's ``FaceBC`` enum to ``cc.par`` BC codes:
 
 Limitations
 -----------
-- No ``boxes`` section — user-supplied hole-cutting boxes for chimera
-  donor zones are out of scope; the writer emits ``0 ! boxes number``.
-- No ``edges`` section — likewise unsupported by ``cc.par`` parsers
-  for SHORE-style adjacency.
+- Boxes: type-9 hexahedron only on emit.  The Xall reader also
+  accepts type-1 (parallelepiped), type-2 (cylinder, deprecated),
+  and type-3 (coaxial cylinders) shorthand forms; the merger
+  passes those through verbatim from input files but the writer
+  never produces them.
+- No ``edges`` section — unsupported by SHORE-style adjacency.
 """
 
 from __future__ import annotations
@@ -73,8 +77,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from shore.exceptions import MeshInputError, ParameterError
 from shore.io.adjacency import _axis_map_from_json, read_adjacency_json
+from shore.io.boxes import Box
 from shore.mesh.face import FACE_ALONG_AXES, AxisMap
 
 # ---------------------------------------------------------------------------
@@ -190,6 +197,19 @@ class _BlockEntry:
     patches: list[_Patch] = field(default_factory=list)
 
 
+@dataclass
+class _BoxLine:
+    """Internal: one resolved box ready to write to the boxes section.
+
+    The associated block label has already been resolved to its
+    1-based index (``block_index``); the 8 hexahedron vertices are
+    in canonical order (see :class:`shore.io.boxes.Box`).
+    """
+
+    block_index: int  # 1-based, position in the cc.par blocks list
+    vertices: np.ndarray  # shape (8, 3), float64
+
+
 # ---------------------------------------------------------------------------
 # Public writer
 # ---------------------------------------------------------------------------
@@ -208,6 +228,7 @@ def write_cc_par(
     boundary_layer_thickness: float = -0.1,
     numerical_beach: float = -1.0,
     block_metadata: dict[str, BlockMeta] | None = None,
+    boxes: list[Box] | None = None,
 ) -> Path:
     """Write a ``cc.par`` file from a SHORE adjacency payload.
 
@@ -235,11 +256,23 @@ def write_cc_par(
     block_metadata :
         Optional ``{label: BlockMeta}`` dict.  Any block not listed gets
         a default ``BlockMeta()``.
+    boxes :
+        Optional list of :class:`shore.io.boxes.Box` instances written
+        as the ``cc.par`` boxes section (after the edges section).
+        Each box is emitted as type-9 (hexahedron); its
+        ``associated_block`` label is resolved to a 1-based block
+        index against the adjacency block list.  Defaults to ``None``,
+        which writes ``0 ! boxes number``.
 
     Returns
     -------
     Path
         The actual path written.
+
+    Raises
+    ------
+    ParameterError
+        If a box references a block label not present in the adjacency.
     """
     payload = _resolve_payload(adjacency)
     blocks_meta = block_metadata or {}
@@ -322,7 +355,18 @@ def write_cc_par(
     # Pass 5: validate symmetry for connections.
     _validate_symmetry(entries)
 
-    # Pass 6: serialise.
+    # Pass 6: resolve boxes (label → 1-based block index).
+    resolved_boxes: list[_BoxLine] = []
+    for q, box in enumerate(boxes or [], start=1):
+        block_idx = label_to_index.get(box.associated_block)
+        if block_idx is None:
+            raise ParameterError(
+                f"cc.par: box {q} references unknown block "
+                f"{box.associated_block!r} (known: {sorted(label_to_index)})"
+            )
+        resolved_boxes.append(_BoxLine(block_index=block_idx, vertices=box.vertices))
+
+    # Pass 7: serialise.
     out = _format_cc_par(
         entries=entries,
         grd_filename=grd_filename,
@@ -333,6 +377,7 @@ def write_cc_par(
         multigrid_levels=multigrid_levels,
         boundary_layer_thickness=boundary_layer_thickness,
         numerical_beach=numerical_beach,
+        boxes=resolved_boxes,
     )
     out_path = Path(path)
     out_path.write_text(out)
@@ -570,6 +615,7 @@ def _format_cc_par(
     multigrid_levels: tuple[int, int],
     boundary_layer_thickness: float,
     numerical_beach: float,
+    boxes: list[_BoxLine] | None = None,
 ) -> str:
     """Serialise *entries* into the cc.par textual format."""
     lines: list[str] = []
@@ -615,8 +661,18 @@ def _format_cc_par(
     lines.append("0 ! edges number")
     lines.append("")
 
-    # ----- Boxes (always 0 for SHORE) -----
-    lines.append("0 ! boxes number")
+    # ----- Boxes -----
+    box_list = boxes or []
+    lines.append(f"{len(box_list):d} ! boxes number")
+    lines.append("")
+    for q, box in enumerate(box_list, start=1):
+        # Type 9 (hexahedron) + associated block index, then 8 vertex
+        # records.  Xall's reader (overset/src/readpar.f90:368-373)
+        # parses one vertex per line; the format string mirrors the
+        # reference printout in scatole.f90:387.
+        lines.append(f"{9:9d} {box.block_index:9d} ! box {q} (type 9, hexahedron)")
+        for v in box.vertices:
+            lines.append(f"{v[0]: .12E} {v[1]: .12E} {v[2]: .12E}")
     lines.append("")
 
     return "\n".join(lines)
@@ -629,18 +685,39 @@ def _format_cc_par(
 
 @dataclass
 class _CCParParsed:
-    """Internal: a parsed cc.par split into the three regions a merger cares about.
+    """Internal: a parsed cc.par split into the regions a merger cares about.
 
     The header lines run from line 1 up to (but not including) the
     ``N ! blocks number`` line.  ``blocks_lines`` are the per-block
     metadata records (level/group/priority/comment).  ``patch_lines``
-    are the parsed patch records as ``_PatchTuple`` instances; the
-    ``_orientation_code`` BC values are passed through unchanged.
+    are the parsed patch records (BC values passed through unchanged).
+    ``box_lines`` are the parsed box records — type-9 hexahedra plus
+    their 1-based associated-block index.  Non-type-9 boxes are read
+    verbatim into a ``raw`` field so they survive a round-trip even
+    though SHORE does not emit them itself.
     """
 
     header: list[str]
     blocks_lines: list[_BlockLine]
     patch_lines: list[_PatchLine]
+    box_lines: list[_ParsedBox]
+
+
+@dataclass
+class _ParsedBox:
+    """One box parsed from an existing cc.par file.
+
+    For type-9 hexahedra (the SHORE-emitted form), ``vertices`` carries
+    the 8 (3,) coordinates and ``raw`` is empty.  For other types
+    (parallelepiped / cylinder shorthands written by upstream tools),
+    ``vertices`` is ``None`` and ``raw`` carries the original lines
+    so the merger can re-emit them unchanged.
+    """
+
+    box_type: int  # 1, 2, 3, or 9
+    block_index: int  # 1-based, references the cc.par blocks list
+    vertices: np.ndarray | None  # shape (8, 3) when box_type == 9
+    raw: list[str]  # original lines for non-type-9 round-trip
 
 
 @dataclass
@@ -747,8 +824,11 @@ def merge_cc_par(
     for pp in parsed:
         merged_blocks.extend(pp.blocks_lines)
 
-    # Build merged patch list with index shifts.
+    # Build merged patch list and merged box list with index shifts.
+    # Each box's associated-block index references the cc.par blocks
+    # list, so it must shift by the same block_offset that patches use.
     merged_patches: list[_PatchLine] = []
+    merged_boxes: list[_ParsedBox] = []
     block_offset = 0
     patch_offset = 0
     for pp in parsed:
@@ -761,10 +841,21 @@ def merge_cc_par(
                 extents=patch.extents,
             )
             merged_patches.append(shifted)
+        for box in pp.box_lines:
+            merged_boxes.append(
+                _ParsedBox(
+                    box_type=box.box_type,
+                    block_index=box.block_index + block_offset,
+                    vertices=box.vertices,
+                    raw=box.raw,
+                )
+            )
         block_offset += len(pp.blocks_lines)
         patch_offset += len(pp.patch_lines)
 
-    out_path.write_text(_format_merged_cc_par(merged_header, merged_blocks, merged_patches))
+    out_path.write_text(
+        _format_merged_cc_par(merged_header, merged_blocks, merged_patches, merged_boxes)
+    )
     return out_path
 
 
@@ -792,12 +883,12 @@ def _check_header_consistency(parsed: list[_CCParParsed], paths: list[Path]) -> 
 
 
 def _parse_cc_par_for_merge(path: Path) -> _CCParParsed:
-    """Parse a ``cc.par`` file into ``(header, block_lines, patch_lines)``.
+    """Parse a ``cc.par`` file for merging.
 
     A minimal parser scoped to the merge use case: round-trips the
-    sections SHORE itself writes (header, blocks, patches, edges=0,
-    boxes=0).  Tolerant of trailing whitespace and blank lines; rejects
-    files whose blocks-count or patches-count line is malformed.
+    sections SHORE itself writes (header, blocks, patches, edges,
+    boxes).  Tolerant of trailing whitespace and blank lines; rejects
+    files whose count lines are malformed.
     """
     if not path.exists():
         raise FileNotFoundError(f"merge_cc_par: {path} not found")
@@ -844,7 +935,132 @@ def _parse_cc_par_for_merge(path: Path) -> _CCParParsed:
             f"{len(patch_lines)} patch records were parsed"
         )
 
-    return _CCParParsed(header=header, blocks_lines=block_lines, patch_lines=patch_lines)
+    # 5. Edges section (always 0 in SHORE output; skip the header line).
+    edges_count_idx = _find_count_line(raw_lines, "edges number", start=cursor)
+    cursor = edges_count_idx + 1
+
+    # 6. Boxes section.
+    boxes_count_idx = _find_count_line(raw_lines, "boxes number", start=cursor)
+    nbox_raw = int(raw_lines[boxes_count_idx].split("!", 1)[0].strip())
+    cursor = boxes_count_idx + 1
+    box_lines: list[_ParsedBox] = []
+    if nbox_raw > 0:
+        box_lines = _parse_boxes_section(raw_lines, cursor, nbox_raw, path)
+    elif nbox_raw < 0:
+        # Negative count signals "read from body.dat" in the Xall
+        # reader.  SHORE's merger can't follow that out-of-band hop;
+        # bail out with a clear message.
+        raise ValueError(
+            f"merge_cc_par: {path} has 'N ! boxes number' = {nbox_raw} "
+            "(negative = read from body.dat sidecar, not supported by merge)"
+        )
+
+    return _CCParParsed(
+        header=header,
+        blocks_lines=block_lines,
+        patch_lines=patch_lines,
+        box_lines=box_lines,
+    )
+
+
+def _parse_boxes_section(
+    raw_lines: list[str],
+    start: int,
+    nbox: int,
+    path: Path,
+) -> list[_ParsedBox]:
+    """Parse ``nbox`` box records starting at ``start``.
+
+    Currently understands type-9 (hexahedron, 8 vertex lines) and
+    passes other types through verbatim (round-trip preserved).
+    Empty / blank lines between records are tolerated.
+    """
+    out: list[_ParsedBox] = []
+    cursor = start
+
+    def _next_nonblank() -> tuple[int, str]:
+        """Return ``(line_index, stripped_line)`` of the next non-blank line."""
+        nonlocal cursor
+        while cursor < len(raw_lines):
+            line = raw_lines[cursor].strip()
+            cursor += 1
+            if line:
+                return cursor, line
+        raise ValueError(f"merge_cc_par: {path} ended mid-boxes (read {len(out)} of {nbox})")
+
+    for _ in range(nbox):
+        lineno, header_line = _next_nonblank()
+        head = header_line.split("!", 1)[0]
+        parts = head.split()
+        if len(parts) != 2:
+            raise ValueError(
+                f"merge_cc_par: {path}:{lineno}: expected 'type ibl' on box "
+                f"header line, got {header_line!r}"
+            )
+        box_type, block_index = (int(x) for x in parts)
+
+        if box_type == 9:
+            # Eight vertex records, 3 floats each.
+            verts = np.empty((8, 3), dtype=np.float64)
+            for v in range(8):
+                vline_no, vline = _next_nonblank()
+                vparts = vline.split("!", 1)[0].split()
+                if len(vparts) != 3:
+                    raise ValueError(
+                        f"merge_cc_par: {path}:{vline_no}: expected 3 floats "
+                        f"on box vertex line, got {vline!r}"
+                    )
+                verts[v] = [float(x) for x in vparts]
+            out.append(
+                _ParsedBox(
+                    box_type=9,
+                    block_index=block_index,
+                    vertices=verts,
+                    raw=[],
+                )
+            )
+        else:
+            # Capture the box's payload lines verbatim until we either
+            # hit the next box's "type ibl" header or run out of data.
+            # Different types use different numbers of payload lines
+            # (parallelepiped: 4, cylinder: 4, coaxial: 4); rather than
+            # encode every variant, we use the heuristic that any line
+            # whose head splits into exactly 2 ints is a new box header.
+            raw: list[str] = []
+            while cursor < len(raw_lines):
+                lookahead = raw_lines[cursor].strip()
+                if not lookahead:
+                    cursor += 1
+                    continue
+                head_la = lookahead.split("!", 1)[0].split()
+                # New-box heuristic: 2 tokens, both integer-looking.
+                if (
+                    len(head_la) == 2
+                    and all(_looks_int(t) for t in head_la)
+                    and len(out) + 1 < nbox  # there's still another box to read
+                ):
+                    break
+                raw.append(raw_lines[cursor])
+                cursor += 1
+            out.append(
+                _ParsedBox(
+                    box_type=box_type,
+                    block_index=block_index,
+                    vertices=None,
+                    raw=raw,
+                )
+            )
+
+    return out
+
+
+def _looks_int(token: str) -> bool:
+    """Return True when *token* parses cleanly as a (possibly signed) integer."""
+    try:
+        int(token)
+        return True
+    except ValueError:
+        return False
 
 
 def _find_count_line(lines: list[str], marker: str, start: int = 0) -> int:
@@ -897,6 +1113,7 @@ def _format_merged_cc_par(
     header: list[str],
     blocks: list[_BlockLine],
     patches: list[_PatchLine],
+    boxes: list[_ParsedBox],
 ) -> str:
     """Serialise a merged cc.par to text in SHORE's canonical layout."""
     lines: list[str] = list(header)
@@ -919,6 +1136,18 @@ def _format_merged_cc_par(
     lines.append("")
     lines.append("0 ! edges number")
     lines.append("")
-    lines.append("0 ! boxes number")
+
+    # Boxes: emit type-9 hexahedra in canonical form; pass other types
+    # through verbatim from each input's raw lines.
+    lines.append(f"{len(boxes):d} ! boxes number")
+    lines.append("")
+    for q, box in enumerate(boxes, start=1):
+        if box.box_type == 9 and box.vertices is not None:
+            lines.append(f"{9:9d} {box.block_index:9d} ! box {q} (type 9, hexahedron)")
+            for v in box.vertices:
+                lines.append(f"{v[0]: .12E} {v[1]: .12E} {v[2]: .12E}")
+        else:
+            lines.append(f"{box.box_type:9d} {box.block_index:9d} ! box {q} (type {box.box_type})")
+            lines.extend(box.raw)
     lines.append("")
     return "\n".join(lines)
