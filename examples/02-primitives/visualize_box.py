@@ -3,23 +3,23 @@
 Run from the project root after activating .venv:
 
     # Generate box.geo + box.vtm with the defaults; open the viewer.
-    python examples/visualize_box.py
+    python examples/02-primitives/visualize_box.py
 
     # Generate only — skip the interactive viewer (CI-friendly).
-    python examples/visualize_box.py --no-view
+    python examples/02-primitives/visualize_box.py --no-view
 
     # Save a screenshot instead of opening a window.
-    python examples/visualize_box.py --screenshot box.png
+    python examples/02-primitives/visualize_box.py --screenshot box.png
 
     # Drive the parameters from the TOML config:
-    python examples/visualize_box.py --config examples/config_primitive_box.toml
+    python examples/02-primitives/visualize_box.py --config examples/02-primitives/config_primitive_box.toml
 
 The box is a single axis-aligned hexahedral block with independent
 spacing laws per axis.  Use case: outermost Cartesian background of a
 Chimera assembly, or a simple buffer when geometry permits axis-aligned
 cells.
 
-For visualisation/Jupyter use, see examples/visualize.ipynb.
+For visualisation/Jupyter use, see examples/01-body-fitted/tour.ipynb.
 """
 
 from __future__ import annotations

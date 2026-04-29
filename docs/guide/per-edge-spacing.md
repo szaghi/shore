@@ -53,7 +53,7 @@ i-edge of the block.
 
 ## Recipe 1 — per-edge i / j on `BoxMesh`
 
-The full example is at `examples/per_edge_ij_box.py`. The
+The full example is at `examples/03-per-edge-spacing/per_edge_ij_box.py`. The
 mechanism: pass `edge_pins={edge_name: Spacing1D, ...}` to
 `BoxMesh.build`. Any edge of an axis that's listed in `edge_pins`
 overrides that axis's default; once any edge of an axis is pinned,
@@ -89,7 +89,7 @@ freely.
 
 ## Recipe 2 — per-edge k on `CubedSphereTopology`
 
-The full example is at `examples/per_edge_k_spacing_cubed_sphere.py`.
+The full example is at `examples/03-per-edge-spacing/per_edge_k_spacing_cubed_sphere.py`.
 
 The cubed-sphere mesh has 6 blocks with k-coupled seams (cap /
 equator DIRICHLET pins at the i-boundary, sub-sub SHARED views at
@@ -141,7 +141,7 @@ sub-blocks but forgot the caps" — without breaking the build.
 
 ## Recipe 3 — per-edge k on `OGridTopology`
 
-The full example is at `examples/per_edge_k_spacing_ogrid.py`.
+The full example is at `examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py`.
 
 Identical mechanism to the cubed sphere, single block. Set the
 4 k-edges of `mesh.blocks[0]` to a shared `Spacing1D` and
@@ -190,6 +190,6 @@ read `edge.first_step` / `edge.last_step` and apply it.
   low-level laws.
 - [Spacing laws](/algorithm/spacing-laws) — algorithmic overview.
 - [`BoxMesh`, `AnnularCylinderMesh`, `FlatCapsCylinder`](/reference/api-primitives) — primitives that accept `edge_pins`.
-- Example scripts: `examples/per_edge_ij_box.py`,
-  `examples/per_edge_k_spacing_cubed_sphere.py`,
-  `examples/per_edge_k_spacing_ogrid.py`.
+- Example scripts: `examples/03-per-edge-spacing/per_edge_ij_box.py`,
+  `examples/03-per-edge-spacing/per_edge_k_spacing_cubed_sphere.py`,
+  `examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py`.

@@ -1,7 +1,7 @@
 # SHORE mesh config — near-body cubed-sphere for the assembly example
 # ====================================================================
 #
-# Used by ``examples/assembly_sphere_in_cylinder.py`` to drive the
+# Used by ``examples/05-chimera-assembly/assembly_sphere_in_cylinder.py`` to drive the
 # 6-block cubed-sphere mesh wrapping the unit-radius (diameter 1.0)
 # sphere body that sits at the origin of the cylindrical domain.
 #

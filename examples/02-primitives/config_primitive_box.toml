@@ -7,11 +7,11 @@
 #
 # Run with:
 #
-#     shore primitive box -c examples/config_primitive_box.toml -o background
+#     shore primitive box -c examples/02-primitives/config_primitive_box.toml -o background
 #
 # or via the standalone example:
 #
-#     python examples/visualize_box.py --config examples/config_primitive_box.toml --no-view
+#     python examples/02-primitives/visualize_box.py --config examples/02-primitives/config_primitive_box.toml --no-view
 
 version = 1
 kind    = "primitive"

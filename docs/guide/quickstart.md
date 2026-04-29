@@ -252,7 +252,7 @@ pl.add_mesh(sg, scalars="Jacobian", cmap="RdYlGn", show_edges=True, opacity=0.7)
 pl.show()
 ```
 
-See `examples/visualize.ipynb` for a complete notebook that covers
+See `examples/01-body-fitted/tour.ipynb` for a complete notebook that covers
 mesh generation, Jacobian analysis, spacing-law comparison, and the C1
 seam-matching demo.
 

@@ -150,7 +150,7 @@ m.march(ds=99, growth=99)   # ds, growth ignored — override wins
 ```
 
 See [Per-edge spacing](/algorithm/spacing-laws#per-edge-spacing) for
-the full mechanism, and `examples/per_edge_k_spacing_ogrid.py` for a
+the full mechanism, and `examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py` for a
 side-by-side comparison.
 
 ## Periodicity in j

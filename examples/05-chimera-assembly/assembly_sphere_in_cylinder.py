@@ -41,18 +41,18 @@ one file you can open in ParaView to verify the assembly geometry.
 Run from the project root after activating .venv:
 
     # Generate everything; open the viewer on the assembly.
-    python examples/assembly_sphere_in_cylinder.py
+    python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py
 
     # Generate only — skip the interactive viewer.
-    python examples/assembly_sphere_in_cylinder.py --no-view
+    python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py --no-view
 
     # Custom output directory.
-    python examples/assembly_sphere_in_cylinder.py -o my_run
+    python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py -o my_run
 
     # Drive the two pieces from TOML configs (CLI flags still override):
-    python examples/assembly_sphere_in_cylinder.py \\
-        --near-body-config examples/config_assembly_near_body.toml \\
-        --background-config examples/config_assembly_background.toml
+    python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py \\
+        --near-body-config examples/05-chimera-assembly/config_assembly_near_body.toml \\
+        --background-config examples/05-chimera-assembly/config_assembly_background.toml
 """
 
 from __future__ import annotations

@@ -41,19 +41,19 @@ the first three layer thicknesses side-by-side so you can verify the
 override landed.
 
 For per-edge i/j on **primitives** (Box / Annulus), see
-``examples/per_edge_ij_box.py``.  For per-edge k on **O-grid**, see
-``examples/per_edge_k_spacing_ogrid.py``.
+``examples/03-per-edge-spacing/per_edge_ij_box.py``.  For per-edge k on **O-grid**, see
+``examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py``.
 
 Run from the project root after activating .venv:
 
     # Generate, print the comparison, and open the viewer.
-    python examples/per_edge_k_spacing_cubed_sphere.py
+    python examples/03-per-edge-spacing/per_edge_k_spacing_cubed_sphere.py
 
     # Generate only — skip the viewer (CI-friendly).
-    python examples/per_edge_k_spacing_cubed_sphere.py --no-view
+    python examples/03-per-edge-spacing/per_edge_k_spacing_cubed_sphere.py --no-view
 
     # Custom output directory.
-    python examples/per_edge_k_spacing_cubed_sphere.py -o my_run --no-view
+    python examples/03-per-edge-spacing/per_edge_k_spacing_cubed_sphere.py -o my_run --no-view
 """
 
 from __future__ import annotations

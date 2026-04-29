@@ -2,7 +2,7 @@
 
 This guide walks through SHORE's first end-to-end **assembly** example
 — two structured meshes, generated independently, sharing the same
-world-coordinate domain. Run via `examples/assembly_sphere_in_cylinder.py`.
+world-coordinate domain. Run via `examples/05-chimera-assembly/assembly_sphere_in_cylinder.py`.
 
 The example is *first-tentative* in a deliberately limited sense:
 SHORE produces both meshes, writes them to disk, and bundles them into
@@ -45,18 +45,18 @@ just generates the geometry.
 
 ```bash
 # Run with the built-in defaults; opens a PyVista viewer at the end.
-python examples/assembly_sphere_in_cylinder.py
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py
 
 # Skip the viewer (CI-friendly).
-python examples/assembly_sphere_in_cylinder.py --no-view
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py --no-view
 
 # Custom output directory.
-python examples/assembly_sphere_in_cylinder.py -o my_assembly --no-view
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py -o my_assembly --no-view
 
 # Drive both pieces from TOML configs.
-python examples/assembly_sphere_in_cylinder.py \
-    --near-body-config examples/config_assembly_near_body.toml \
-    --background-config examples/config_assembly_background.toml \
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py \
+    --near-body-config examples/05-chimera-assembly/config_assembly_near_body.toml \
+    --background-config examples/05-chimera-assembly/config_assembly_background.toml \
     --no-view
 ```
 
@@ -111,18 +111,18 @@ Both configs ship next to the script and are validated like any other
 SHORE config:
 
 ```bash
-shore config validate examples/config_assembly_near_body.toml
-shore config validate examples/config_assembly_background.toml
+shore config validate examples/05-chimera-assembly/config_assembly_near_body.toml
+shore config validate examples/05-chimera-assembly/config_assembly_background.toml
 ```
 
 Each config can also be used standalone with the corresponding CLI:
 
 ```bash
-shore mesh -c examples/config_assembly_near_body.toml -o wall
+shore mesh -c examples/05-chimera-assembly/config_assembly_near_body.toml -o wall
 # (will fail because input STL doesn't exist; the orchestrator overrides
 #  the input key with the in-memory icosphere it generates)
 
-shore primitive flat-caps -c examples/config_assembly_background.toml -o background
+shore primitive flat-caps -c examples/05-chimera-assembly/config_assembly_background.toml -o background
 # 5 .geo files written; same cylinder as the assembly produces
 ```
 
@@ -177,19 +177,19 @@ size that matters, not the law per se.
 ## Generating Xall `cc.par` files
 
 Once the geometry is verified in ParaView, convert each mesh to Xall
-inputs with `examples/cc_par_assembly.py` — a direct continuation of
+inputs with `examples/05-chimera-assembly/cc_par_assembly.py` — a direct continuation of
 this example that adds four steps: adjacency JSON sidecars, VTK
 MultiBlock exports, binary `.grd` files, and `cc.par` generation.
 
 ```bash
 # Generate everything headlessly (no viewer).
-python examples/cc_par_assembly.py
+python examples/05-chimera-assembly/cc_par_assembly.py
 
 # Custom output directory.
-python examples/cc_par_assembly.py -o my_run
+python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
 
 # Open the interactive viewer after generation.
-python examples/cc_par_assembly.py --view
+python examples/05-chimera-assembly/cc_par_assembly.py --view
 ```
 
 The script uses `shore.io.cc_par.BlockMeta` to assign **per-block** BC

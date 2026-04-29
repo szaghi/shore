@@ -1,7 +1,7 @@
 # SHORE split config — paired k-split across cubed-sphere sub-blocks
 # ===================================================================
 #
-# Used by ``examples/split_cubed_sphere.py`` to subdivide each of the
+# Used by ``examples/04-split/split_cubed_sphere.py`` to subdivide each of the
 # 4 equatorial sub-blocks (sub0, sub1, sub2, sub3) along the
 # wall-normal (k) axis at the same vertex index.  All four splits are
 # required because of the j-periodic equatorial ring: each sub_q
@@ -15,12 +15,12 @@
 #
 # Run with:
 #
-#     python examples/split_cubed_sphere.py --config examples/config_split_cubed_sphere.toml
+#     python examples/04-split/split_cubed_sphere.py --config examples/04-split/config_split_cubed_sphere.toml
 #
 # or via the CLI directly (after generating a cubed-sphere mesh):
 #
 #     shore mesh sphere.stl --ni 30 --nj 40 --nk 12 -o sphere
-#     shore split sphere_*.geo -c examples/config_split_cubed_sphere.toml -o sphere_split
+#     shore split sphere_*.geo -c examples/04-split/config_split_cubed_sphere.toml -o sphere_split
 
 version = 1
 kind    = "split"

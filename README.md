@@ -140,7 +140,7 @@ shore grd-merge    background.grd    wall.grd    -o assembly.grd
 shore cc-par-merge background.cc.par wall.cc.par -o assembly.cc.par --grd assembly.grd
 ```
 
-The full walkthrough — including the `examples/cc_par_assembly.py` reference script — is at the [cc.par + boxes pipeline guide](https://szaghi.github.io/shore/guide/cc-par-pipeline).
+The full walkthrough — including the `examples/05-chimera-assembly/cc_par_assembly.py` reference script — is at the [cc.par + boxes pipeline guide](https://szaghi.github.io/shore/guide/cc-par-pipeline).
 
 ## CLI reference
 

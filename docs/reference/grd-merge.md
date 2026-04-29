@@ -43,7 +43,7 @@ shore cc-par-merge background.cc.par wall.cc.par -o assembly.cc.par \
                    --grd assembly.grd
 ```
 
-The example at `examples/cc_par_assembly.py` runs both halves in
+The example at `examples/05-chimera-assembly/cc_par_assembly.py` runs both halves in
 sequence; see the [cc.par + boxes pipeline](/guide/cc-par-pipeline)
 walkthrough for the end-to-end flow.
 

@@ -15,12 +15,12 @@
 #
 # Run with:
 #
-#     shore config validate examples/config_fuselage.toml
-#     shore mesh -c examples/config_fuselage.toml -v
+#     shore config validate examples/01-body-fitted/config_fuselage.toml
+#     shore mesh -c examples/01-body-fitted/config_fuselage.toml -v
 #
 # CLI flags override anything you set here, e.g.
 #
-#     shore mesh -c examples/config_fuselage.toml --nk 80
+#     shore mesh -c examples/01-body-fitted/config_fuselage.toml --nk 80
 #
 # would still pick up everything below, but with `nk = 80` instead of
 # the configured 50.

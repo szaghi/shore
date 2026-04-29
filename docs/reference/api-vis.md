@@ -170,7 +170,7 @@ pl = view_surface(k0, jupyter=True)
 pl.show()
 ```
 
-See `examples/visualize.ipynb` for a full notebook with Jacobian analysis plots.
+See `examples/01-body-fitted/tour.ipynb` for a full notebook with Jacobian analysis plots.
 
 ## See also
 

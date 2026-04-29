@@ -15,7 +15,7 @@
 #
 # Run with:
 #
-#     shore primitive flat-caps -c examples/config_primitive_flat_caps.toml -o bg
+#     shore primitive flat-caps -c examples/02-primitives/config_primitive_flat_caps.toml -o bg
 
 version = 1
 kind    = "primitive"

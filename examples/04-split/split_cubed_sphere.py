@@ -31,17 +31,17 @@ or ``docs/reference/split.md`` for the per-primitive recipe.
 Run from the project root after activating .venv:
 
     # Generate everything; open the viewer at the end.
-    python examples/split_cubed_sphere.py
+    python examples/04-split/split_cubed_sphere.py
 
     # Generate only — skip the viewer (CI-friendly).
-    python examples/split_cubed_sphere.py --no-view
+    python examples/04-split/split_cubed_sphere.py --no-view
 
     # Custom output directory.
-    python examples/split_cubed_sphere.py -o my_split --no-view
+    python examples/04-split/split_cubed_sphere.py -o my_split --no-view
 
     # Drive the splits from a TOML config (CLI flags still override).
-    python examples/split_cubed_sphere.py \\
-        --config examples/config_split_cubed_sphere.toml --no-view
+    python examples/04-split/split_cubed_sphere.py \\
+        --config examples/04-split/config_split_cubed_sphere.toml --no-view
 """
 
 from __future__ import annotations

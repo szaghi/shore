@@ -26,12 +26,12 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 @pytest.fixture(scope="module")
 def assembly_module():
-    """Import ``examples/assembly_sphere_in_cylinder.py`` as a module.
+    """Import ``examples/05-chimera-assembly/assembly_sphere_in_cylinder.py`` as a module.
 
     The example file isn't a package; we load it from its path so the
     test doesn't depend on cwd or PYTHONPATH gymnastics.
     """
-    path = EXAMPLES / "assembly_sphere_in_cylinder.py"
+    path = EXAMPLES / "05-chimera-assembly" / "assembly_sphere_in_cylinder.py"
     spec = importlib.util.spec_from_file_location("assembly_example", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

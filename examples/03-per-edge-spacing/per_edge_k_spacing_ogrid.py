@@ -34,13 +34,13 @@ For per-edge i/j on parametric **primitives** (Box / Annulus), see
 Run from the project root after activating .venv:
 
     # Generate, print the comparison, and open the viewer.
-    python examples/per_edge_k_spacing_ogrid.py
+    python examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py
 
     # Generate only — skip the viewer (CI-friendly).
-    python examples/per_edge_k_spacing_ogrid.py --no-view
+    python examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py --no-view
 
     # Custom output directory.
-    python examples/per_edge_k_spacing_ogrid.py -o my_run --no-view
+    python examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py -o my_run --no-view
 """
 
 from __future__ import annotations

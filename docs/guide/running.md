@@ -18,7 +18,7 @@ make dev    # pip install -e ".[dev,vis]"
 SHORE ships a set of standalone example scripts and a Jupyter
 notebook that serve as both documentation and sanity checks.
 
-### `examples/visualize_cubed_sphere.py` — cubed-sphere topology around a sphere
+### `examples/01-body-fitted/visualize_cubed_sphere.py` — cubed-sphere topology around a sphere
 
 The script generates a unit-sphere body-fitted test case (always
 6-block cubed-sphere topology) and optionally visualises it.  When called
@@ -26,16 +26,16 @@ The script generates a unit-sphere body-fitted test case (always
 
 ```bash
 # Generate sphere.stl + 6 sphere_<label>.geo files and open the viewer
-python examples/visualize_cubed_sphere.py --generate
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate
 
 # Generate and save a screenshot instead of opening a window
-python examples/visualize_cubed_sphere.py --generate --screenshot sphere_preview.png
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate --screenshot sphere_preview.png
 
 # Generate only (skip the viewer)
-python examples/visualize_cubed_sphere.py --generate --no-view
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate --no-view
 
 # Export to a single VTK MultiBlock .vtm for ParaView
-python examples/visualize_cubed_sphere.py --generate --vtk
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate --vtk
 ```
 
 Key parameters:
@@ -64,15 +64,15 @@ Spacing examples:
 
 ```bash
 # Tanh wall-normal spacing — fixed far-field boundary
-python examples/visualize_cubed_sphere.py --generate \
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate \
   --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
 
 # Equator meridional clustering at the cap seams
-python examples/visualize_cubed_sphere.py --generate \
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate \
   --surface-i-spacing tanh --surface-i-beta 4.0
 
 # Cap-corner clustering (tanh2 j-spacing — inherited by equator seam)
-python examples/visualize_cubed_sphere.py --generate \
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate \
   --surface-j-spacing tanh2 --surface-j-beta 5.0
 ```
 
@@ -82,9 +82,9 @@ distribution and what physical region it clusters toward.
 Visualise an existing `.geo` or `.npz` file directly:
 
 ```bash
-python examples/visualize_cubed_sphere.py sphere_sub0.geo
-python examples/visualize_cubed_sphere.py sphere_k0.npz
-python examples/visualize_cubed_sphere.py sphere_sub0.geo --screenshot out.png --no-edges
+python examples/01-body-fitted/visualize_cubed_sphere.py sphere_sub0.geo
+python examples/01-body-fitted/visualize_cubed_sphere.py sphere_k0.npz
+python examples/01-body-fitted/visualize_cubed_sphere.py sphere_sub0.geo --screenshot out.png --no-edges
 ```
 
 Output: 6 `.geo` files per run
@@ -95,7 +95,7 @@ sphere_cap_north.geo                 # north polar cap
 sphere_cap_south.geo                 # south polar cap
 ```
 
-### `examples/config_fuselage.toml` — config-driven workflow
+### `examples/01-body-fitted/config_fuselage.toml` — config-driven workflow
 
 When the parameter set gets large enough that the CLI invocation
 becomes a wall of flags, switch to a TOML config file. Every CLI flag
@@ -108,7 +108,7 @@ starts (CLI flag > config value > built-in default).
 shore config template > shore.toml
 
 # or start from the annotated example
-cp examples/config_fuselage.toml my_case.toml
+cp examples/01-body-fitted/config_fuselage.toml my_case.toml
 
 # parse-check before running (catches typos, version mismatches, etc.)
 shore config validate my_case.toml
@@ -121,7 +121,7 @@ shore mesh -c my_case.toml -v
 shore mesh -c my_case.toml --nk 80
 ```
 
-The example config (`examples/config_fuselage.toml`) demonstrates
+The example config (`examples/01-body-fitted/config_fuselage.toml`) demonstrates
 every section with a non-default choice — tanh wall-normal spacing
 with fixed thickness, equator clustering at the cap seams, blended
 STL normals in the near-wall region — so you can see how the knobs
@@ -140,28 +140,28 @@ for ParaView, and optionally opens the PyVista viewer.
 
 | Script | Primitive | Config | Output |
 |---|---|---|---|
-| `examples/visualize_box.py` | Cartesian box | `config_primitive_box.toml` | `box.geo`, `box.vtm` |
-| `examples/visualize_annulus.py` | annular cylinder | `config_primitive_annulus.toml` | `annulus.geo`, `annulus.vtm` |
-| `examples/visualize_flat_caps.py` | 5-block flat-caps cylinder | `config_primitive_flat_caps.toml` | `flat_caps_<label>.geo` ×5, `flat_caps.vtm` |
+| `examples/02-primitives/visualize_box.py` | Cartesian box | `config_primitive_box.toml` | `box.geo`, `box.vtm` |
+| `examples/02-primitives/visualize_annulus.py` | annular cylinder | `config_primitive_annulus.toml` | `annulus.geo`, `annulus.vtm` |
+| `examples/02-primitives/visualize_flat_caps.py` | 5-block flat-caps cylinder | `config_primitive_flat_caps.toml` | `flat_caps_<label>.geo` ×5, `flat_caps.vtm` |
 
 Each script accepts the same shape of options:
 
 ```bash
 # Defaults — open the viewer
-python examples/visualize_box.py
+python examples/02-primitives/visualize_box.py
 
 # Skip the viewer (CI-friendly)
-python examples/visualize_box.py --no-view
+python examples/02-primitives/visualize_box.py --no-view
 
 # Save a screenshot instead of opening a window
-python examples/visualize_box.py --screenshot box.png
+python examples/02-primitives/visualize_box.py --screenshot box.png
 
 # Drive the parameters from a TOML config (CLI flags still override)
-python examples/visualize_annulus.py --config examples/config_primitive_annulus.toml --no-view
-python examples/visualize_flat_caps.py --config examples/config_primitive_flat_caps.toml --no-view
+python examples/02-primitives/visualize_annulus.py --config examples/02-primitives/config_primitive_annulus.toml --no-view
+python examples/02-primitives/visualize_flat_caps.py --config examples/02-primitives/config_primitive_flat_caps.toml --no-view
 
 # Skip the .vtm export (only .geo is written)
-python examples/visualize_box.py --no-vtk --no-view
+python examples/02-primitives/visualize_box.py --no-vtk --no-view
 ```
 
 The `.vtm` file is a small XML manifest pointing at one `.vts` per
@@ -169,7 +169,7 @@ block stored under a sister directory (`box/`, `annulus/`, or
 `flat_caps/`).  Open the `.vtm` in ParaView; it pulls in every block
 automatically.
 
-### `examples/assembly_sphere_in_cylinder.py` — first-tentative assembly
+### `examples/05-chimera-assembly/assembly_sphere_in_cylinder.py` — first-tentative assembly
 
 The assembly example combines a near-body cubed-sphere mesh and a
 background flat-caps cylinder into a single overset stack that
@@ -181,15 +181,15 @@ into a single ParaView-friendly `assembly.vtm`.
 
 ```bash
 # Generate everything; open the viewer.
-python examples/assembly_sphere_in_cylinder.py
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py
 
 # Generate only — skip the viewer.
-python examples/assembly_sphere_in_cylinder.py --no-view
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py --no-view
 
 # Drive the two pieces from TOML configs.
-python examples/assembly_sphere_in_cylinder.py \
-    --near-body-config examples/config_assembly_near_body.toml \
-    --background-config examples/config_assembly_background.toml \
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py \
+    --near-body-config examples/05-chimera-assembly/config_assembly_near_body.toml \
+    --background-config examples/05-chimera-assembly/config_assembly_background.toml \
     --no-view
 ```
 
@@ -211,7 +211,7 @@ choices, ParaView inspection workflow, and the explicit boundary
 between what SHORE produces and what the downstream solver does —
 lives in [Assembly walkthrough](/guide/assembly).
 
-### `examples/cc_par_assembly.py` — assembly + Xall `cc.par` generation
+### `examples/05-chimera-assembly/cc_par_assembly.py` — assembly + Xall `cc.par` generation
 
 Extends the assembly example by adding adjacency JSON sidecars, VTK
 MultiBlock exports, and `cc.par` generation for both meshes.  Viewer is
@@ -219,13 +219,13 @@ off by default; pass `--view` to open it.
 
 ```bash
 # Generate everything headlessly.
-python examples/cc_par_assembly.py
+python examples/05-chimera-assembly/cc_par_assembly.py
 
 # Custom output directory.
-python examples/cc_par_assembly.py -o my_run
+python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
 
 # Open the interactive viewer after generation.
-python examples/cc_par_assembly.py --view
+python examples/05-chimera-assembly/cc_par_assembly.py --view
 ```
 
 Output:
@@ -247,7 +247,7 @@ examples_out/
   background.cc.par             # background Xall cc.par
 ```
 
-### `examples/visualize.ipynb` — Jupyter Notebook
+### `examples/01-body-fitted/tour.ipynb` — Jupyter Notebook
 
 A complete notebook covering mesh generation, Jacobian analysis,
 spacing-law comparison, and the C1 seam-matching demo:
@@ -258,7 +258,7 @@ spacing-law comparison, and the C1 seam-matching demo:
   of compatible and incompatible parameter regimes
 
 ```bash
-jupyter notebook examples/visualize.ipynb
+jupyter notebook examples/01-body-fitted/tour.ipynb
 ```
 
 For headless CI environments:
@@ -397,7 +397,7 @@ export DISPLAY=
 make test
 
 # Smoke-generate the example mesh
-python examples/visualize_cubed_sphere.py --generate --no-view
+python examples/01-body-fitted/visualize_cubed_sphere.py --generate --no-view
 shore check sphere_sub0.geo
 shore info sphere_sub0.geo
 ```

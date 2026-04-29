@@ -219,9 +219,9 @@ box = BoxMesh.build(
 Edge names are the canonical 12 from `shore.mesh.edge`. The user pins as many or as few edges as needed; unpinned edges inherit the per-axis `*_law` default. After construction, `block.edge(name).spacing` returns the actual `Spacing1D` used (either the user override or the axis default).
 
 See the worked examples:
-- `examples/per_edge_ij_box.py` — per-edge i on a Box, with side-by-side comparison to the uniform tensor-product baseline
-- `examples/per_edge_k_spacing_cubed_sphere.py` — per-edge k on the cubed sphere
-- `examples/per_edge_k_spacing_ogrid.py` — per-edge k on the O-grid
+- `examples/03-per-edge-spacing/per_edge_ij_box.py` — per-edge i on a Box, with side-by-side comparison to the uniform tensor-product baseline
+- `examples/03-per-edge-spacing/per_edge_k_spacing_cubed_sphere.py` — per-edge k on the cubed sphere
+- `examples/03-per-edge-spacing/per_edge_k_spacing_ogrid.py` — per-edge k on the O-grid
 
 ## Choosing $\beta$
 

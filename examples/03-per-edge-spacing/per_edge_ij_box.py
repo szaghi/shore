@@ -52,13 +52,13 @@ case.
 Run from the project root after activating .venv:
 
     # Generate, print the comparison, and open the viewer.
-    python examples/per_edge_ij_box.py
+    python examples/03-per-edge-spacing/per_edge_ij_box.py
 
     # Generate only — skip the viewer (CI-friendly).
-    python examples/per_edge_ij_box.py --no-view
+    python examples/03-per-edge-spacing/per_edge_ij_box.py --no-view
 
     # Custom output directory.
-    python examples/per_edge_ij_box.py -o my_run --no-view
+    python examples/03-per-edge-spacing/per_edge_ij_box.py -o my_run --no-view
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ through the cubed-sphere topology, writing all 6 ``.geo`` blocks
 (``sphere_sub0..3.geo`` + ``sphere_cap_north/south.geo``) and
 optionally a ``.vtm`` MultiBlock for ParaView.  The cap and equator
 spacing flags below are specific to this topology — see
-``examples/visualize_box.py`` / ``visualize_annulus.py`` /
+``examples/02-primitives/visualize_box.py`` / ``visualize_annulus.py`` /
 ``visualize_flat_caps.py`` for the parametric primitives.
 
 When called *without* ``--generate``, the script is a generic
@@ -16,24 +16,24 @@ structured grid produced by SHORE, regardless of topology.
 Run from the project root after activating .venv:
 
     # Generate a cubed-sphere mesh on a unit icosphere and open the viewer:
-    python examples/visualize_cubed_sphere.py --generate
+    python examples/01-body-fitted/visualize_cubed_sphere.py --generate
 
     # Generate and export all 6 blocks to VTK MultiBlock:
-    python examples/visualize_cubed_sphere.py --generate --vtk
+    python examples/01-body-fitted/visualize_cubed_sphere.py --generate --vtk
 
     # Tanh-spaced boundary layer with fixed total thickness:
-    python examples/visualize_cubed_sphere.py --generate \\
+    python examples/01-body-fitted/visualize_cubed_sphere.py --generate \\
         --volume-k-spacing tanh --volume-k-beta 4.0 --volume-k-thickness 2.0
 
     # Latitude clustering (toward cap boundary) + longitude clustering:
-    python examples/visualize_cubed_sphere.py --generate \\
+    python examples/01-body-fitted/visualize_cubed_sphere.py --generate \\
         --surface-i-spacing tanh --surface-i-beta 4.0 \\
         --surface-j-spacing tanh2 --surface-j-beta 5.0
 
     # Visualise an existing file (any topology):
-    python examples/visualize_cubed_sphere.py sphere_sub0.geo
-    python examples/visualize_cubed_sphere.py sphere_k0.npz
-    python examples/visualize_cubed_sphere.py sphere_sub0.geo --screenshot out.png
+    python examples/01-body-fitted/visualize_cubed_sphere.py sphere_sub0.geo
+    python examples/01-body-fitted/visualize_cubed_sphere.py sphere_k0.npz
+    python examples/01-body-fitted/visualize_cubed_sphere.py sphere_sub0.geo --screenshot out.png
 
 Cap/equator C1 seam matching
 ----------------------------
@@ -49,7 +49,7 @@ with ``nc = nj // 4 + 1``.  If they differ by more than 2x the equator falls
 back to its unpinned i_spacing law (a UserWarning is emitted).  The default
 ``--ni 40 --nj 60 --theta-cap (pi/6)`` lands inside the C1 window.
 
-For Jupyter use, see examples/visualize.ipynb.
+For Jupyter use, see examples/01-body-fitted/tour.ipynb.
 """
 
 from __future__ import annotations

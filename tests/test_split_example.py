@@ -21,8 +21,8 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 @pytest.fixture(scope="module")
 def split_module():
-    """Import ``examples/split_cubed_sphere.py`` as a module."""
-    path = EXAMPLES / "split_cubed_sphere.py"
+    """Import ``examples/04-split/split_cubed_sphere.py`` as a module."""
+    path = EXAMPLES / "04-split" / "split_cubed_sphere.py"
     spec = importlib.util.spec_from_file_location("split_example", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -125,7 +125,7 @@ class TestSplitExampleConfigDriven:
         """The shipped TOML loads to the same 4 paired k-cuts the script
         uses by default."""
         directives = split_module._load_split_directives_from_toml(
-            EXAMPLES / "config_split_cubed_sphere.toml"
+            EXAMPLES / "04-split" / "config_split_cubed_sphere.toml"
         )
         assert len(directives) == 4
         labels = sorted(d.label for d in directives)

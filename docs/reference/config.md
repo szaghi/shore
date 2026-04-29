@@ -198,7 +198,7 @@ shore mesh -c fuselage.toml -v
 ```
 
 A ready-to-run version of this file ships at
-[`examples/config_fuselage.toml`](https://github.com/szaghi/shore/blob/main/examples/config_fuselage.toml).
+[`examples/01-body-fitted/config_fuselage.toml`](https://github.com/szaghi/shore/blob/main/examples/01-body-fitted/config_fuselage.toml).
 
 ## Limitations
 

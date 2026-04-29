@@ -197,7 +197,7 @@ Per-edge spacing on the cubed-sphere topology has one viable axis: **k**.
   m.march(ds=99, growth=99)   # ds, growth ignored — override wins
   ```
 
-  See `examples/per_edge_k_spacing_cubed_sphere.py` for a worked
+  See `examples/03-per-edge-spacing/per_edge_k_spacing_cubed_sphere.py` for a worked
   comparison.
 
 - **i / j**: deferred. The cap-equator C1 pinning *is* a per-edge

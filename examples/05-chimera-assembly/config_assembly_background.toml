@@ -1,7 +1,7 @@
 # SHORE primitive config — background for the assembly example
 # =============================================================
 #
-# Used by ``examples/assembly_sphere_in_cylinder.py`` to drive the
+# Used by ``examples/05-chimera-assembly/assembly_sphere_in_cylinder.py`` to drive the
 # 5-block flat-caps cylinder background that fills the whole domain
 # ``[-10, 10]^2 × [-10, 50]`` around the unit-radius sphere body at
 # the origin.

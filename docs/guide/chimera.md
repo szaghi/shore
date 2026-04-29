@@ -62,7 +62,7 @@ OVERFLOW, etc.) does the assembly at run time.
 ## A worked end-to-end assembly
 
 The first-tentative assembly example
-(`examples/assembly_sphere_in_cylinder.py`) produces the simplest
+(`examples/05-chimera-assembly/assembly_sphere_in_cylinder.py`) produces the simplest
 non-trivial overset stack: a 6-block cubed-sphere mesh wrapping a
 unit-radius sphere, plus a 5-block flat-caps cylinder background
 spanning `[-10, 10]² × [-10, 50]`. See
@@ -70,7 +70,7 @@ spanning `[-10, 10]² × [-10, 50]`. See
 output layout, and ParaView inspection workflow.
 
 ```bash
-python examples/assembly_sphere_in_cylinder.py --no-view
+python examples/05-chimera-assembly/assembly_sphere_in_cylinder.py --no-view
 # → examples_out/{fuselage_*,background_*}.geo  +  examples_out/assembly.vtm
 ```
 

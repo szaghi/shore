@@ -239,7 +239,7 @@ for the full table:
 
 The CLI (`shore primitive box / annulus / flat-caps`) does not currently
 expose `edge_pins`; it is a Python-API feature only. See
-`examples/per_edge_ij_box.py` for a worked example.
+`examples/03-per-edge-spacing/per_edge_ij_box.py` for a worked example.
 
 ## Limitations
 

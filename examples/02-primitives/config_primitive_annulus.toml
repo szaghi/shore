@@ -8,11 +8,11 @@
 #
 # Run with:
 #
-#     shore primitive annulus -c examples/config_primitive_annulus.toml -o buffer
+#     shore primitive annulus -c examples/02-primitives/config_primitive_annulus.toml -o buffer
 #
 # or via the standalone example:
 #
-#     python examples/visualize_annulus.py --config examples/config_primitive_annulus.toml --no-view
+#     python examples/02-primitives/visualize_annulus.py --config examples/02-primitives/config_primitive_annulus.toml --no-view
 #
 # To make this a partial sector instead (e.g. a half-pipe), uncomment
 # `theta_end` below and set `j_law` to anything you like — partial

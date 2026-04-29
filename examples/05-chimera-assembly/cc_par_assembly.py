@@ -44,9 +44,9 @@ Output
 
 Run from the project root after activating .venv::
 
-    python examples/cc_par_assembly.py
-    python examples/cc_par_assembly.py -o my_run
-    python examples/cc_par_assembly.py --view      # open interactive viewer
+    python examples/05-chimera-assembly/cc_par_assembly.py
+    python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
+    python examples/05-chimera-assembly/cc_par_assembly.py --view      # open interactive viewer
 """
 
 from __future__ import annotations
