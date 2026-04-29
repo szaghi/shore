@@ -66,8 +66,8 @@ layers.
 |---|---|---|---|
 | `path` | `str \| Path` | — | Path to the body's STL file. Loaded via [`load_stl`](./api-surface-io). |
 | `topology` | `Topology` | — | A wired [`Topology`](./api-topology) builder — typically `CubedSphereTopology()` or `OGridTopology()`. |
-| `ni`, `nj` | `int` | — | Surface resolution. For `CubedSphereTopology`, `nj` must be a multiple of 4 (rounded down with a warning if not). |
-| `nk` | `int` | — | Number of wall-normal layers including k=0. |
+| `ni`, `nj` | `int` | — | Surface **node counts** (the `(ni, nj)` shape of each block's k=0 layer). For `CubedSphereTopology`, `nj` must be a multiple of 4 (rounded down with a warning if not). |
+| `nk` | `int` | — | Wall-normal **node count** including the wall row at k=0. With `nk = 30` the marcher extrudes 29 cells from the wall. |
 | `theta_cap` | `float \| None` | `0.05*pi` | Polar exclusion angle in radians. Mutually exclusive with `theta_cap_deg`. |
 | `theta_cap_deg` | `float \| None` | — | Same as `theta_cap` in degrees. |
 | `i_spacing` | `str` | `"uniform"` | Surface i-direction spacing law: `"uniform"` / `"tanh"` / `"tanh2"`. |

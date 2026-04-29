@@ -63,9 +63,14 @@ _err = Console(stderr=True)
 # Shared option aliases
 # ---------------------------------------------------------------------------
 
-_NI = Annotated[int, typer.Option(help="Latitude resolution of the O-grid surface.")]
-_NJ = Annotated[int, typer.Option(help="Longitude resolution of the O-grid surface.")]
-_NK = Annotated[int, typer.Option(help="Number of wall-normal layers (includes k=0).")]
+# SHORE convention: --ni, --nj, --nk are *node* counts (the array shape
+# of the (ni, nj, nk, 3) coordinate block).  A block with --nk 30 has
+# 30 wall-normal layers including the wall (k=0), i.e. 29 cells extruded
+# from the wall.  The .grd binary header is the only place where cell
+# counts (= node count - 1) appear; the conversion is automatic.
+_NI = Annotated[int, typer.Option(help="Latitude node count (i-axis of the surface).")]
+_NJ = Annotated[int, typer.Option(help="Longitude node count (j-axis of the surface).")]
+_NK = Annotated[int, typer.Option(help="Wall-normal node count (includes the wall at k=0).")]
 _DS = Annotated[float, typer.Option(help="First-layer thickness (same units as the STL).")]
 _GROWTH = Annotated[float, typer.Option(help="Geometric growth ratio between successive layers.")]
 _SMOOTH = Annotated[float, typer.Option(help="Laplacian smooth strength per layer [0-1].")]
@@ -967,9 +972,9 @@ def primitive_box(
         tuple[float, float, float],
         typer.Option("--max", help="Maximum corner of the box (x y z)."),
     ] = (1.0, 1.0, 1.0),
-    ni: _NI = 40,
-    nj: _NJ = 40,
-    nk: _NK = 30,
+    ni: Annotated[int, typer.Option(help="Node count along x (i-axis).")] = 40,
+    nj: Annotated[int, typer.Option(help="Node count along y (j-axis).")] = 40,
+    nk: Annotated[int, typer.Option(help="Node count along z (k-axis).")] = 30,
     i_law: Annotated[
         str, typer.Option("--i-spacing", help="Spacing along i: uniform | tanh | tanh2.")
     ] = "uniform",
@@ -1063,9 +1068,9 @@ def primitive_annulus(
             help="Sector end in radians; omit for a full annulus.",
         ),
     ] = None,
-    ni: _NI = 20,
-    nj: _NJ = 64,
-    nk: _NK = 30,
+    ni: Annotated[int, typer.Option(help="Radial node count (i-axis).")] = 20,
+    nj: Annotated[int, typer.Option(help="Azimuthal node count (j-axis).")] = 64,
+    nk: Annotated[int, typer.Option(help="Axial node count (k-axis).")] = 30,
     i_law: Annotated[str, typer.Option("--i-spacing")] = "uniform",
     j_law: Annotated[str, typer.Option("--j-spacing")] = "uniform",
     k_law: Annotated[str, typer.Option("--k-spacing")] = "uniform",
@@ -1176,7 +1181,7 @@ def primitive_flat_caps(
     nc: Annotated[
         int, typer.Option("--nc", help="Side node count for the central square (shared).")
     ] = 20,
-    nk: _NK = 30,
+    nk: Annotated[int, typer.Option(help="Axial node count (k-axis).")] = 30,
     i_law: Annotated[str, typer.Option("--i-spacing")] = "uniform",
     c_law: Annotated[
         str,

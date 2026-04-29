@@ -3,12 +3,21 @@
 ## Your first O-grid
 
 Given a body surface `sphere.stl`, generate a 6-block cubed-sphere
-volume grid with 40 equator latitude points, 60 longitude points, and
-30 wall-normal layers:
+volume grid with 40 equator latitude **nodes**, 60 longitude **nodes**,
+and 30 wall-normal **nodes** (29 cells extruded from the wall):
 
 ```bash
 shore mesh sphere.stl --ni 40 --nj 60 --nk 30 --ds 1e-3 --growth 1.15 -o sphere -v
 ```
+
+::: tip Nodes vs. cells
+`--ni`, `--nj`, `--nk` are **node counts** — the array shape of the
+`(ni, nj, nk, 3)` block SHORE produces.  ``--nk 30`` means 30
+wall-normal node rows including the wall row at k=0, which is 29
+extruded cells.  The only file SHORE writes that uses cell counts
+is the binary ``.grd`` (geogrd Fortran convention); the conversion
+is automatic.
+:::
 
 SHORE will:
 
@@ -17,7 +26,7 @@ SHORE will:
    projection (4 corners on the colatitude-`theta_cap` parallel)
 3. Build the equator k=0 from the cap seam rings via great-circle
    meridians (with C1 spacing match at every seam vertex)
-4. March 29 layers outward with seam-aware normals, Laplacian smoothing,
+4. March 29 cells outward with seam-aware normals, Laplacian smoothing,
    and per-layer Jacobian guards
 5. Write 6 `.geo` files: `sphere_sub0.geo` ... `sphere_cap_south.geo`
 
@@ -64,7 +73,7 @@ shore check sphere_sub0.geo
 | `--growth` | Layer-to-layer thickness ratio | 1.05 – 1.25 |
 | `--smooth` | Laplacian blend per layer | 0.1 – 0.5 |
 | `--smooth-iters` | Laplacian sweeps per layer | 1 – 5 |
-| `--nk` | Total layers | 20 – 60 |
+| `--nk` | Wall-normal node count (includes the wall row at k=0); the marcher extrudes `nk - 1` cells | 20 – 60 |
 
 **Grid quality vs. speed trade-offs:**
 

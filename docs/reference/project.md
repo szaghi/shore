@@ -33,8 +33,8 @@ shore project [OPTIONS] INPUT
 
 | Option | Default | Description |
 |---|---|---|
-| `--ni INTEGER` | 40 | Latitude resolution |
-| `--nj INTEGER` | 60 | Longitude resolution |
+| `--ni INTEGER` | 40 | Latitude **node count** (i-axis of the output `(ni, nj, 3)` array). |
+| `--nj INTEGER` | 60 | Longitude **node count** (j-axis). |
 
 ### Topology
 

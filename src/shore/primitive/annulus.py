@@ -139,7 +139,10 @@ class AnnularCylinderMesh(PrimitiveMesh):
         z0, z1 :
             Axial extent along *axis* (``z1 > z0``).
         ni, nj, nk :
-            Node counts (radial, azimuthal, axial).  All >= 2.
+            Node counts (radial, azimuthal, axial).  All >= 2.  These
+            are the array shape of the produced ``(ni, nj, nk, 3)``
+            block, not cell counts.  ``ni = 20`` means 20 radial nodes
+            and 19 cells.
         theta_start, theta_end :
             Azimuthal sector in radians.  When *theta_end* is None,
             the cylinder is a full annulus (``theta_start`` to

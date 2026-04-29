@@ -31,11 +31,18 @@ config-file values; config-file values override built-in defaults.
 
 ### Grid resolution
 
+`--ni`, `--nj`, `--nk` are **node counts** — the array shape of the
+`(ni, nj, nk, 3)` coordinate block SHORE produces. A block with
+`--nk 30` has 30 wall-normal layers including the wall row, i.e. 29
+cells extruded from the wall. The only file SHORE writes that uses
+cell counts is the binary `.grd` (geogrd convention); the conversion
+is automatic.
+
 | Option | Default | Description |
 |---|---|---|
-| `--ni INTEGER` | 40 | Equator meridional resolution (south seam → north seam) |
-| `--nj INTEGER` | 60 | Longitude resolution (multiple of 4; rounded down with a warning if not) |
-| `--nk INTEGER` | 30 | Wall-normal layers, including k=0 (wall) |
+| `--ni INTEGER` | 40 | Equator meridional **node count** (south seam → north seam). |
+| `--nj INTEGER` | 60 | Longitude **node count**; multiple of 4 (rounded down with a warning if not). |
+| `--nk INTEGER` | 30 | Wall-normal **node count**, including the wall row at k=0. With `--nk 30` the marcher extrudes 29 cells from the wall. |
 
 ### Cap geometry
 

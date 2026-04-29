@@ -280,9 +280,13 @@ class Mesh:
         topology :
             Wired topology builder (e.g. ``CubedSphereTopology()``).
         ni, nj :
-            Surface resolution.
+            Surface node counts (i and j directions, the array shape).
         nk :
-            Number of wall-normal layers (including k=0).
+            Wall-normal node count, including the wall row at k=0.  With
+            ``nk = 30`` the marcher extrudes 29 cells from the wall.
+            (SHORE convention: ``ni``, ``nj``, ``nk`` are always node
+            counts; the only file that stores cell counts is the binary
+            ``.grd`` header, where the conversion is automatic.)
         theta_cap / theta_cap_deg :
             Polar exclusion angle.
         spacing_k :

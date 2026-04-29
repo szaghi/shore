@@ -167,9 +167,9 @@ All commands accept `--help` for full option lists. See the [CLI reference](http
 | Option | Default | Description |
 |---|---|---|
 | `--topology` | `cubed_sphere` | `cubed_sphere` (6 blocks) or `ogrid` (1 block, j-periodic) |
-| `--ni` | 40 | Latitude / equator meridional resolution |
-| `--nj` | 60 | Longitude resolution (multiple of 4 for cubed sphere) |
-| `--nk` | 30 | Wall-normal layers (includes k=0) |
+| `--ni` | 40 | Latitude / equator meridional **node count** |
+| `--nj` | 60 | Longitude **node count** (multiple of 4 for cubed sphere) |
+| `--nk` | 30 | Wall-normal **node count** (includes the wall row at k=0; the marcher extrudes `nk - 1` cells) |
 | `--ds` | 1e-3 | First-layer thickness (geometric spacing) |
 | `--growth` | 1.15 | Geometric growth ratio |
 | `--theta-cap-deg` | 30° | Polar exclusion angle (cubed sphere) |
