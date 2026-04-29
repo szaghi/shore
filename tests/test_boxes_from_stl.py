@@ -190,9 +190,7 @@ class TestVoxelFill:
         boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=gap, method="voxel-fill")
         mesh = trimesh.load(sphere_stl, force="mesh")
         max_gap = _max_box_vertex_outward_gap(boxes, mesh)
-        assert max_gap <= gap + 1e-9, (
-            f"merged boxes exceeded corner gap: {max_gap} > {gap}"
-        )
+        assert max_gap <= gap + 1e-9, f"merged boxes exceeded corner gap: {max_gap} > {gap}"
 
     def test_merged_boxes_still_cover_body_surface(self, sphere_stl):
         """Merging must preserve full body surface coverage —

@@ -248,9 +248,7 @@ def _voxel_fill(
         max_outward_gap=max_outward_gap,
     )
 
-    return [
-        Box.from_aabb(box_lo, box_hi, associated_block) for box_lo, box_hi in blocks
-    ]
+    return [Box.from_aabb(box_lo, box_hi, associated_block) for box_lo, box_hi in blocks]
 
 
 def _greedy_merge_grid(
@@ -303,8 +301,6 @@ def _greedy_merge_grid(
     seed grid's extent on that axis.  This biases the result toward
     slab-shaped outputs when the body's elongation differs by axis.
     """
-    nx, ny, nz = (int(s) for s in include.shape)
-
     # Active blocks as (i0, i1, j0, j1, k0, k1).  Initial seed: one
     # block per True voxel.
     blocks: list[tuple[int, int, int, int, int, int]] = []
