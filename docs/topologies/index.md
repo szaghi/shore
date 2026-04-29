@@ -48,8 +48,8 @@ For new geometries the workflow is:
 
 ## See also
 
-- [Pipeline overview](/concepts/pipeline) — how a topology fits into
+- [Pipeline overview](/guide/pipeline) — how a topology fits into
   the overall STL → mesh flow
 - [Algorithm overview](/algorithm/) — the building blocks
-- [Chimera context](/concepts/chimera) — why these topologies are
+- [Chimera context](/guide/chimera) — why these topologies are
   designed for overset workflows

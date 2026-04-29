@@ -148,7 +148,7 @@ to its anchor (centroid by default). Every ray from the anchor must hit
 the surface exactly once. This is satisfied by spheres, ellipsoids,
 fuselages, and most convex CFD bodies. Concave bodies (re-entrant
 cavities, forked geometries) will fail during projection — see
-[Limitations](/concepts/pipeline#limitations).
+[Limitations](/guide/pipeline#limitations).
 :::
 
 ## Using SHORE from Python

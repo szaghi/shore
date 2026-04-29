@@ -131,7 +131,7 @@ gives a physically larger cap face and a shorter equatorial band.
 
 ## Notes
 
-- **Star-shaped constraint**: the algorithm requires every ray from the centroid to hit the body exactly once. Bodies with concavities relative to their centroid will trigger the `ValueError`. See [Pipeline limitations](/concepts/pipeline#limitations).
+- **Star-shaped constraint**: the algorithm requires every ray from the centroid to hit the body exactly once. Bodies with concavities relative to their centroid will trigger the `ValueError`. See [Pipeline limitations](/guide/pipeline#limitations).
 - **Multiple hits**: `trimesh` is called with `multiple_hits=False` — only the nearest intersection per ray is used.
 - **Performance**: for `ni=60, nj=80` (4,800 rays) on a mesh with ~10,000 triangles, projection takes ~50 ms on a modern CPU.
 

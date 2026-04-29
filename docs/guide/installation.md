@@ -46,10 +46,11 @@ Run the test suite to confirm everything works:
 make test
 ```
 
-Expected output:
+Expected output (count grows with each release; the run completes in
+under a minute on a modern laptop):
 
 ```
-35 passed in 0.25s
+588 passed in 53s
 ```
 
 ## Optional: pyvista for visualisation
@@ -60,7 +61,7 @@ pip install shore[vis]
 pip install pyvista
 ```
 
-The `shore view` command (planned, not yet released) will use pyvista to render geo files interactively.
+The `shore view` command (and the example scripts' interactive mode) require pyvista. Without it, the rest of SHORE — generation, validation, VTK / `.geo` / `.grd` / `cc.par` export — works unchanged.
 
 ## Makefile targets
 

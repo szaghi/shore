@@ -283,7 +283,7 @@ the `--meta` flag format and BC code table.
 
 ## See also
 
-- [Chimera context](/concepts/chimera) — what overset meshing is
+- [Chimera context](/guide/chimera) — what overset meshing is
   and why SHORE produces these particular outputs.
 - [Cubed-sphere topology](/topologies/cubed-sphere) — the near-body
   mesh.

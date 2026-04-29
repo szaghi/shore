@@ -138,7 +138,7 @@ shore project nacelle.stl \
 
 ## Algorithm
 
-See [Pipeline overview — Stage 1](/concepts/pipeline) for a full description of the sphere projection algorithm.
+See [Pipeline overview — Stage 1](/guide/pipeline) for a full description of the sphere projection algorithm.
 
 The projection uses trimesh's `RayMeshIntersector` with `multiple_hits=False` — only the first intersection along each ray (closest to the centroid) is recorded. Ray origins are all placed at the body centroid; directions are the unit vectors of a lat-lon sphere grid.
 
@@ -150,4 +150,4 @@ When surface spacing is non-uniform, the lat-lon directions are redistributed us
 - [Cubed-sphere topology](/topologies/cubed-sphere) — the 6-block topology that
   `shore mesh` builds (does not consume `.npz` from `shore project`)
 - [Spacing laws](/algorithm/spacing-laws) — clustering distributions explained
-- [Pipeline overview](/concepts/pipeline)
+- [Pipeline overview](/guide/pipeline)

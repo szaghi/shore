@@ -2,25 +2,15 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'SHORE',
-  description: 'Structured Hyperbolic Overlapping Remeshing Engine — generate structured body-fitted O-grid volumes from raw triangulated surfaces.',
+  description: 'Structured Hyperbolic Overlapping Remeshing Engine — hyperbolic mesh generation for Chimera CFD: body-fitted near-body grids and parametric backgrounds.',
   base: '/shore/',
   markdown: {
     math: true,
   },
   themeConfig: {
     nav: [
-      { text: 'Home', link: '/' },
-      {
-        text: 'Guide',
-        items: [
-          { text: 'About',        link: '/guide/' },
-          { text: 'Installation', link: '/guide/installation' },
-          { text: 'Quick Start',  link: '/guide/quickstart' },
-          { text: 'Running',      link: '/guide/running' },
-          { text: 'Changelog',    link: '/guide/changelog' },
-          { text: 'Contributing', link: '/guide/contributing' },
-        ],
-      },
+      { text: 'Home',       link: '/' },
+      { text: 'Guide',      link: '/guide/' },
       { text: 'Algorithm',  link: '/algorithm/' },
       { text: 'Topologies', link: '/topologies/' },
       { text: 'Reference',  link: '/reference/mesh' },
@@ -30,56 +20,62 @@ export default defineConfig({
     sidebar: {
       '/guide/': [
         {
-          text: 'Introduction',
+          text: 'Getting started',
           items: [
             { text: 'About SHORE',  link: '/guide/' },
             { text: 'Installation', link: '/guide/installation' },
-            { text: 'Quick Start',  link: '/guide/quickstart' },
+            { text: 'Quick start',  link: '/guide/quickstart' },
+          ],
+        },
+        {
+          text: 'Concepts',
+          items: [
+            { text: 'Pipeline overview', link: '/guide/pipeline' },
+            { text: 'Chimera context',   link: '/guide/chimera' },
           ],
         },
         {
           text: 'Worked examples',
           items: [
             { text: 'Assembly: sphere in cylinder', link: '/guide/assembly' },
+            { text: 'Per-edge spacing',             link: '/guide/per-edge-spacing' },
+            { text: 'cc.par + boxes pipeline',      link: '/guide/cc-par-pipeline' },
           ],
+        },
+        {
+          text: 'Running examples and tests',
+          link: '/guide/running',
         },
         {
           text: 'Project',
           items: [
             { text: 'Changelog',    link: '/guide/changelog' },
             { text: 'Contributing', link: '/guide/contributing' },
-            { text: 'Running',      link: '/guide/running' },
-          ],
-        },
-      ],
-
-      '/concepts/': [
-        {
-          text: 'Concepts',
-          items: [
-            { text: 'Pipeline overview', link: '/concepts/pipeline' },
-            { text: 'Chimera context',   link: '/concepts/chimera' },
-          ],
-        },
-        {
-          text: 'See also',
-          items: [
-            { text: 'Algorithm details',  link: '/algorithm/' },
-            { text: 'Topology catalogue', link: '/topologies/' },
           ],
         },
       ],
 
       '/algorithm/': [
         {
-          text: 'Algorithm',
+          text: 'Pipeline',
           items: [
-            { text: 'Overview',             link: '/algorithm/' },
-            { text: 'Surface projection',   link: '/algorithm/projection' },
-            { text: 'k=0 mesh construction',link: '/algorithm/k0-construction' },
-            { text: 'Hyperbolic marching',  link: '/algorithm/hyperbolic-marching' },
-            { text: 'Seam-aware normals',   link: '/algorithm/seam-aware-normals' },
-            { text: 'Spacing laws',         link: '/algorithm/spacing-laws' },
+            { text: 'Overview',              link: '/algorithm/' },
+            { text: 'Surface projection',    link: '/algorithm/projection' },
+            { text: 'k=0 mesh construction', link: '/algorithm/k0-construction' },
+            { text: 'Hyperbolic marching',   link: '/algorithm/hyperbolic-marching' },
+            { text: 'Seam-aware normals',    link: '/algorithm/seam-aware-normals' },
+          ],
+        },
+        {
+          text: 'Distributions',
+          items: [
+            { text: 'Spacing laws', link: '/algorithm/spacing-laws' },
+          ],
+        },
+        {
+          text: 'Auxiliary algorithms',
+          items: [
+            { text: 'Marker boxes (voxel-fill + greedy merge)', link: '/algorithm/boxes' },
           ],
         },
       ],
@@ -103,18 +99,36 @@ export default defineConfig({
 
       '/reference/': [
         {
-          text: 'Commands',
+          text: 'Mesh generation commands',
           items: [
             { text: 'shore mesh',      link: '/reference/mesh' },
             { text: 'shore primitive', link: '/reference/primitive' },
-            { text: 'shore split',     link: '/reference/split' },
-            { text: 'shore grd',       link: '/reference/grd' },
-            { text: 'shore cc-par',    link: '/reference/cc-par' },
             { text: 'shore project',   link: '/reference/project' },
-            { text: 'shore info',      link: '/reference/info' },
-            { text: 'shore check',     link: '/reference/check' },
-            { text: 'shore export',    link: '/reference/export' },
-            { text: 'shore view',      link: '/reference/view' },
+          ],
+        },
+        {
+          text: 'Adjacency and parallelism',
+          items: [
+            { text: 'shore split', link: '/reference/split' },
+          ],
+        },
+        {
+          text: 'Xall pipeline',
+          items: [
+            { text: 'shore grd',          link: '/reference/grd' },
+            { text: 'shore grd-merge',    link: '/reference/grd-merge' },
+            { text: 'shore cc-par',       link: '/reference/cc-par' },
+            { text: 'shore cc-par-merge', link: '/reference/cc-par-merge' },
+            { text: 'Marker boxes',       link: '/reference/boxes' },
+          ],
+        },
+        {
+          text: 'Inspection and visualisation',
+          items: [
+            { text: 'shore info',   link: '/reference/info' },
+            { text: 'shore check',  link: '/reference/check' },
+            { text: 'shore export', link: '/reference/export' },
+            { text: 'shore view',   link: '/reference/view' },
           ],
         },
         {
@@ -124,16 +138,54 @@ export default defineConfig({
           ],
         },
         {
-          text: 'Python API',
+          text: 'Python API — core',
           items: [
-            { text: 'surface.io',             link: '/reference/api-surface-io' },
-            { text: 'surface.remesh',         link: '/reference/api-surface-remesh' },
-            { text: 'volume.hyperbolic',      link: '/reference/api-hyperbolic' },
-            { text: 'volume.jacobian',        link: '/reference/api-jacobian' },
-            { text: 'topology.sphere_cap',    link: '/reference/api-sphere-cap' },
-            { text: 'io.geo',                 link: '/reference/api-geo' },
-            { text: 'io.vtk',                 link: '/reference/api-vtk' },
-            { text: 'vis',                    link: '/reference/api-vis' },
+            { text: 'shore.mesh.Mesh',                link: '/reference/api-mesh' },
+            { text: 'shore.mesh.topology',            link: '/reference/api-topology' },
+            { text: 'shore.mesh.spacing (Spacing1D)', link: '/reference/api-spacing' },
+            { text: 'shore.primitive',                link: '/reference/api-primitives' },
+            { text: 'shore.split',                    link: '/reference/api-split' },
+          ],
+        },
+        {
+          text: 'Python API — surface',
+          items: [
+            { text: 'shore.surface.io',                  link: '/reference/api-surface-io' },
+            { text: 'shore.surface.projector',           link: '/reference/api-projector' },
+            { text: 'shore.surface.cap & .equator',      link: '/reference/api-cap-equator' },
+            { text: 'shore.surface.remesh (legacy)',     link: '/reference/api-surface-remesh' },
+          ],
+        },
+        {
+          text: 'Python API — volume',
+          items: [
+            { text: 'shore.volume.spacing',    link: '/reference/api-volume-spacing' },
+            { text: 'shore.volume.jacobian',   link: '/reference/api-jacobian' },
+            { text: 'shore.volume.hyperbolic', link: '/reference/api-hyperbolic' },
+          ],
+        },
+        {
+          text: 'Python API — I/O',
+          items: [
+            { text: 'shore.io.geo',       link: '/reference/api-geo' },
+            { text: 'shore.io.grd',       link: '/reference/api-grd' },
+            { text: 'shore.io.vtk',       link: '/reference/api-vtk' },
+            { text: 'shore.io.adjacency', link: '/reference/api-adjacency' },
+            { text: 'shore.io.cc_par',    link: '/reference/api-cc-par' },
+            { text: 'shore.io.boxes',     link: '/reference/api-boxes-io' },
+            { text: 'shore.boxes',        link: '/reference/api-boxes' },
+          ],
+        },
+        {
+          text: 'Python API — visualisation',
+          items: [
+            { text: 'shore.vis', link: '/reference/api-vis' },
+          ],
+        },
+        {
+          text: 'Python API — internals',
+          items: [
+            { text: 'shore.topology.sphere_cap', link: '/reference/api-sphere-cap' },
           ],
         },
       ],

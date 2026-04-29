@@ -131,4 +131,4 @@ for the rule of thumb.
 - [Algorithm overview](/algorithm/)
 - [Topology catalogue](/topologies/)
 - [Quick start](/guide/quickstart) — worked CLI examples
-- [Chimera context](/concepts/chimera) — overset mesh generation
+- [Chimera context](/guide/chimera) — overset mesh generation

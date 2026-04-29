@@ -4,7 +4,7 @@ layout: home
 hero:
   name: SHORE
   text: Structured Hyperbolic Overlapping Remeshing Engine
-  tagline: Generate structured body-fitted O-grid volumes from raw triangulated surfaces — one command, zero manual topology.
+  tagline: Hyperbolic mesh generation for Chimera CFD — body-fitted near-body grids and parametric backgrounds, in one tool.
   actions:
     - theme: brand
       text: Quick Start
@@ -17,31 +17,31 @@ hero:
       link: https://github.com/szaghi/shore
 
 features:
+  - icon: 🏗️
+    title: Full Chimera assembly in one tool
+    details: Generate every grid an overset assembly needs — body-fitted near-body meshes and parametric backgrounds — in the same world frame. Pack them into the Xall solver bundle (.grd + cc.par + marker boxes) without leaving the SHORE CLI.
+    link: /guide/cc-par-pipeline
+    linkText: Pipeline walkthrough
   - icon: 📐
-    title: STL → 6-block structured volume in one command
-    details: Feed any star-shaped triangulated STL — SHORE builds the 6-block cubed-sphere topology with a single `shore mesh` call. Gnomonic flat-square cap k=0 seed, great-circle equator, C1 spacing match at every cap-equator seam vertex, six Xall-compatible .geo files out.
-    link: /guide/quickstart
-    linkText: Quick start
+    title: Body-fitted near-body meshes
+    details: Two topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid and 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning. One `shore mesh` call from a triangulated body to Xall-compatible .geo files.
+    link: /topologies/cubed-sphere
+    linkText: Cubed sphere
+  - icon: 🧱
+    title: Parametric backgrounds
+    details: Box, annular cylinder, and 5-block flat-caps cylinder primitives with per-axis spacing laws — fill the far field without an STL. Per-edge spacing on Box and Annulus, transfinite-interpolation blends; flat-caps cylinder is Chimera-fringe-free for GPU-friendly backgrounds.
+    link: /topologies/primitives
+    linkText: Primitives
   - icon: 🌊
     title: Seam-aware hyperbolic marching
     details: Each wall-normal layer advances along outward normals computed with centred differences across multi-block seams (ghost rows from partner blocks). Spacing continuity across block edges holds layer by layer; per-layer Laplacian smoothing + Jacobian guard catch any cell inversion immediately.
     link: /algorithm/hyperbolic-marching
     linkText: Algorithm
-  - icon: 🧩
-    title: Topology catalogue
-    details: The production cubed-sphere topology coexists with the simpler single-block O-grid. Each topology is one page; new topologies (C-grid, H-grid) plug into the same algorithm pipeline.
-    link: /topologies/
-    linkText: Topologies
   - icon: 🔍
     title: Focused CLI
-    details: Nine commands — mesh, primitive, split, project, config, info, check, export, view — let you generate, subdivide for parallel solvers, inspect, validate, and visualise both body-fitted and parametric grids. A Rich progress bar shows per-layer Jacobians during marching.
+    details: Sixteen commands cover the full chimera pipeline — generate (`mesh`, `primitive`), subdivide for parallel solvers (`split`), pack for the solver (`grd`, `cc-par`, `boxes-from-stl`), merge multi-component runs (`grd-merge`, `cc-par-merge`), inspect (`info`, `check`), and visualise (`export`, `view`, `boxes-export`). A Rich progress bar shows per-layer Jacobians during marching.
     link: /reference/mesh
     linkText: CLI reference
-  - icon: 🏗️
-    title: Chimera-ready output
-    details: Writes the structured blocks for both near-body (cubed sphere or O-grid) and background (box, annulus, flat-caps cylinder) grids in Xall .geo format, with a single .vtm MultiBlock for ParaView inspection of the full assembly.
-    link: /guide/assembly
-    linkText: Assembly walkthrough
   - icon: 🆓
     title: Free and open source
     details: Released under the MIT license. Pure Python — depends only on NumPy, trimesh, Typer, and Rich. No compiled extensions, no C++ meshing backends.
@@ -49,51 +49,76 @@ features:
 
 ## What is SHORE?
 
-SHORE is the foundational meshing layer for a Chimera (overset) CFD
-mesh generator. Given a body surface — a raw triangulated STL file
-for now, parametric and STEP inputs planned — it produces a
-structured body-fitted volume grid by hyperbolic extrusion.
+SHORE produces every structured grid a Chimera (overset) CFD assembly needs and packages them for the solver. Two product lines, one tool:
+
+**Body-fitted near-body meshes** by hyperbolic normal extrusion of a body surface. Surface input is a triangulated STL today; CAD (STEP / IGES / BREP) is on the roadmap. Two topologies:
 
 ```bash
-# Full pipeline — one command (default: 6-block cubed sphere)
+# 6-block cubed sphere (default) — no polar singularity, conforming seams
 shore mesh fuselage.stl --ni 60 --nj 80 --nk 40 --ds 1e-4 --growth 1.15 -o fuselage -v
 
-# Single-block O-grid alternative (one .geo file, j-periodic)
+# Single-block O-grid — j-periodic, one .geo file
 shore mesh fuselage.stl --topology ogrid --ni 60 --nj 80 --nk 40 -o fuselage
-
-# Or drive everything from a TOML config file (see /reference/config)
-shore mesh -c fuselage.toml
 ```
 
-The result is a body-fitted structured volume that wraps tightly
-around the body, with high near-wall resolution and smoothly growing
-cells toward the far field — exactly what a Chimera solver needs for
-its near-body block.
+**Parametric backgrounds** that fill the far field — no STL needed, just analytic geometry:
+
+```bash
+# Cartesian box
+shore primitive box --min -10 -10 -10 --max 10 10 50 --ni 30 --nj 30 --nk 60 -o background
+
+# 5-block flat-caps cylinder (Chimera-fringe-free; central square + 4 trapezoidal sub-blocks)
+shore primitive flat-caps --r-out 10 --z0 -10 --z1 50 --ni 16 --nc 24 --nk 60 -o background
+```
+
+Then assemble with the Xall pipeline:
+
+```bash
+# Pack each component into binary .grd
+shore grd wall_*.geo -o wall.grd
+shore grd background_*.geo -o background.grd
+
+# Generate the chimera descriptor with marker boxes for hole-cutting
+shore boxes-from-stl fuselage.stl --block sub0 --max-outward-gap 0.10 -o boxes.json
+shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd --boxes boxes.json
+shore cc-par background.adjacency.json background.cc.par --grd background.grd --free-bc -9
+
+# Merge multi-component runs into a single Xall job
+shore grd-merge    background.grd    wall.grd    -o assembly.grd
+shore cc-par-merge background.cc.par wall.cc.par -o assembly.cc.par --grd assembly.grd
+```
+
+Hole cutting, fringe identification, and donor search are the **solver's** responsibility — SHORE produces every grid and every descriptor the solver needs, then steps out of the way.
 
 ## Pipeline at a glance
 
 ```
-STL (raw triangles)
-      │
-      ▼  shore project
-  k=0 layer (ni × nj × 3)   ← structured surface on the body
-      │
-      ▼  hyperbolic marching (inside shore mesh)
-  volume (ni × nj × nk × 3) ← cubed sphere (6 blocks) or O-grid (1 block)
-      │
-      ▼  shore mesh (= project + march)
-  fuselage_*.geo             ← Xall structured grid(s)
+Body-fitted (STL)                 Parametric backgrounds
+  STL (raw triangles)               (no surface input)
+        │                                  │
+        ▼  shore mesh                      ▼  shore primitive
+  cubed sphere (6 blocks)            box | annulus | flat-caps
+  or O-grid (1 block)                (1 or 5 blocks)
+        │                                  │
+        ▼                                  ▼
+  wall_*.geo                          background_*.geo
+        │                                  │
+        ▼  shore grd                       ▼  shore grd
+  wall.grd                            background.grd
+        │                                  │
+        ▼  shore cc-par                    ▼  shore cc-par
+  + shore boxes-from-stl              (no boxes for far-field)
+  wall.cc.par                         background.cc.par
+        └─────────────┬────────────────────┘
+                      ▼  shore grd-merge / shore cc-par-merge
+            assembly.grd  +  assembly.cc.par
+                  (Xall multi-component job)
 ```
 
 
-## Topology
+## Body-fitted topologies
 
-`shore mesh` builds a **6-block cubed-sphere topology**: 4 equatorial sub-blocks
-plus 2 polar cap blocks, all conforming through SHARED-memory seams
-(sub-sub) and DIRICHLET pinning (cap-equator). Cap k=0 seeds use
-**gnomonic flat-square projection**: a flat diamond in the tangent plane
-at each cap pole, radially projected onto the body. Cap cells are square
-by construction, with no concentric pole pattern.
+The cubed-sphere topology is SHORE's flagship and the default for `shore mesh`: 4 equatorial sub-blocks plus 2 polar cap blocks, all conforming through SHARED-memory seams (sub-sub) and DIRICHLET pinning (cap-equator). Cap k=0 seeds use **gnomonic flat-square projection** — a flat diamond in the tangent plane at each cap pole, radially projected onto the body — so cap cells are square by construction with no concentric pole pattern.
 
 ```bash
 shore mesh sphere.stl --ni 40 --nj 60 --nk 30
@@ -102,15 +127,12 @@ shore mesh sphere.stl --ni 40 --nj 60 --nk 30
 
 Spacing continuity is enforced at two levels:
 
-- **k=0 seam C1**: the equator's first/last meridional cell is per-j
-  pinned to the cap-edge first cell at every seam vertex (so the 3
-  edges meeting at each cap-corner share a single first-step length).
-- **Volume seam continuity**: each block computes its outward normal
-  using centred differences across multi-block seams (ghost rows from
-  partner blocks), so the spacing stays continuous on the outer surface
-  layer-by-layer.
+- **k=0 seam C1**: the equator's first/last meridional cell is per-j pinned to the cap-edge first cell at every seam vertex (so the 3 edges meeting at each cap-corner share a single first-step length).
+- **Volume seam continuity**: each block computes its outward normal using centred differences across multi-block seams (ghost rows from partner blocks), so the spacing stays continuous on the outer surface layer-by-layer.
 
-See [Cubed-sphere topology](topologies/cubed-sphere.md) for the full algorithm.
+The single-block O-grid is the simpler alternative — one j-periodic block, polar singular axis rows, one `.geo` file. Suitable for downstream tools that need a single periodic-j block.
+
+See [Cubed-sphere topology](topologies/cubed-sphere.md) and [O-grid topology](topologies/o-grid.md) for the full algorithm.
 
 ## Author
 
