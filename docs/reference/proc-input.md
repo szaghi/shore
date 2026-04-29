@@ -123,12 +123,13 @@ proc.input: 11 blocks across 4 ranks
 ```
 
 Imbalance is `(max - min) / mean` across the per-rank cell totals.
-When it exceeds 10%, a warning recommends `shore split` to subdivide
-the heaviest block(s):
+When it exceeds 5%, a warning recommends [`shore balance`](./balance)
+to plan a topology-safe set of splits:
 
 ```
-Warning: load imbalance is 22.7% (> 10%).  Consider `shore split`
-to subdivide the largest blocks.
+Warning: load imbalance is 22.7% (> 5%).  Run `shore balance` to
+plan a topology-safe set of splits that brings the imbalance within
+tolerance.
 ```
 
 For serial runs (`--np 1`) no summary is printed — there's no

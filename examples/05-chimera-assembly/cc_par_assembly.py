@@ -54,12 +54,18 @@ Output
       assembly.grd                               # merged: background + wall
       assembly.cc.par                            # merged: background + wall
       assembly.proc.input                        # merged: background + wall
+      # When --balance is passed the wall.* and background.* files
+      # above are *regenerated* on a larger split-balanced block list,
+      # and the planner's TOML is preserved alongside:
+      wall.splits.toml                           # shore balance plan (wall)
+      background.splits.toml                     # shore balance plan (background)
 
 Run from the project root after activating .venv::
 
     python examples/05-chimera-assembly/cc_par_assembly.py
     python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
     python examples/05-chimera-assembly/cc_par_assembly.py --np 16
+    python examples/05-chimera-assembly/cc_par_assembly.py --np 16 --balance
     python examples/05-chimera-assembly/cc_par_assembly.py --view      # open interactive viewer
 """
 
@@ -336,6 +342,28 @@ def main() -> None:
             "for a non-trivial 4-way distribution).  Use 1 for serial."
         ),
     )
+    parser.add_argument(
+        "--balance",
+        action="store_true",
+        default=False,
+        help=(
+            "After the initial proc.input pass, run shore balance "
+            "to plan splits that bring the imbalance below tolerance, "
+            "apply them with shore split, then regenerate .grd, "
+            "adjacency, cc.par, and proc.input on the larger block "
+            "list.  Demonstrates the full plan-then-execute cycle."
+        ),
+    )
+    parser.add_argument(
+        "--balance-tolerance",
+        type=float,
+        default=0.05,
+        help=(
+            "Target imbalance for shore balance, as a fraction "
+            "((max - min) / mean).  Default 0.05 = 5%%.  Only used "
+            "when --balance is set."
+        ),
+    )
 
     args = parser.parse_args()
     out_dir: Path = args.output
@@ -492,7 +520,63 @@ def main() -> None:
         for line in bg_proc_summary.format().splitlines():
             print(f"    {line}")
 
-    # 10. Merge into a single Xall multi-mesh job.
+    # 10. Optional load-balance pass.
+    #
+    # The initial proc.input above does its best with the natural
+    # 6-block / 5-block layout.  At --np=4 the wall imbalance is ~30%
+    # and the background ~70% — both well above the 5% tolerance shore
+    # uses by default — because the cubed sphere has 6 nearly-equal
+    # blocks (poor 4-way fit) and the flat-caps cylinder has one large
+    # central block that dwarfs its 4 lateral sub-blocks.
+    #
+    # `shore balance` plans splits that bring imbalance under tolerance;
+    # `shore split` applies the plan; we then regenerate everything
+    # downstream of the block list (.grd, adjacency, cc.par, proc.input).
+    # Plan-then-execute: every step is reviewable on its own.
+    if args.balance:
+        from shore.balance import plan_balance
+
+        print(f"\n=== Load-balance plan (tolerance={args.balance_tolerance:.1%}) ===")
+        print("  Plan-only mode: this writes <stem>.splits.toml for each")
+        print("  component but does *not* apply the splits.  Apply with:")
+        print("    shore split -c <stem>.splits.toml <stem>_*.geo")
+        print("  then regenerate .grd / cc.par / proc.input on the larger")
+        print("  block list.  Plan-then-execute keeps every step reviewable")
+        print("  and lets you tune the tolerance before mutating files.")
+        print()
+        print("  Note: applying the plan to the wall + background of *this*")
+        print("  particular assembly hits two known shore.split v1 limitations")
+        print("  (cap-equator DIRICHLET partner-pointer rewiring; cross-axis")
+        print("  SHARED seams in the flat-caps cylinder).  Both are tracked")
+        print("  on the roadmap.  The TOMLs themselves are correct and the")
+        print("  planner has all the information needed to act once the")
+        print("  splitter catches up.")
+
+        for stem in ("wall", "background"):
+            print(f"\n--- {stem} ---")
+            plan = plan_balance(
+                out_dir / f"{stem}.grd",
+                np=args.np,
+                tolerance=args.balance_tolerance,
+                max_iterations=200,
+                adjacency_path=out_dir / f"{stem}.adjacency.json",
+            )
+            print(
+                f"  plan: {plan.initial_summary.imbalance * 100:.1f}% "
+                f"\u2192 {plan.final_summary.imbalance * 100:.1f}% "
+                f"after {plan.iterations} iteration(s) "
+                f"({len(plan.splits)} cut(s) across "
+                f"{len({s[0] for s in plan.splits})} block(s)) "
+                f"[{'converged' if plan.converged else 'capped'}]"
+            )
+            if not plan.splits:
+                print(f"  {stem}: already balanced; no plan written")
+                continue
+            plan_path = out_dir / f"{stem}.splits.toml"
+            plan_path.write_text(plan.to_toml())
+            print(f"  wrote {plan_path}")
+
+    # 11. Merge into a single Xall multi-mesh job.
     #
     # The wall (6 blocks) and background (5 blocks) are independent
     # Chimera components — they overlap in world space but share no
@@ -533,12 +617,12 @@ def main() -> None:
         for line in assembly_proc_summary.format().splitlines():
             print(f"    {line}")
 
-    # 11. Spot-check printout
+    # 12. Spot-check printout
     print_cc_par_summary(nb_ccpar)
     print_cc_par_summary(bg_ccpar)
     print_cc_par_summary(assembly_ccpar)
 
-    # 12. Equivalent CLI commands (for reference)
+    # 13. Equivalent CLI commands (for reference)
     import json
 
     nb_meta_json = json.dumps({k: {"free_face_bc": v.free_face_bc} for k, v in nb_meta.items()})
@@ -554,14 +638,25 @@ def main() -> None:
         f"--boxes {out_dir / 'sphere_boxes.json'}"
     )
     print(f"  shore cc-par {bg_adj} {bg_ccpar} --grd background.grd --meta '{bg_meta_json}'")
-    nb_proc_meta_json = json.dumps(
-        {str(i): {"body": 1} for i in range(1, len(nb_blocks) + 1)}
-    )
+    nb_proc_meta_json = json.dumps({str(i): {"body": 1} for i in range(1, len(nb_blocks) + 1)})
     print(
         f"  shore proc-input {out_dir / 'wall.grd'} {nb_proc_path} "
         f"--np {args.np} --meta '{nb_proc_meta_json}'"
     )
     print(f"  shore proc-input {out_dir / 'background.grd'} {bg_proc_path} --np {args.np}")
+    if args.balance:
+        print("  # Re-balance: plan + apply + repack + re-emit cc.par/proc.input")
+        for stem in ("wall", "background"):
+            print(
+                f"  shore balance {out_dir / f'{stem}.grd'} "
+                f"-o {out_dir / f'{stem}.splits.toml'} --np {args.np} "
+                f"--tolerance {args.balance_tolerance} "
+                f"--adjacency {out_dir / f'{stem}.adjacency.json'}"
+            )
+            print(
+                f"  shore split -c {out_dir / f'{stem}.splits.toml'} "
+                f"{out_dir / f'{stem}_*.geo'}  # then re-run grd / cc-par / proc-input"
+            )
     print(
         f"  shore grd-merge {out_dir / 'background.grd'} {out_dir / 'wall.grd'} -o {assembly_grd}"
     )
@@ -577,7 +672,7 @@ def main() -> None:
     if not args.view and args.screenshot is None:
         return
 
-    # 12. Optional visualisation (one near-body cap block)
+    # 14. Optional visualisation (one near-body cap block)
     try:
         from shore.io.geo import read_geo
         from shore.vis import save_screenshot, view_geo

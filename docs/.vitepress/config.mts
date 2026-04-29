@@ -109,7 +109,8 @@ export default defineConfig({
         {
           text: 'Adjacency and parallelism',
           items: [
-            { text: 'shore split', link: '/reference/split' },
+            { text: 'shore split',   link: '/reference/split' },
+            { text: 'shore balance', link: '/reference/balance' },
           ],
         },
         {
@@ -146,6 +147,7 @@ export default defineConfig({
             { text: 'shore.mesh.spacing (Spacing1D)', link: '/reference/api-spacing' },
             { text: 'shore.primitive',                link: '/reference/api-primitives' },
             { text: 'shore.split',                    link: '/reference/api-split' },
+            { text: 'shore.balance',                  link: '/reference/api-balance' },
           ],
         },
         {

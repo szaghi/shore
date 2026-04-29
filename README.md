@@ -21,7 +21,7 @@
 <td><b>🌊 Seam-aware hyperbolic marching</b><br><sub>Each wall-normal layer advances along outward normals computed with centred differences across multi-block seams (ghost rows from partner blocks). Spacing continuity across block edges holds layer by layer; per-layer Laplacian smoothing + Jacobian guard catch any cell inversion immediately. <a href="https://szaghi.github.io/shore/algorithm/hyperbolic-marching">Algorithm</a></sub></td>
 </tr>
 <tr>
-<td><b>🔍 Focused CLI</b><br><sub>Eighteen commands cover the full chimera pipeline — generate (<code>mesh</code>, <code>primitive</code>), subdivide for parallel solvers (<code>split</code>), pack for the solver (<code>grd</code>, <code>cc-par</code>, <code>proc-input</code>, <code>boxes-from-stl</code>), merge multi-component runs (<code>grd-merge</code>, <code>cc-par-merge</code>, <code>proc-input-merge</code>), inspect (<code>info</code>, <code>check</code>), and visualise (<code>export</code>, <code>view</code>, <code>boxes-export</code>). A Rich progress bar shows per-layer Jacobians during marching. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
+<td><b>🔍 Focused CLI</b><br><sub>Nineteen commands cover the full chimera pipeline — generate (<code>mesh</code>, <code>primitive</code>), subdivide and balance for parallel solvers (<code>split</code>, <code>balance</code>), pack for the solver (<code>grd</code>, <code>cc-par</code>, <code>proc-input</code>, <code>boxes-from-stl</code>), merge multi-component runs (<code>grd-merge</code>, <code>cc-par-merge</code>, <code>proc-input-merge</code>), inspect (<code>info</code>, <code>check</code>), and visualise (<code>export</code>, <code>view</code>, <code>boxes-export</code>). A Rich progress bar shows per-layer Jacobians during marching. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
 <td><b>🎨 ParaView and Jupyter visualization</b><br><sub>Export to VTK StructuredGrid (<code>shore export</code>) and MultiBlock (<code>.vtm</code>) for ParaView with per-cell Jacobian colour maps and overlaid marker boxes. Or use <code>shore view</code> for an immediate PyVista window, or <code>shore.vis</code> directly in Jupyter notebooks with the HTML backend. <a href="https://szaghi.github.io/shore/reference/api-vis">API reference</a></sub></td>
 </tr>
 <tr>
@@ -149,12 +149,12 @@ The full walkthrough — including the `examples/05-chimera-assembly/cc_par_asse
 
 ## CLI reference
 
-Eighteen commands, grouped by purpose:
+Nineteen commands, grouped by purpose:
 
 | Group | Commands |
 |---|---|
 | **Mesh generation** | `shore mesh`, `shore primitive`, `shore project` |
-| **Adjacency / parallelism** | `shore split` |
+| **Adjacency / parallelism** | `shore split`, `shore balance` |
 | **Xall pipeline** | `shore grd`, `shore grd-merge`, `shore cc-par`, `shore cc-par-merge`, `shore proc-input`, `shore proc-input-merge`, `shore boxes-from-stl` |
 | **Inspection** | `shore info`, `shore check` |
 | **Visualisation** | `shore export`, `shore view`, `shore boxes-export` |

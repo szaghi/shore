@@ -216,10 +216,27 @@ shore proc-input background.grd background.proc.input --np 4
 ```
 
 For `--np > 1` a balance summary is printed on stderr; if imbalance
-exceeds 10%, a warning recommends `shore split` to subdivide the
-heaviest blocks. See [`shore proc-input`](/reference/proc-input)
-for the full command reference and the `--meta` flag for explicit
-per-block `proc` / `group` / `body` overrides.
+exceeds 5%, a warning recommends [`shore balance`](/reference/balance)
+to plan a topology-safe set of splits.  See
+[`shore proc-input`](/reference/proc-input) for the full command
+reference and the `--meta` flag for explicit per-block `proc` /
+`group` / `body` overrides.
+
+::: tip Want better balance?
+If the imbalance summary fires the warning, run
+[`shore balance`](/reference/balance) before going to merge:
+
+```bash
+shore balance wall.grd -o wall.splits.toml --np 16 \
+              --adjacency wall.adjacency.json
+shore split -c wall.splits.toml wall_*.geo       # apply the plan
+shore grd wall_split_*.geo -o wall.grd            # repack
+shore proc-input wall.grd wall.proc.input --np 16 # re-balance
+```
+
+Then go back to step 5 (cc.par) and step 7 (merge) with the
+larger block list.
+:::
 
 ## Step 7 — Merge into the assembly
 

@@ -1890,11 +1890,12 @@ def proc_input(
     _console.print(f"[green]✓[/green] Wrote {out}")
     if np > 1:
         _err.print(summary.format())
-        if summary.imbalance > 0.10:
+        if summary.imbalance > 0.05:
             _err.print(
                 f"[yellow]Warning:[/yellow] load imbalance is "
-                f"{summary.imbalance * 100:.1f}% (> 10%).  "
-                "Consider `shore split` to subdivide the largest blocks."
+                f"{summary.imbalance * 100:.1f}% (> 5%).  "
+                "Run `shore balance` to plan a topology-safe set of splits "
+                "that brings the imbalance within tolerance."
             )
 
 
@@ -1977,6 +1978,119 @@ def proc_input_merge(
     _console.print(f"[green]✓[/green] Wrote {out} ({len(inputs)} inputs merged)")
     if summary.np > 1:
         _err.print(summary.format())
+
+
+# ---------------------------------------------------------------------------
+# shore balance
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="balance")
+def balance(
+    grd: Annotated[
+        Path,
+        typer.Argument(help="Path to the .grd file (block ordering and weights)."),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Output split.toml path."),
+    ],
+    np: Annotated[
+        int,
+        typer.Option(
+            "--np",
+            help="Number of MPI ranks (>= 1).  The planner balances against this rank count.",
+        ),
+    ],
+    tolerance: Annotated[
+        float,
+        typer.Option(
+            "--tolerance",
+            help=(
+                "Target fractional imbalance (max-min)/mean.  Default 0.05 (5%).  "
+                "When the initial balance is already within tolerance, the plan is empty."
+            ),
+        ),
+    ] = 0.05,
+    max_iterations: Annotated[
+        int,
+        typer.Option(
+            "--max-iterations",
+            help=(
+                "Cap on planning iterations (each iteration adds one cut, possibly "
+                "with paired co-splits across SHARED / DIRICHLET seams).  Default 200."
+            ),
+        ),
+    ] = 200,
+    adjacency: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency",
+            help=(
+                "Optional path to a .adjacency.json sidecar.  When supplied, the "
+                "planner refuses to break SHARED / DIRICHLET seams without paired "
+                "co-splits and prefers axes free of seam coupling.  Without it, the "
+                "planner uses longest-axis-first with no seam awareness, and the "
+                "resulting plan may be rejected by `shore split`."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Plan splits to bring a multi-block mesh's MPI load imbalance below tolerance.
+
+    Reads the .grd's per-block cell counts and (optionally) the adjacency JSON's
+    seam graph; iteratively schedules cuts on the heaviest block until imbalance
+    is within tolerance or max-iterations is hit.  Writes a split.toml in the
+    `shore split` schema.
+
+    Typical use:
+
+        shore balance wall.grd -o splits.toml --np 16 --adjacency wall.adjacency.json
+        shore split -c splits.toml wall_*.geo                  # apply the plan
+        shore grd wall_split_*.geo -o wall.grd                 # repack
+        shore proc-input wall.grd wall.proc.input --np 16      # final balance
+
+    The cap at --max-iterations is a safety belt; raise it for high --np runs
+    on small block counts.  When the planner can't reach the tolerance, it
+    emits the best-found plan and a warning.
+    """
+    if not grd.exists():
+        _err.print(f"[red]Error:[/red] .grd file not found: {grd}")
+        raise typer.Exit(1) from None
+    if adjacency is not None and not adjacency.exists():
+        _err.print(f"[red]Error:[/red] adjacency file not found: {adjacency}")
+        raise typer.Exit(1) from None
+
+    from shore.balance import plan_balance
+
+    try:
+        plan = plan_balance(
+            grd,
+            np=np,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            adjacency_path=adjacency,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    output.write_text(plan.to_toml(), encoding="utf-8")
+    _console.print(f"[green]✓[/green] Wrote {output}")
+
+    blocks_touched = len({s[0] for s in plan.splits})
+    _err.print(
+        f"shore balance: initial imbalance {plan.initial_summary.imbalance * 100:.1f}% "
+        f"→ final {plan.final_summary.imbalance * 100:.1f}% "
+        f"after {plan.iterations} iteration(s) "
+        f"({len(plan.splits)} cut(s) across {blocks_touched} block(s))"
+    )
+    if not plan.converged and plan.iterations > 0:
+        _err.print(
+            f"[yellow]Warning:[/yellow] planner did not reach the tolerance "
+            f"({plan.final_summary.imbalance * 100:.1f}% > {tolerance * 100:.1f}%).  "
+            "Increase --max-iterations or accept the best-found plan."
+        )
 
 
 # ---------------------------------------------------------------------------
