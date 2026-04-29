@@ -81,7 +81,7 @@ multi-component job.
 | File | What it does |
 |---|---|
 | `assembly_sphere_in_cylinder.py` | Build the two meshes (cubed-sphere wall + flat-caps cylinder background) sharing one world domain and bundle them into a single `assembly.vtm` for ParaView. The reference for the [assembly walkthrough](https://szaghi.github.io/shore/guide/assembly). |
-| `cc_par_assembly.py` | Continuation of the above: emit per-component `.grd`, `.adjacency.json`, marker boxes from the body STL, and `cc.par`; merge into `assembly.grd` + `assembly.cc.par`. The reference for the [cc.par + boxes pipeline](https://szaghi.github.io/shore/guide/cc-par-pipeline). |
+| `chimera_assembly.py` | Continuation of the above: emit per-component `.grd`, `.adjacency.json`, marker boxes from the body STL, and `cc.par`; merge into `assembly.grd` + `assembly.cc.par`. The reference for the [cc.par + boxes pipeline](https://szaghi.github.io/shore/guide/cc-par-pipeline). |
 | `config_assembly_near_body.toml` | TOML config for the near-body cubed-sphere mesh. |
 | `config_assembly_background.toml` | TOML config for the flat-caps cylinder background. |
 

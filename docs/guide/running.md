@@ -211,7 +211,7 @@ choices, ParaView inspection workflow, and the explicit boundary
 between what SHORE produces and what the downstream solver does —
 lives in [Assembly walkthrough](/guide/assembly).
 
-### `examples/05-chimera-assembly/cc_par_assembly.py` — assembly + Xall `cc.par` generation
+### `examples/05-chimera-assembly/chimera_assembly.py` — assembly + Xall `cc.par` generation
 
 Extends the assembly example by adding adjacency JSON sidecars, VTK
 MultiBlock exports, and `cc.par` generation for both meshes.  Viewer is
@@ -219,13 +219,13 @@ off by default; pass `--view` to open it.
 
 ```bash
 # Generate everything headlessly.
-python examples/05-chimera-assembly/cc_par_assembly.py
+python examples/05-chimera-assembly/chimera_assembly.py
 
 # Custom output directory.
-python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
+python examples/05-chimera-assembly/chimera_assembly.py -o my_run
 
 # Open the interactive viewer after generation.
-python examples/05-chimera-assembly/cc_par_assembly.py --view
+python examples/05-chimera-assembly/chimera_assembly.py --view
 ```
 
 Output:

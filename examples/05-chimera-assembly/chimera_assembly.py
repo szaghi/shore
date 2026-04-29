@@ -62,11 +62,11 @@ Output
 
 Run from the project root after activating .venv::
 
-    python examples/05-chimera-assembly/cc_par_assembly.py
-    python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
-    python examples/05-chimera-assembly/cc_par_assembly.py --np 16
-    python examples/05-chimera-assembly/cc_par_assembly.py --np 16 --balance
-    python examples/05-chimera-assembly/cc_par_assembly.py --view      # open interactive viewer
+    python examples/05-chimera-assembly/chimera_assembly.py
+    python examples/05-chimera-assembly/chimera_assembly.py -o my_run
+    python examples/05-chimera-assembly/chimera_assembly.py --np 16
+    python examples/05-chimera-assembly/chimera_assembly.py --np 16 --balance
+    python examples/05-chimera-assembly/chimera_assembly.py --view      # open interactive viewer
 """
 
 from __future__ import annotations
@@ -369,7 +369,7 @@ def main() -> None:
     out_dir: Path = args.output
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=== cc_par_assembly ===")
+    print("=== chimera_assembly ===")
     print(f"output directory: {out_dir.resolve()}")
 
     # 1. STL

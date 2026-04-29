@@ -7,7 +7,7 @@ a flat-caps cylinder background), produce one `.grd` and one
 the body, then **merge** the two pairs into a single Xall-ready
 assembly.
 
-The reference example is at `examples/05-chimera-assembly/cc_par_assembly.py` — every
+The reference example is at `examples/05-chimera-assembly/chimera_assembly.py` — every
 step in this guide maps to a function call in that script, which
 runs end-to-end without external data.
 
@@ -309,7 +309,7 @@ intersect the wall and the body STL.
 
 ## Reference
 
-- [`examples/05-chimera-assembly/cc_par_assembly.py`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/cc_par_assembly.py) — the full script.
+- [`examples/05-chimera-assembly/chimera_assembly.py`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.py) — the full script.
 - [`shore cc-par`](/reference/cc-par) — file format reference.
 - [`shore cc-par-merge`](/reference/cc-par-merge) — multi-component merge.
 - [`shore grd`](/reference/grd) and [`shore grd-merge`](/reference/grd-merge) — binary mesh writers.

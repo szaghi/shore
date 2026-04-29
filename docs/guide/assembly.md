@@ -177,19 +177,19 @@ size that matters, not the law per se.
 ## Generating Xall `cc.par` files
 
 Once the geometry is verified in ParaView, convert each mesh to Xall
-inputs with `examples/05-chimera-assembly/cc_par_assembly.py` — a direct continuation of
+inputs with `examples/05-chimera-assembly/chimera_assembly.py` — a direct continuation of
 this example that adds four steps: adjacency JSON sidecars, VTK
 MultiBlock exports, binary `.grd` files, and `cc.par` generation.
 
 ```bash
 # Generate everything headlessly (no viewer).
-python examples/05-chimera-assembly/cc_par_assembly.py
+python examples/05-chimera-assembly/chimera_assembly.py
 
 # Custom output directory.
-python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
+python examples/05-chimera-assembly/chimera_assembly.py -o my_run
 
 # Open the interactive viewer after generation.
-python examples/05-chimera-assembly/cc_par_assembly.py --view
+python examples/05-chimera-assembly/chimera_assembly.py --view
 ```
 
 The script uses `shore.io.cc_par.BlockMeta` to assign **per-block** BC

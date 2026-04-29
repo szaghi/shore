@@ -126,7 +126,7 @@ derivation; the short version:
 ### Picking `max_outward_gap`
 
 Supply a value smaller than the body's near-mesh wall-normal
-thickness. For the `cc_par_assembly` example (unit-radius sphere,
+thickness. For the `chimera_assembly` example (unit-radius sphere,
 wall thickness ~0.214), `max_outward_gap=0.30` is conservative and
 produces a few dozen merged boxes on the icosphere.
 
