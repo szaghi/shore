@@ -16,10 +16,12 @@ count for tiny gap budgets relative to the body size.
 Methods
 -------
 - ``"voxel-fill"`` (default) — voxelise the body's AABB at a
-  resolution such that every voxel inside the body has corners
+  resolution such that every body-overlapping voxel has corners
   within ``max_outward_gap`` of the body surface (outward only).
-  Each inside-body voxel becomes one axis-aligned :class:`Box`.
-  Produces full body-interior coverage.
+  Each voxel that overlaps the body becomes one axis-aligned
+  :class:`Box`; together they form a watertight cover of the
+  body (interior + surface shell), suitable for chimera
+  hole-cutting.
 - ``"aabb"``  — single world-axis-aligned bounding box of the body.
   Best effort: emits a ``UserWarning`` when the measured outward
   gap exceeds ``max_outward_gap``.  Useful as a quick preview only.
@@ -191,70 +193,272 @@ def _voxel_fill(
     associated_block: str,
     max_outward_gap: float,
 ) -> list[Box]:
-    """Voxelise the body's AABB and emit strictly-inside-body voxels as boxes.
+    """Voxelise the body's AABB, then greedy-merge the cover.
 
-    Voxel side is chosen so the voxel half-diagonal does not exceed
-    ``max_outward_gap``: ``side <= 2 * max_outward_gap / sqrt(3)``.
-    A voxel with centre **strictly inside** the body therefore has
-    every corner within ``max_outward_gap`` of the body surface in
-    the worst case.
+    Stage 1 — seed grid.  Voxel side is chosen so the voxel
+    half-diagonal does not exceed ``max_outward_gap``:
+    ``side <= max_outward_gap / sqrt(3)``.  Inclusion test:
+    ``signed_distance(centre) > -half_diag``, which admits both
+    centre-inside voxels and body-shell voxels (centre outside but
+    within ``half_diag`` of the surface).  Together they form a
+    watertight cover of the body, and every voxel's corners sit at
+    most ``max_outward_gap`` outside the body surface.
 
-    Inclusion test: ``signed_distance(centre) > 0`` (positive inside,
-    negative outside per ``trimesh.proximity``).  Voxels with centre
-    on or outside the body surface are excluded.
-
-    Coverage trade-off: a thin body-shell of width up to ``side / 2``
-    near the body surface is *not* covered by these voxels (the
-    voxels just outside the body surface aren't included).  Body-
-    interior background-mesh cells that fall in this shell are
-    typically also inside the body's near-mesh (wall) and are
-    handled by the wall mesh's own overset donor logic, so the
-    boxes don't need to cover them.  Pick ``max_outward_gap`` small
-    enough that this shell is comfortably inside the wall.
+    Stage 2 — greedy AABB merge.  The seed cover is wasteful: a
+    cubic grid forces all three axes to the same fine resolution
+    even when the local body geometry would tolerate a coarser slab.
+    :func:`_greedy_merge_grid` repeatedly merges face-adjacent grid
+    blocks into larger AABBs, accepting each merge only when the
+    merged block's 8 corners *all* satisfy the outward-gap budget.
+    Body coverage is preserved by construction (a merge is a strict
+    superset of its parts), and the gap budget is rechecked at the
+    enlarged corners.  Order: merge along the longest axis first to
+    favour slab-like outputs.
     """
     import trimesh.proximity
 
     sqrt3 = float(np.sqrt(3.0))
-    side = 2.0 * max_outward_gap / sqrt3
+    side = max_outward_gap / sqrt3
 
     lo = np.asarray(mesh.vertices, dtype=np.float64).min(axis=0)
     hi = np.asarray(mesh.vertices, dtype=np.float64).max(axis=0)
     extent = hi - lo
     counts = np.maximum(1, np.ceil(extent / side).astype(np.int64))
-    # Recompute per-axis side so voxel grid covers AABB exactly.
     actual_side = extent / counts
+    half_diag = 0.5 * float(np.linalg.norm(actual_side))
 
-    # Generate voxel-centre coordinates: (Nx*Ny*Nz, 3) array.
     cx = lo[0] + (np.arange(counts[0]) + 0.5) * actual_side[0]
     cy = lo[1] + (np.arange(counts[1]) + 0.5) * actual_side[1]
     cz = lo[2] + (np.arange(counts[2]) + 0.5) * actual_side[2]
     grid_x, grid_y, grid_z = np.meshgrid(cx, cy, cz, indexing="ij")
     centres = np.column_stack([grid_x.ravel(), grid_y.ravel(), grid_z.ravel()])
 
-    # Strict inclusion: voxel centre must be inside the body.
-    # ``trimesh.proximity.signed_distance``: positive inside, negative
-    # outside.  Include only voxels whose centre is strictly inside.
-    # The voxel's worst-case corner is at most ``half_diag`` outside
-    # the body surface, where ``half_diag = side * sqrt(3) / 2 <=
-    # max_outward_gap`` by construction.
     proximity = trimesh.proximity.ProximityQuery(mesh)
     signed = proximity.signed_distance(centres)
-    include = signed > 0.0
+    include = (signed > -half_diag).reshape(tuple(int(c) for c in counts))
 
     if not include.any():
         return []
 
-    boxes: list[Box] = []
-    half_side = 0.5 * actual_side
-    for centre in centres[include]:
-        boxes.append(
-            Box.from_aabb(
-                centre - half_side,
-                centre + half_side,
-                associated_block,
-            )
+    blocks = _greedy_merge_grid(
+        include,
+        lo=lo,
+        side=actual_side,
+        proximity=proximity,
+        max_outward_gap=max_outward_gap,
+    )
+
+    return [
+        Box.from_aabb(box_lo, box_hi, associated_block) for box_lo, box_hi in blocks
+    ]
+
+
+def _greedy_merge_grid(
+    include: np.ndarray,
+    *,
+    lo: np.ndarray,
+    side: np.ndarray,
+    proximity,
+    max_outward_gap: float,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Greedy axis-aligned merge over a regular voxel cover.
+
+    Parameters
+    ----------
+    include :
+        Bool array of shape ``(Nx, Ny, Nz)``; True voxels form the
+        seed cover and must be tiled by the returned AABBs.
+    lo, side :
+        World-space origin and per-axis voxel side.  World coordinates
+        of the AABB ``[i0:i1, j0:j1, k0:k1]`` are
+        ``lo + (i0, j0, k0) * side`` (low corner) and
+        ``lo + (i1, j1, k1) * side`` (high corner).
+    proximity :
+        ``trimesh.proximity.ProximityQuery`` for the body.
+    max_outward_gap :
+        Per-vertex outward-gap budget that every merged AABB's 8
+        corners must satisfy.
+
+    Returns
+    -------
+    list of ``(lo3, hi3)``
+        World-space low/high corners of the merged AABBs.  Their
+        union equals the union of the seed voxels.
+
+    Algorithm
+    ---------
+    Each block is a half-open grid range ``[i0:i1, j0:j1, k0:k1]``
+    plus a flag for whether the block is fully populated (only fully
+    populated blocks are merge candidates; seed voxels start as
+    unit-extent fully populated blocks).
+
+    Two blocks are merge-eligible iff:
+      1. they are face-adjacent along one axis ``a`` (one's high
+         coord on axis ``a`` equals the other's low coord on ``a``);
+      2. their grid ranges on the other two axes match exactly;
+      3. the merged AABB's 8 world-space corners *all* have outward
+         gap to the body <= ``max_outward_gap``.
+
+    Pass order: along each axis in turn, in descending order of the
+    seed grid's extent on that axis.  This biases the result toward
+    slab-shaped outputs when the body's elongation differs by axis.
+    """
+    nx, ny, nz = (int(s) for s in include.shape)
+
+    # Active blocks as (i0, i1, j0, j1, k0, k1).  Initial seed: one
+    # block per True voxel.
+    blocks: list[tuple[int, int, int, int, int, int]] = []
+    ii, jj, kk = np.where(include)
+    for i, j, k in zip(ii.tolist(), jj.tolist(), kk.tolist(), strict=True):
+        blocks.append((i, i + 1, j, j + 1, k, k + 1))
+
+    # Merge order: longest seed-axis first.
+    axes_order = sorted(range(3), key=lambda a: -include.shape[a])
+
+    for axis in axes_order:
+        blocks = _merge_pass_axis(
+            blocks,
+            axis=axis,
+            lo=lo,
+            side=side,
+            proximity=proximity,
+            max_outward_gap=max_outward_gap,
         )
-    return boxes
+
+    # Convert grid-range blocks to world-space (lo3, hi3) pairs.
+    out: list[tuple[np.ndarray, np.ndarray]] = []
+    for i0, i1, j0, j1, k0, k1 in blocks:
+        block_lo = lo + np.array([i0, j0, k0]) * side
+        block_hi = lo + np.array([i1, j1, k1]) * side
+        out.append((block_lo, block_hi))
+    return out
+
+
+def _merge_pass_axis(
+    blocks: list[tuple[int, int, int, int, int, int]],
+    *,
+    axis: int,
+    lo: np.ndarray,
+    side: np.ndarray,
+    proximity,
+    max_outward_gap: float,
+) -> list[tuple[int, int, int, int, int, int]]:
+    """One full merge sweep along ``axis``.
+
+    Group blocks by their (other-two-axes) grid range.  Inside each
+    group, sort by axis-low coord and walk a sweep, merging
+    consecutive face-adjacent blocks whenever the merged corners fit
+    the gap budget.  Repeat the sweep until a pass makes no merges.
+    """
+    other_axes = tuple(a for a in range(3) if a != axis)
+
+    while True:
+        groups: dict[tuple[int, int, int, int], list[int]] = {}
+        for idx, b in enumerate(blocks):
+            key_lo_a = b[2 * other_axes[0]]
+            key_hi_a = b[2 * other_axes[0] + 1]
+            key_lo_b = b[2 * other_axes[1]]
+            key_hi_b = b[2 * other_axes[1] + 1]
+            key = (key_lo_a, key_hi_a, key_lo_b, key_hi_b)
+            groups.setdefault(key, []).append(idx)
+
+        merged_any = False
+        keep = np.ones(len(blocks), dtype=bool)
+        new_blocks: list[tuple[int, int, int, int, int, int]] = []
+
+        for indices in groups.values():
+            if len(indices) < 2:
+                continue
+            # Sort group by low coord on merge axis.
+            indices.sort(key=lambda i: blocks[i][2 * axis])
+
+            # Sweep: try to extend a running block forward.
+            run_idx = indices[0]
+            run = blocks[run_idx]
+            run_keep = [run_idx]
+            for nxt_idx in indices[1:]:
+                nxt = blocks[nxt_idx]
+                # Face-adjacency on merge axis.
+                if run[2 * axis + 1] != nxt[2 * axis]:
+                    # Gap; flush run, start fresh.
+                    if len(run_keep) > 1:
+                        merged_any = True
+                        for i in run_keep:
+                            keep[i] = False
+                        new_blocks.append(run)
+                    run = nxt
+                    run_idx = nxt_idx
+                    run_keep = [nxt_idx]
+                    continue
+
+                # Merged extent: low coords from run, high coords from
+                # run except along merge axis where it takes nxt's high.
+                candidate = (
+                    run[0],
+                    nxt[1] if axis == 0 else run[1],
+                    run[2],
+                    nxt[3] if axis == 1 else run[3],
+                    run[4],
+                    nxt[5] if axis == 2 else run[5],
+                )
+                if _block_corners_within_gap(
+                    candidate,
+                    lo=lo,
+                    side=side,
+                    proximity=proximity,
+                    max_outward_gap=max_outward_gap,
+                ):
+                    run = candidate
+                    run_keep.append(nxt_idx)
+                else:
+                    if len(run_keep) > 1:
+                        merged_any = True
+                        for i in run_keep:
+                            keep[i] = False
+                        new_blocks.append(run)
+                    run = nxt
+                    run_idx = nxt_idx
+                    run_keep = [nxt_idx]
+
+            if len(run_keep) > 1:
+                merged_any = True
+                for i in run_keep:
+                    keep[i] = False
+                new_blocks.append(run)
+
+        if not merged_any:
+            return blocks
+
+        blocks = [b for i, b in enumerate(blocks) if keep[i]] + new_blocks
+
+
+def _block_corners_within_gap(
+    block: tuple[int, int, int, int, int, int],
+    *,
+    lo: np.ndarray,
+    side: np.ndarray,
+    proximity,
+    max_outward_gap: float,
+) -> bool:
+    """True iff every world-space corner of ``block`` has outward gap <= budget."""
+    i0, i1, j0, j1, k0, k1 = block
+    block_lo = lo + np.array([i0, j0, k0]) * side
+    block_hi = lo + np.array([i1, j1, k1]) * side
+    corners = np.array(
+        [
+            [block_lo[0], block_lo[1], block_lo[2]],
+            [block_hi[0], block_lo[1], block_lo[2]],
+            [block_lo[0], block_hi[1], block_lo[2]],
+            [block_hi[0], block_hi[1], block_lo[2]],
+            [block_lo[0], block_lo[1], block_hi[2]],
+            [block_hi[0], block_lo[1], block_hi[2]],
+            [block_lo[0], block_hi[1], block_hi[2]],
+            [block_hi[0], block_hi[1], block_hi[2]],
+        ]
+    )
+    signed = proximity.signed_distance(corners)
+    outward = np.maximum(0.0, -signed)
+    return bool(outward.max() <= max_outward_gap + 1e-12)
 
 
 # ---------------------------------------------------------------------------

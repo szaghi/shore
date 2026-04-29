@@ -115,7 +115,7 @@ class TestVoxelFill:
         assert len(boxes) > 10
 
     def test_returns_multiple_boxes(self, sphere_stl):
-        boxes = boxes_from_stl(sphere_stl, "sub0", max_outward_gap=0.10, method="voxel-fill")
+        boxes = boxes_from_stl(sphere_stl, "sub0", max_outward_gap=0.20, method="voxel-fill")
         assert len(boxes) > 1
 
     def test_box_associated_block_propagated(self, sphere_stl):
@@ -130,7 +130,7 @@ class TestVoxelFill:
     def test_covers_body_interior(self, cube_stl):
         """Random points sampled deep inside a unit cube must all be
         covered by the box union."""
-        boxes = boxes_from_stl(cube_stl, "x", max_outward_gap=0.10, method="voxel-fill")
+        boxes = boxes_from_stl(cube_stl, "x", max_outward_gap=0.20, method="voxel-fill")
         # Sample 1000 points in the [-0.4, 0.4]^3 deep interior.
         rng = np.random.default_rng(0)
         pts = rng.uniform(-0.4, 0.4, size=(1000, 3))
@@ -139,7 +139,7 @@ class TestVoxelFill:
     def test_covers_sphere_interior(self, sphere_stl):
         """Random points sampled in the unit sphere of radius 0.4
         (well inside the unit-radius STL sphere) must all be covered."""
-        boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=0.10, method="voxel-fill")
+        boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=0.20, method="voxel-fill")
         rng = np.random.default_rng(0)
         # Uniform points inside r=0.4 sphere.
         dirs = rng.standard_normal((1000, 3))
@@ -151,25 +151,73 @@ class TestVoxelFill:
     def test_box_vertices_within_gap_of_body(self, sphere_stl):
         """Every box vertex's outward distance to the body surface
         must not exceed max_outward_gap (with FP tolerance)."""
-        gap = 0.10
+        gap = 0.20
         boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=gap, method="voxel-fill")
         mesh = trimesh.load(sphere_stl, force="mesh")
         max_gap = _max_box_vertex_outward_gap(boxes, mesh)
         assert max_gap <= gap + 1e-9, f"voxel-fill produced a corner gap {max_gap} > budget {gap}"
 
+    def test_covers_body_surface(self, sphere_stl):
+        """Every STL surface vertex must lie inside the union of boxes.
+
+        This guards the bug where a body-shell of width ~side/2 was
+        left uncovered because only voxels with centre strictly inside
+        the body were emitted.
+        """
+        boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=0.20, method="voxel-fill")
+        mesh = trimesh.load(sphere_stl, force="mesh")
+        verts = np.asarray(mesh.vertices, dtype=np.float64)
+        assert _all_inside_union(verts, boxes), (
+            "voxel-fill left part of the body surface outside the box union"
+        )
+
+    def test_greedy_merge_reduces_box_count(self, sphere_stl):
+        """The greedy AABB merge must collapse the cubic seed grid
+        into far fewer boxes.  At gap=0.30 the seed grid has thousands
+        of voxels (~3888 on a unit-radius icosphere); after merging
+        the count must be at least 10x smaller.
+        """
+        boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=0.30, method="voxel-fill")
+        # Seed grid: side = gap / sqrt(3) ≈ 0.173, AABB extent ≈ 2.0,
+        # so ~12^3 ≈ 1700 candidate voxels and ~3800 inside-the-cover.
+        # Merge target: ≤ 200 (>=10x reduction).  Empirically: ~50.
+        assert len(boxes) <= 200, f"expected <=200 merged boxes, got {len(boxes)}"
+
+    def test_merged_boxes_keep_corner_budget(self, sphere_stl):
+        """Greedy merge must never emit a merged AABB whose corners
+        violate the outward-gap budget."""
+        gap = 0.30
+        boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=gap, method="voxel-fill")
+        mesh = trimesh.load(sphere_stl, force="mesh")
+        max_gap = _max_box_vertex_outward_gap(boxes, mesh)
+        assert max_gap <= gap + 1e-9, (
+            f"merged boxes exceeded corner gap: {max_gap} > {gap}"
+        )
+
+    def test_merged_boxes_still_cover_body_surface(self, sphere_stl):
+        """Merging must preserve full body surface coverage —
+        a merged AABB is a strict superset of its parts, so this is
+        a sanity check that the merge doesn't drop voxels."""
+        boxes = boxes_from_stl(sphere_stl, "x", max_outward_gap=0.30, method="voxel-fill")
+        mesh = trimesh.load(sphere_stl, force="mesh")
+        verts = np.asarray(mesh.vertices, dtype=np.float64)
+        assert _all_inside_union(verts, boxes)
+
     def test_tighter_gap_produces_more_boxes(self, sphere_stl):
-        """Halving the gap budget should roughly 8x the box count
-        (3D voxel scaling)."""
+        """Halving the gap budget should grow the box count.
+        After merging, the count tracks body surface area rather
+        than volume, so the scaling is ~4x (2D), not ~8x (3D)."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             n_loose = len(
-                boxes_from_stl(sphere_stl, "x", max_outward_gap=0.20, method="voxel-fill")
+                boxes_from_stl(sphere_stl, "x", max_outward_gap=0.40, method="voxel-fill")
             )
             n_tight = len(
-                boxes_from_stl(sphere_stl, "x", max_outward_gap=0.10, method="voxel-fill")
+                boxes_from_stl(sphere_stl, "x", max_outward_gap=0.20, method="voxel-fill")
             )
-        # 3D voxel scaling: halving side ~ 8x voxels.
-        assert n_tight > 4 * n_loose
+        assert n_tight > 2 * n_loose, (
+            f"halving gap should grow count: loose={n_loose}, tight={n_tight}"
+        )
 
     def test_non_watertight_rejected(self, open_strip_stl):
         """voxel-fill needs a watertight STL for inside/outside

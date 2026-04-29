@@ -274,7 +274,9 @@ class TestCLIBoxesExport:
             ],
         )
         assert r.exit_code == 1
-        assert "not found" in r.output.lower()
+        # Typer wraps stderr at terminal width; collapse whitespace so
+        # "not found" matches even when the wrap splits "not\nfound".
+        assert "not found" in " ".join(r.output.lower().split())
 
     def test_empty_list_exits_1(self, tmp_path):
         from typer.testing import CliRunner
