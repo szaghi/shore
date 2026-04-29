@@ -15,13 +15,19 @@ from shore.mesh.inspect import (
 )
 from shore.mesh.mesh import Mesh
 from shore.mesh.spacing import Spacing1D
-from shore.mesh.topology import CubedSphereTopology, OGridTopology, Topology
+from shore.mesh.topology import (
+    CGridTopology,
+    CubedSphereTopology,
+    OGridTopology,
+    Topology,
+)
 from shore.mesh.vertex import Vertex
 
 __all__ = [
     "AxisMap",
     "Block",
     "Body",
+    "CGridTopology",
     "CubedSphereTopology",
     "Edge",
     "Face",

@@ -14,10 +14,10 @@ them.
 |---|---|---|---|
 | [O-grid](o-grid) | first-class | 1 (single, j-periodic) | `shore mesh --topology ogrid`; Chimera background, downstream tools that expect a single periodic-j block |
 | [Cubed sphere (6-block)](cubed-sphere) | **production default** | 6 (4 sub-blocks + 2 caps) | `shore mesh` (default); clean polar coverage with no singular axis |
+| [C-grid (sharp-TE)](c-grid) | first-class | 1 (single, non-periodic) | `shore mesh --topology cgrid`; airfoils, hydrofoils, wings — wraps a sharp-TE body with downstream wake branches |
 
 Future topologies that fit naturally into this framework:
 
-- **C-grid** for airfoils and wings with sharp trailing edges
 - **H-grid** for bluff bodies and internal flows
 - **Multi-body Chimera assemblies** for compound geometries
 

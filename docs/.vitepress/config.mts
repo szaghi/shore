@@ -76,6 +76,7 @@ export default defineConfig({
           text: 'Auxiliary algorithms',
           items: [
             { text: 'Marker boxes (voxel-fill + greedy merge)', link: '/algorithm/boxes' },
+            { text: 'C-grid construction',                       link: '/algorithm/c-grid' },
           ],
         },
       ],
@@ -87,6 +88,7 @@ export default defineConfig({
             { text: 'Overview & taxonomy',    link: '/topologies/' },
             { text: 'O-grid (single-block)',  link: '/topologies/o-grid' },
             { text: 'Cubed sphere (6-block)', link: '/topologies/cubed-sphere' },
+            { text: 'C-grid (sharp-TE)',      link: '/topologies/c-grid' },
           ],
         },
         {

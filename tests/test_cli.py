@@ -11,6 +11,7 @@ The mesh command produces 6 .geo files (cubed-sphere topology):
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -91,6 +92,69 @@ class TestMesh:
         out = tmp_path / "sphere"
         r = _invoke("mesh", str(sphere_stl), *_SMALL, "-o", str(out), "-v")
         assert r.exit_code == 0, r.output
+
+
+class TestMeshCGrid:
+    """`shore mesh --topology cgrid` end-to-end."""
+
+    _CGRID: ClassVar[list[str]] = [
+        "--topology",
+        "cgrid",
+        "--ni-body",
+        "60",
+        "--ni-wake",
+        "15",
+        "--n-stations",
+        "4",
+        "--wake-length",
+        "10.0",
+        "--nk",
+        "8",
+        "--ds",
+        "1e-3",
+        "--smooth",
+        "0.0",
+        "--smooth-iters",
+        "0",
+    ]
+
+    def test_exit_code_ok(self, naca0012_stl, tmp_path):
+        out = tmp_path / "cgrid"
+        r = _invoke("mesh", str(naca0012_stl), *self._CGRID, "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_writes_single_geo(self, naca0012_stl, tmp_path):
+        out = tmp_path / "cgrid"
+        _invoke("mesh", str(naca0012_stl), *self._CGRID, "-o", str(out))
+        path = tmp_path / "cgrid.geo"
+        assert path.exists()
+
+    def test_block_shape(self, naca0012_stl, tmp_path):
+        out = tmp_path / "cgrid"
+        _invoke("mesh", str(naca0012_stl), *self._CGRID, "-o", str(out))
+        grid = read_geo(tmp_path / "cgrid.geo")
+        # 2 * (ni_wake - 1) + ni_body = 28 + 60 = 88; nj=4; nk=8
+        assert grid.shape == (88, 4, 8, 3)
+
+    def test_missing_required_flag_exits_1(self, naca0012_stl, tmp_path):
+        # Missing --wake-length.
+        r = _invoke(
+            "mesh",
+            str(naca0012_stl),
+            "--topology",
+            "cgrid",
+            "--ni-body",
+            "60",
+            "--ni-wake",
+            "15",
+            "--n-stations",
+            "4",
+        )
+        assert r.exit_code == 1
+
+    def test_unknown_topology_exits_1(self, sphere_stl, tmp_path):
+        r = _invoke("mesh", str(sphere_stl), "--topology", "garbage")
+        assert r.exit_code == 1
 
 
 # ---------------------------------------------------------------------------

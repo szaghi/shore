@@ -24,7 +24,7 @@ features:
     linkText: Pipeline walkthrough
   - icon: 📐
     title: Body-fitted near-body meshes
-    details: Two topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid and 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning. One `shore mesh` call from a triangulated body to Xall-compatible .geo files.
+    details: Three topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, and a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches. One `shore mesh` call from a triangulated body to Xall-compatible .geo files.
     link: /topologies/cubed-sphere
     linkText: Cubed sphere
   - icon: 🧱

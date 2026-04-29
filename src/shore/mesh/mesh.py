@@ -307,7 +307,29 @@ class Mesh:
         else:
             _theta = float(0.05 * np.pi)
 
-        from shore.mesh.topology import CubedSphereTopology, OGridTopology
+        from shore.mesh.topology import (
+            CGridTopology,
+            CubedSphereTopology,
+            OGridTopology,
+        )
+
+        if isinstance(topology, CGridTopology):
+            raise ValueError(
+                "Mesh.from_stl does not support CGridTopology — its "
+                "parameters (ni_body, ni_wake, n_stations, wake_length, "
+                "span_axis, freestream_world) don't fit the (ni, nj, nk) "
+                "signature.  Build the C-grid block list directly:\n\n"
+                "    import trimesh\n"
+                "    from shore.mesh import Body, Mesh, CGridTopology\n"
+                "    body = Body.from_stl(path)\n"
+                "    topo = CGridTopology()\n"
+                "    blocks = topo.build(\n"
+                "        surface=None, nk=nk, mesh=body.mesh,\n"
+                "        ni_body=..., ni_wake=..., n_stations=...,\n"
+                "        wake_length=...,\n"
+                "    )\n"
+                "    mesh = Mesh(body=body, blocks=blocks, topology=topo)\n"
+            )
 
         if isinstance(topology, (CubedSphereTopology, OGridTopology)):
             # Both topologies project through the cached BVH inside
@@ -385,7 +407,11 @@ class Mesh:
         NotImplementedError
             If the topology has no registered marcher.
         """
-        from shore.mesh.topology import CubedSphereTopology, OGridTopology
+        from shore.mesh.topology import (
+            CGridTopology,
+            CubedSphereTopology,
+            OGridTopology,
+        )
 
         if isinstance(self.topology, CubedSphereTopology):
             self._march_caps(
@@ -399,6 +425,16 @@ class Mesh:
             )
         elif isinstance(self.topology, OGridTopology):
             self._march_ogrid(
+                ds=ds,
+                growth=growth,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                steps=steps,
+                layer_callback=layer_callback,
+                blend_normals_k=blend_normals_k,
+            )
+        elif isinstance(self.topology, CGridTopology):
+            self._march_cgrid(
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,
@@ -606,6 +642,72 @@ class Mesh:
 
             if layer_callback is not None:
                 layer_callback(k + 1, jmin_global)
+
+    def _march_cgrid(
+        self,
+        ds: float,
+        growth: float,
+        smooth_strength: float,
+        smooth_iters: int,
+        steps: np.ndarray | None,
+        layer_callback: Callable[[int, float], None] | None,
+        blend_normals_k: int = 0,
+    ) -> None:
+        """Single-block hyperbolic march for ``CGridTopology``.
+
+        Both i and j directions are non-periodic.  i-boundaries (the
+        wake far-field tips) and j-boundaries (the wing tips) are
+        clamped during Laplacian smoothing.  The Jacobian guard uses
+        the open (non-periodic) field.
+        """
+        block = self.blocks[0]
+        nk = block.nodes.shape[2]
+        _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
+
+        do_blend = blend_normals_k > 0
+        if do_blend:
+            from shore.volume.hyperbolic import _stl_normals
+
+            trimesh_obj = self.body.mesh
+
+        ni, nj, _, _ = block.nodes.shape
+        periodic = (False, False)
+
+        for k in range(nk - 1):
+            step = float(_steps[k])
+            layer = block.nodes[:, :, k, :]
+
+            normals_override = None
+            if do_blend and k < blend_normals_k:
+                alpha = 1.0 - k / blend_normals_k
+                grid_n = _compute_normals(layer, periodic=periodic)
+                stl_n = _stl_normals(trimesh_obj, layer.reshape(-1, 3)).reshape(ni, nj, 3)
+                normals_override = alpha * stl_n + (1.0 - alpha) * grid_n
+                normals_override /= np.linalg.norm(normals_override, axis=-1, keepdims=True)
+
+            new_layer = _march_one_layer(
+                layer,
+                step=step,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                periodic=periodic,
+                normals_override=normals_override,
+            )
+
+            jmin = _check_jacobian(
+                layer=layer,
+                new_layer=new_layer,
+                periodic_j=False,
+                label="cgrid",
+                k=k,
+                exclude_corners=False,
+                tol=-1e-6,
+            )
+
+            block.nodes[:, :, k + 1, :] = new_layer
+
+            if layer_callback is not None:
+                layer_callback(k + 1, jmin)
 
     def _march_ogrid(
         self,

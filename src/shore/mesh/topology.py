@@ -1,4 +1,4 @@
-"""Topology ABC and concrete topologies (cubed-sphere, O-grid)."""
+"""Topology ABC and concrete topologies (cubed-sphere, O-grid, C-grid)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from shore.mesh.block import HexBlock
 from shore.mesh.face import AxisMap, FaceBC, FaceName
 from shore.mesh.spacing import Spacing1D
 from shore.surface.cap import build_cap_k0
+from shore.surface.cgrid import build_cgrid_k0
 from shore.surface.equator import build_equator
 from shore.topology.sphere_cap import _adjust_nj
 
@@ -475,6 +476,158 @@ class OGridTopology(Topology):
 
         # No multi-block seams to wire; non-periodic i boundaries are
         # left at their default DIRICHLET BC, j is periodic.
+        return [block]
+
+
+class CGridTopology(Topology):
+    """Single-block C-grid topology for sharp-TE bodies (airfoils, hydrofoils).
+
+    A single hexahedral block of shape ``(ni_total, n_stations, nk, 3)``,
+    where the i-axis sweeps **upper-wake-tip → upper-TE → suction →
+    LE → pressure → lower-TE → lower-wake-tip** as one continuous
+    parametric line.  The j-axis is the span (one node per span station);
+    the k-axis is the wall-normal extrusion direction.
+
+    The TE sits at two i-indices: ``i = ni_wake - 1`` (upper-TE,
+    transition from upper wake to suction surface) and ``i = ni_wake -
+    1 + ni_body - 1`` (lower-TE, transition from pressure surface to
+    lower wake).  The two TE indices coincide in space for **sharp**
+    TEs (the wake cut starts at the same point) and are separated by
+    ``te_thickness`` for **blunt** TEs.
+
+    Conventions:
+
+    - ``span_axis`` defaults to ``"z"``.
+    - ``i_lo`` and ``i_hi`` faces are the upper- and lower-wake
+      far-field tips.  Both are ``FREE`` by default — typically
+      Chimera fringes (BC code ``40``) or extrapolation (``-9``) in
+      a downstream ``cc.par``.
+    - ``j_lo`` and ``j_hi`` are wing-tip faces.  Both are ``FREE``
+      by default.  For symmetric (mirrored) studies replace them
+      with WALL externally; for an annular wing, swap them to
+      SHARED with each other (j-periodic).
+    - ``k_lo`` is ``WALL`` over the body region and effectively
+      degenerate over the wake region (the wake i-range has its
+      ``k_lo`` nodes on the wake cut, not on a body surface).
+      Downstream ``cc.par`` writers treat the whole ``k_lo`` face
+      as a wall patch; that's correct for the body part and
+      benign for the wake part because the marched volume nodes
+      are valid hex cells either way.
+    - ``k_hi`` is ``FREE`` (outer / Chimera fringe).
+
+    The block is **non-periodic** in i and j by default.
+
+    See Also
+    --------
+    :func:`shore.surface.cgrid.build_cgrid_k0` :
+        Builds the k=0 layer fed to this topology's :meth:`build`.
+    """
+
+    def build(
+        self,
+        surface: np.ndarray | None,
+        nk: int,
+        ni_body: int | None = None,
+        ni_wake: int | None = None,
+        n_stations: int | None = None,
+        wake_length: float | None = None,
+        span_axis: str = "z",
+        freestream_world: np.ndarray | None = None,
+        te_dihedral_deg: float = 30.0,
+        wake_growth: float = 1.15,
+        spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
+        **kwargs,
+    ) -> list[HexBlock]:
+        """Build a single C-grid block from a body STL.
+
+        Parameters
+        ----------
+        surface :
+            Optional pre-built ``(ni_total, n_stations, 3)`` k=0 layer
+            from :func:`shore.surface.cgrid.build_cgrid_k0`.  When
+            supplied, *ni_body* / *ni_wake* / *n_stations* / *wake_length*
+            are ignored.  When ``None``, the k=0 layer is built from
+            *mesh* using the supplied parameters.
+        nk :
+            Total number of wall-normal layers (including k=0).
+        ni_body :
+            Per-station body wrap node count.  Required when *surface*
+            is None.
+        ni_wake :
+            Per-branch wake node count (shared TE node included).
+            Required when *surface* is None.
+        n_stations :
+            Number of span-axis stations.  Required when *surface* is
+            None.  Becomes the block's nj.
+        wake_length :
+            Length of each wake branch from the TE.  Required when
+            *surface* is None.
+        span_axis :
+            ``"x"`` / ``"y"`` / ``"z"``.  Default ``"z"``.
+        freestream_world :
+            Length-3 vector giving the freestream direction in world
+            coordinates.  ``None`` = default to chord-axis +1.
+        te_dihedral_deg, wake_growth :
+            Forwarded to :func:`build_cgrid_k0`.
+        spacing_k :
+            Wall-normal spacing law.  Defaults to
+            ``Spacing1D(law='geometric', ds=1e-3)``.
+        mesh :
+            ``trimesh.Trimesh`` instance.  Required when *surface* is
+            None.
+
+        Returns
+        -------
+        list[HexBlock]
+            Single-element list containing the C-grid block, labelled
+            ``"cgrid"``.
+        """
+        if surface is None:
+            if mesh is None:
+                raise ValueError(
+                    "CGridTopology.build needs either a pre-built surface "
+                    "or a trimesh.Trimesh `mesh=` argument."
+                )
+            for name, val in (
+                ("ni_body", ni_body),
+                ("ni_wake", ni_wake),
+                ("n_stations", n_stations),
+                ("wake_length", wake_length),
+            ):
+                if val is None:
+                    raise ValueError(f"CGridTopology.build needs `{name}=` when surface is None.")
+            k0_result = build_cgrid_k0(
+                mesh,  # type: ignore[arg-type]
+                ni_body=int(ni_body),  # type: ignore[arg-type]
+                ni_wake=int(ni_wake),  # type: ignore[arg-type]
+                n_stations=int(n_stations),  # type: ignore[arg-type]
+                wake_length=float(wake_length),  # type: ignore[arg-type]
+                span_axis=span_axis,
+                freestream_world=freestream_world,
+                te_dihedral_deg=te_dihedral_deg,
+                wake_growth=wake_growth,
+            )
+            surface = k0_result.nodes  # (ni_total, n_stations, 3)
+
+        ni_total, nj, _ = surface.shape
+
+        _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
+
+        # Allocate the volume array and fill k=0.
+        nodes = np.empty((ni_total, nj, nk, 3), dtype=np.float64)
+        nodes[:, :, 0, :] = surface
+
+        block = HexBlock(
+            label="cgrid",
+            nodes=nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+
+        # Default face BCs are already correct: i_lo/i_hi/j_lo/j_hi/k_hi
+        # = FREE, k_lo = WALL.  No multi-block seams to wire.
         return [block]
 
 

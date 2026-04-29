@@ -27,6 +27,14 @@ A fifth, transverse page documents the
 [**spacing laws**](spacing-laws) (`uniform`, `tanh`, `tanh2`, `geometric`)
 that control node distribution along i, j, and k.
 
+Two auxiliary algorithms, branched off the main pipeline:
+
+- [**Marker boxes**](boxes) — voxel-fill + greedy-merge generation of
+  `cc.par` hole-cutting boxes from a body STL.
+- [**C-grid construction**](c-grid) — TE detection, span slicing, and
+  C-curve build that feed into the
+  [C-grid topology](/topologies/c-grid).
+
 ::: tip Read in pipeline order
 The pages are designed to be read top-to-bottom in the order above.
 Each page assumes the previous ones as background and links to them

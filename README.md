@@ -14,7 +14,7 @@
 <table>
 <tr>
 <td><b>🏗️ Full Chimera assembly in one tool</b><br><sub>Generate every grid an overset assembly needs — body-fitted near-body meshes and parametric backgrounds — in the same world frame. Pack them into the Xall solver bundle (.grd + cc.par + marker boxes) without leaving the SHORE CLI. <a href="https://szaghi.github.io/shore/guide/cc-par-pipeline">Pipeline walkthrough</a></sub></td>
-<td><b>📐 Body-fitted near-body meshes</b><br><sub>Two topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid and 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning. One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
+<td><b>📐 Body-fitted near-body meshes</b><br><sub>Three topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, and a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches. One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
 </tr>
 <tr>
 <td><b>🧱 Parametric backgrounds</b><br><sub>Box, annular cylinder, and 5-block flat-caps cylinder primitives with per-axis spacing laws — fill the far field without an STL. Per-edge spacing on Box and Annulus, transfinite-interpolation blends; flat-caps cylinder is Chimera-fringe-free for GPU-friendly backgrounds. <a href="https://szaghi.github.io/shore/topologies/primitives">Primitives</a></sub></td>
@@ -50,6 +50,11 @@ shore mesh fuselage.stl --ni 60 --nj 80 --nk 40 --ds 1e-4 --growth 1.15 -o fusel
 
 # Single-block O-grid alternative (one .geo, j-periodic)
 shore mesh fuselage.stl --topology ogrid --ni 60 --nj 80 --nk 40 -o fuselage
+
+# C-grid for sharp-TE bodies (airfoil, hydrofoil) with downstream wake branches
+shore mesh naca0012.stl --topology cgrid \
+    --ni-body 120 --ni-wake 30 --n-stations 5 --wake-length 15 \
+    --nk 30 --ds 5e-4 --growth 1.15 -o naca0012
 
 # Parametric background — no STL needed
 shore primitive flat-caps --r-out 10 --z0 -10 --z1 50 --ni 16 --nc 24 --nk 60 -o background
@@ -166,7 +171,7 @@ All commands accept `--help` for full option lists. See the [CLI reference](http
 
 | Option | Default | Description |
 |---|---|---|
-| `--topology` | `cubed_sphere` | `cubed_sphere` (6 blocks) or `ogrid` (1 block, j-periodic) |
+| `--topology` | `cubed_sphere` | `cubed_sphere` (6 blocks), `ogrid` (1 block, j-periodic), or `cgrid` (1 block, sharp-TE body with wake branches) |
 | `--ni` | 40 | Latitude / equator meridional **node count** |
 | `--nj` | 60 | Longitude **node count** (multiple of 4 for cubed sphere) |
 | `--nk` | 30 | Wall-normal **node count** (includes the wall row at k=0; the marcher extrudes `nk - 1` cells) |

@@ -30,6 +30,7 @@ from shore.config import (
 )
 from shore.mesh import (
     Body,
+    CGridTopology,
     CubedSphereTopology,
     Mesh,
     OGridTopology,
@@ -173,6 +174,57 @@ _VOLUME_K_THICKNESS = Annotated[
     ),
 ]
 
+# C-grid topology flags (only used when --topology cgrid).
+_NI_BODY = Annotated[
+    int | None,
+    typer.Option(
+        "--ni-body",
+        help="[cgrid] Per-station body wrap node count (upper-TE → LE → lower-TE).",
+    ),
+]
+_NI_WAKE = Annotated[
+    int | None,
+    typer.Option(
+        "--ni-wake",
+        help="[cgrid] Per-branch wake node count (TE node included).",
+    ),
+]
+_N_STATIONS = Annotated[
+    int | None,
+    typer.Option(
+        "--n-stations",
+        help="[cgrid] Number of span-axis stations.",
+    ),
+]
+_WAKE_LENGTH = Annotated[
+    float | None,
+    typer.Option(
+        "--wake-length",
+        help="[cgrid] Length of each wake branch from the TE, in body units.",
+    ),
+]
+_WAKE_GROWTH = Annotated[
+    float,
+    typer.Option(
+        "--wake-growth",
+        help="[cgrid] Geometric growth ratio for wake i-spacing (default 1.15).",
+    ),
+]
+_SPAN_AXIS = Annotated[
+    str,
+    typer.Option(
+        "--span-axis",
+        help="[cgrid] Span axis: 'x', 'y', or 'z' (default 'z').",
+    ),
+]
+_TE_DIHEDRAL_DEG = Annotated[
+    float,
+    typer.Option(
+        "--te-dihedral-deg",
+        help="[cgrid] Sharpness threshold (degrees) for TE detection (default 30.0).",
+    ),
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -307,9 +359,18 @@ def mesh(
         str,
         typer.Option(
             "--topology",
-            help="Topology to build: 'cubed_sphere' (6 blocks, default) or 'ogrid' (1 block).",
+            help="Topology: 'cubed_sphere' (default), 'ogrid', or 'cgrid' "
+            "(C-grid for sharp-TE bodies — see --ni-body / --ni-wake / "
+            "--n-stations / --wake-length).",
         ),
     ] = "cubed_sphere",
+    ni_body: _NI_BODY = None,
+    ni_wake: _NI_WAKE = None,
+    n_stations: _N_STATIONS = None,
+    wake_length: _WAKE_LENGTH = None,
+    wake_growth: _WAKE_GROWTH = 1.15,
+    span_axis: _SPAN_AXIS = "z",
+    te_dihedral_deg: _TE_DIHEDRAL_DEG = 30.0,
     verbose: _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL -> structured volume -> geo files.
@@ -374,12 +435,28 @@ def mesh(
         "volume_k_thickness", volume_k_thickness, cfg.volume.k_thickness if cfg else None
     )
     topology = _pick("topology", topology, cfg.grid.topology if cfg else None)
-    if topology not in ("cubed_sphere", "ogrid"):
+    if topology not in ("cubed_sphere", "ogrid", "cgrid"):
         _err.print(
             f"[red]Error:[/red] unknown --topology {topology!r}; "
-            "expected 'cubed_sphere' or 'ogrid'."
+            "expected 'cubed_sphere', 'ogrid', or 'cgrid'."
         )
         raise typer.Exit(1) from None
+
+    if topology == "cgrid":
+        for flag_name, val in (
+            ("--ni-body", ni_body),
+            ("--ni-wake", ni_wake),
+            ("--n-stations", n_stations),
+            ("--wake-length", wake_length),
+        ):
+            if val is None:
+                _err.print(f"[red]Error:[/red] --topology cgrid requires {flag_name}.")
+                raise typer.Exit(1) from None
+        if span_axis not in ("x", "y", "z"):
+            _err.print(
+                f"[red]Error:[/red] --span-axis must be 'x', 'y', or 'z'; got {span_axis!r}."
+            )
+            raise typer.Exit(1) from None
 
     # theta_cap is special: CLI exposes two flags (--theta-cap and
     # --theta-cap-deg) but the config has a single resolved radian
@@ -429,34 +506,56 @@ def mesh(
     out_stem = output or _default_output(input, "")
 
     # --- load body ---
+    # C-grid topology doesn't ray-cast through the body — it slices the
+    # STL directly with mesh_plane.  Skip the trimesh.repair pass to
+    # avoid the optional networkx dependency.
+    _skip_hygiene = topology == "cgrid"
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Loading STL   ", total=1, info="")
-            body = Body.from_stl(input)
+            body = Body.from_stl(input, skip_hygiene=_skip_hygiene)
             prog.update(t, advance=1, info=f"{len(body.mesh.faces)} triangles")
     else:
-        body = Body.from_stl(input)
+        body = Body.from_stl(input, skip_hygiene=_skip_hygiene)
 
     # --- build topology + march ---
     _theta_topo = theta if theta is not None else 0.05 * np.pi
+    topo: CubedSphereTopology | OGridTopology | CGridTopology
     if topology == "cubed_sphere":
-        topo: CubedSphereTopology | OGridTopology = CubedSphereTopology()
-    else:
+        topo = CubedSphereTopology()
+    elif topology == "ogrid":
         topo = OGridTopology()
+    else:  # cgrid
+        topo = CGridTopology()
     try:
-        blocks = topo.build(
-            surface=None,
-            nk=nk,
-            ni=ni,
-            nj=nj,
-            spacing_k=spacing_k,
-            projector=body.projector,
-            theta_cap=_theta_topo,
-            i_spacing=surface_i_spacing,
-            i_beta=surface_i_beta,
-            j_spacing=surface_j_spacing,
-            j_beta=surface_j_beta,
-        )
+        if topology == "cgrid":
+            blocks = topo.build(
+                surface=None,
+                nk=nk,
+                mesh=body.mesh,
+                spacing_k=spacing_k,
+                ni_body=ni_body,
+                ni_wake=ni_wake,
+                n_stations=n_stations,
+                wake_length=wake_length,
+                wake_growth=wake_growth,
+                span_axis=span_axis,
+                te_dihedral_deg=te_dihedral_deg,
+            )
+        else:
+            blocks = topo.build(
+                surface=None,
+                nk=nk,
+                ni=ni,
+                nj=nj,
+                spacing_k=spacing_k,
+                projector=body.projector,
+                theta_cap=_theta_topo,
+                i_spacing=surface_i_spacing,
+                i_beta=surface_i_beta,
+                j_spacing=surface_j_spacing,
+                j_beta=surface_j_beta,
+            )
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
@@ -508,13 +607,16 @@ def mesh(
                 f"[green]✓[/green] Wrote 6 .geo files  (sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
             )
     else:
-        # Single-block O-grid: write one ``<stem>.geo`` (no _<label>).
+        # Single-block O-grid / C-grid: write one ``<stem>.geo`` (no _<label>).
         from shore.io.geo import write_geo
 
         single_path = out_stem if out_stem.suffix == ".geo" else out_stem.with_suffix(".geo")
         write_geo(single_path, m.blocks[0].nodes)
         if verbose:
-            _console.print(f"[green]✓[/green] Wrote {single_path}  ({ni}x{nj}x{nk})")
+            shape = m.blocks[0].nodes.shape
+            _console.print(
+                f"[green]✓[/green] Wrote {single_path}  ({shape[0]}x{shape[1]}x{shape[2]})"
+            )
 
 
 # ---------------------------------------------------------------------------
