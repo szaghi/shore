@@ -39,7 +39,7 @@ features:
     linkText: Algorithm
   - icon: 🔍
     title: Focused CLI
-    details: Sixteen commands cover the full chimera pipeline — generate (`mesh`, `primitive`), subdivide for parallel solvers (`split`), pack for the solver (`grd`, `cc-par`, `boxes-from-stl`), merge multi-component runs (`grd-merge`, `cc-par-merge`), inspect (`info`, `check`), and visualise (`export`, `view`, `boxes-export`). A Rich progress bar shows per-layer Jacobians during marching.
+    details: Eighteen commands cover the full chimera pipeline — generate (`mesh`, `primitive`), subdivide for parallel solvers (`split`), pack for the solver (`grd`, `cc-par`, `proc-input`, `boxes-from-stl`), merge multi-component runs (`grd-merge`, `cc-par-merge`, `proc-input-merge`), inspect (`info`, `check`), and visualise (`export`, `view`, `boxes-export`). A Rich progress bar shows per-layer Jacobians during marching.
     link: /reference/mesh
     linkText: CLI reference
   - icon: 🆓
@@ -109,10 +109,13 @@ Body-fitted (STL)                 Parametric backgrounds
         ▼  shore cc-par                    ▼  shore cc-par
   + shore boxes-from-stl              (no boxes for far-field)
   wall.cc.par                         background.cc.par
+        │                                  │
+        ▼  shore proc-input                ▼  shore proc-input
+  wall.proc.input                     background.proc.input
         └─────────────┬────────────────────┘
-                      ▼  shore grd-merge / shore cc-par-merge
-            assembly.grd  +  assembly.cc.par
-                  (Xall multi-component job)
+                      ▼  shore grd-merge / cc-par-merge / proc-input-merge
+            assembly.grd  +  assembly.cc.par  +  assembly.proc.input
+                       (Xall multi-component job)
 ```
 
 

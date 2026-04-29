@@ -21,7 +21,7 @@
 <td><b>🌊 Seam-aware hyperbolic marching</b><br><sub>Each wall-normal layer advances along outward normals computed with centred differences across multi-block seams (ghost rows from partner blocks). Spacing continuity across block edges holds layer by layer; per-layer Laplacian smoothing + Jacobian guard catch any cell inversion immediately. <a href="https://szaghi.github.io/shore/algorithm/hyperbolic-marching">Algorithm</a></sub></td>
 </tr>
 <tr>
-<td><b>🔍 Focused CLI</b><br><sub>Sixteen commands cover the full chimera pipeline — generate (<code>mesh</code>, <code>primitive</code>), subdivide for parallel solvers (<code>split</code>), pack for the solver (<code>grd</code>, <code>cc-par</code>, <code>boxes-from-stl</code>), merge multi-component runs (<code>grd-merge</code>, <code>cc-par-merge</code>), inspect (<code>info</code>, <code>check</code>), and visualise (<code>export</code>, <code>view</code>, <code>boxes-export</code>). A Rich progress bar shows per-layer Jacobians during marching. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
+<td><b>🔍 Focused CLI</b><br><sub>Eighteen commands cover the full chimera pipeline — generate (<code>mesh</code>, <code>primitive</code>), subdivide for parallel solvers (<code>split</code>), pack for the solver (<code>grd</code>, <code>cc-par</code>, <code>proc-input</code>, <code>boxes-from-stl</code>), merge multi-component runs (<code>grd-merge</code>, <code>cc-par-merge</code>, <code>proc-input-merge</code>), inspect (<code>info</code>, <code>check</code>), and visualise (<code>export</code>, <code>view</code>, <code>boxes-export</code>). A Rich progress bar shows per-layer Jacobians during marching. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
 <td><b>🎨 ParaView and Jupyter visualization</b><br><sub>Export to VTK StructuredGrid (<code>shore export</code>) and MultiBlock (<code>.vtm</code>) for ParaView with per-cell Jacobian colour maps and overlaid marker boxes. Or use <code>shore view</code> for an immediate PyVista window, or <code>shore.vis</code> directly in Jupyter notebooks with the HTML backend. <a href="https://szaghi.github.io/shore/reference/api-vis">API reference</a></sub></td>
 </tr>
 <tr>
@@ -130,27 +130,32 @@ Once each component (near-body and / or background) is generated, package it for
 shore grd wall_*.geo -o wall.grd
 shore grd background_*.geo -o background.grd
 
-# Generate the chimera descriptor with marker boxes for hole-cutting
+# Generate the chimera descriptor (consumed by overset preprocessor)
 shore boxes-from-stl fuselage.stl --block sub0 --max-outward-gap 0.10 -o boxes.json
 shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd --boxes boxes.json
 shore cc-par background.adjacency.json background.cc.par --grd background.grd --free-bc -9
 
+# Generate the runtime work-distribution descriptor (consumed by Xall)
+shore proc-input wall.grd       wall.proc.input       --np 16
+shore proc-input background.grd background.proc.input --np 16
+
 # Merge multi-component runs into a single Xall job
-shore grd-merge    background.grd    wall.grd    -o assembly.grd
-shore cc-par-merge background.cc.par wall.cc.par -o assembly.cc.par --grd assembly.grd
+shore grd-merge        background.grd          wall.grd          -o assembly.grd
+shore cc-par-merge     background.cc.par       wall.cc.par       -o assembly.cc.par --grd assembly.grd
+shore proc-input-merge background.proc.input   wall.proc.input   -o assembly.proc.input
 ```
 
 The full walkthrough — including the `examples/05-chimera-assembly/cc_par_assembly.py` reference script — is at the [cc.par + boxes pipeline guide](https://szaghi.github.io/shore/guide/cc-par-pipeline).
 
 ## CLI reference
 
-Sixteen commands, grouped by purpose:
+Eighteen commands, grouped by purpose:
 
 | Group | Commands |
 |---|---|
 | **Mesh generation** | `shore mesh`, `shore primitive`, `shore project` |
 | **Adjacency / parallelism** | `shore split` |
-| **Xall pipeline** | `shore grd`, `shore grd-merge`, `shore cc-par`, `shore cc-par-merge`, `shore boxes-from-stl` |
+| **Xall pipeline** | `shore grd`, `shore grd-merge`, `shore cc-par`, `shore cc-par-merge`, `shore proc-input`, `shore proc-input-merge`, `shore boxes-from-stl` |
 | **Inspection** | `shore info`, `shore check` |
 | **Visualisation** | `shore export`, `shore view`, `shore boxes-export` |
 | **Configuration** | `shore config` |

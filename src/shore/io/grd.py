@@ -87,6 +87,84 @@ def write_grd(
     return out
 
 
+def read_grd_metadata(path: str | Path) -> list[tuple[int, int, int]]:
+    """Return the per-block ``(ni, nj, nk)`` cell counts from a ``.grd`` file.
+
+    Parses the ``.grd`` header (block count + per-block shape records)
+    without decoding any coordinate payload.  Cheap — costs O(n_blocks)
+    bytes of I/O regardless of mesh size.
+
+    The returned tuples are **cell counts** (the form stored in the
+    ``.grd`` header), matching the values written by
+    :func:`write_grd`.  Block ordering is the file order — block 1 is
+    the first tuple, block 2 the second, etc.
+
+    Parameters
+    ----------
+    path :
+        Path to a ``.grd`` file.
+
+    Returns
+    -------
+    list[tuple[int, int, int]]
+        One ``(ni, nj, nk)`` per block, in file order.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``path`` does not exist.
+    ValueError
+        If the file is too short, the header markers are malformed, or
+        the block count is non-positive.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"read_grd_metadata: {p} not found")
+    data = p.read_bytes()
+    if len(data) < 12:
+        raise ValueError(f"read_grd_metadata: {p} is too short to be a .grd file")
+
+    header_len = struct.unpack("=i", data[0:4])[0]
+    if header_len != 4:
+        raise ValueError(
+            f"read_grd_metadata: {p} header record length is {header_len} "
+            "(expected 4 for a single int32 n_blocks); not a .grd file?"
+        )
+    nb = struct.unpack("=i", data[4:8])[0]
+    trailer = struct.unpack("=i", data[8:12])[0]
+    if trailer != 4:
+        raise ValueError(f"read_grd_metadata: {p} header trailer is {trailer} (expected 4)")
+    if nb <= 0:
+        raise ValueError(f"read_grd_metadata: {p} reports {nb} blocks (must be > 0)")
+
+    # nb shape records, each (4 + 12 + 4) = 20 bytes.
+    shapes_end = 12 + nb * 20
+    if shapes_end > len(data):
+        raise ValueError(
+            f"read_grd_metadata: {p} truncated in shape section "
+            f"(need {shapes_end} bytes, have {len(data)})"
+        )
+
+    out: list[tuple[int, int, int]] = []
+    for b in range(nb):
+        rec_off = 12 + b * 20
+        rec_len = struct.unpack("=i", data[rec_off : rec_off + 4])[0]
+        if rec_len != 12:
+            raise ValueError(
+                f"read_grd_metadata: {p} block {b + 1} shape-record length is "
+                f"{rec_len} (expected 12 for 3 int32)"
+            )
+        ni, nj, nk = struct.unpack("=iii", data[rec_off + 4 : rec_off + 16])
+        rec_trailer = struct.unpack("=i", data[rec_off + 16 : rec_off + 20])[0]
+        if rec_trailer != 12:
+            raise ValueError(
+                f"read_grd_metadata: {p} block {b + 1} shape-record trailer is "
+                f"{rec_trailer} (expected 12)"
+            )
+        out.append((ni, nj, nk))
+    return out
+
+
 def _write_record(f, data: np.ndarray) -> None:
     """Write one Fortran unformatted record (4-byte length markers)."""
     nbytes = data.nbytes

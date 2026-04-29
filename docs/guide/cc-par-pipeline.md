@@ -192,17 +192,48 @@ shore cc-par background.adjacency.json background.cc.par \
              --grd background.grd --free-bc -9
 ```
 
-## Step 6 — Merge into the assembly
+## Step 6 — Per-component proc.input
 
-Two coordinated calls — `merge_grd` and `merge_cc_par` **must use
-the same input ordering**. The patch `block` field, `family`
-pointers, and box `associated_block` indices are 1-based positions
-into the merged blocks list, so the two files only agree if they
-were merged with the same ordering.
+`cc.par` is read by the **overset preprocessor**, not by Xall
+directly. Xall reads `proc.input` at MPI startup to learn which
+block lives on which MPI rank and what `group` / `body` indices
+each block carries. This sibling file is generated from the `.grd`
+(block ordering and weights):
+
+```python
+from shore.io.proc_input import write_proc_input
+
+# 4 MPI ranks; greedy weight-balanced assignment
+write_proc_input("wall.grd", "wall.proc.input", np=4)
+write_proc_input("background.grd", "background.proc.input", np=4)
+```
+
+CLI equivalent:
+
+```bash
+shore proc-input wall.grd       wall.proc.input       --np 4
+shore proc-input background.grd background.proc.input --np 4
+```
+
+For `--np > 1` a balance summary is printed on stderr; if imbalance
+exceeds 10%, a warning recommends `shore split` to subdivide the
+heaviest blocks. See [`shore proc-input`](/reference/proc-input)
+for the full command reference and the `--meta` flag for explicit
+per-block `proc` / `group` / `body` overrides.
+
+## Step 7 — Merge into the assembly
+
+Three coordinated calls — `merge_grd`, `merge_cc_par`, and
+`merge_proc_input` **must use the same input ordering**. The
+`cc.par` patch `block` fields, the `proc.input` block indices, and
+the `.grd` block list all share a single 1-based numbering, so the
+three merged files only agree if they were merged with the same
+ordering.
 
 ```python
 from shore.io.grd import merge_grd
 from shore.io.cc_par import merge_cc_par
+from shore.io.proc_input import merge_proc_input
 
 merge_grd(
     ["background.grd", "wall.grd"],
@@ -213,20 +244,24 @@ merge_cc_par(
     "assembly.cc.par",
     grd_filename="assembly.grd",
 )
+merge_proc_input(
+    ["background.proc.input", "wall.proc.input"],
+    "assembly.proc.input",
+)
 ```
 
 CLI equivalent:
 
 ```bash
-shore grd-merge    background.grd    wall.grd    -o assembly.grd
-shore cc-par-merge background.cc.par wall.cc.par -o assembly.cc.par \
-                   --grd assembly.grd
+shore grd-merge        background.grd        wall.grd        -o assembly.grd
+shore cc-par-merge     background.cc.par     wall.cc.par     -o assembly.cc.par     --grd assembly.grd
+shore proc-input-merge background.proc.input wall.proc.input -o assembly.proc.input
 ```
 
 The merged files describe one 11-block Xall job: 5 background
 blocks (indices 1..5) + 6 wall blocks (indices 6..11).
 
-## Step 7 — Visualise
+## Step 8 — Visualise
 
 ParaView is the cheapest sanity check — opening the merged `.vtm`
 shows that the wall sits where you think it does and that the

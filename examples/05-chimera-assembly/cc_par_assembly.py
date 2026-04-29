@@ -1,16 +1,22 @@
-"""Generate Xall cc.par files from the sphere-in-cylinder assembly.
+"""Generate the full Xall solver bundle from the sphere-in-cylinder assembly.
 
 This example is a direct continuation of ``assembly_sphere_in_cylinder.py``.
 It re-builds the same two meshes, writes their adjacency sidecars, exports
-VTK MultiBlock files for ParaView inspection, converts each sidecar to an
-Xall ``cc.par`` file, then **merges** the two ``cc.par`` + ``.grd`` pairs
-into one ``assembly.cc.par`` + ``assembly.grd`` for an Xall run that
-consumes both Chimera components as a single 11-block job.
+VTK MultiBlock files for ParaView inspection, then produces every file the
+Xall pipeline needs:
 
-The two meshes are independent Chimera components — they share a domain in
-world-space but have no SHARED faces between them.  Each gets its own
-``cc.par`` first; the merge step concatenates them with the right block /
-patch index shifts so a single Xall job can consume the assembly.
+- ``cc.par`` — chimera descriptor consumed by the overset preprocessor.
+- ``proc.input`` — runtime work-distribution descriptor consumed directly
+  by Xall at MPI startup.
+
+Each is written per-component (wall + background) and then **merged** into
+a single ``assembly.{grd, cc.par, proc.input}`` triple for an Xall run
+that consumes both Chimera components as one 11-block job.
+
+The two meshes are independent Chimera components — they share a domain
+in world-space but have no SHARED faces between them.  Each gets its own
+files first; the merge step concatenates them with the right block /
+patch / proc index shifts so a single Xall job can consume the assembly.
 
 The near-body cubed-sphere uses per-block ``BlockMeta`` to assign different
 ``free_face_bc`` values to wall blocks vs. cap blocks, demonstrating that
@@ -20,6 +26,10 @@ flag) give full per-block control:
 - ``sub{0..3}`` — equatorial sub-blocks, chimera handoff → BC ``40`` (offgen).
 - ``cap_north / cap_south`` — polar cap blocks, same → BC ``40``.
 - Background blocks — far-field extrapolation → BC ``-9``.
+
+The ``proc.input`` step shows the load-balancing summary on stderr and
+sets ``body=1`` on every wall block (so Xall's force / moment integration
+treats them as one physical body); background blocks stay at ``body=0``.
 
 Output
 ------
@@ -38,14 +48,18 @@ Output
       background.adjacency.json
       wall.cc.par                                # includes marker boxes from sphere.stl
       background.cc.par
+      wall.proc.input                            # MPI rank assignments + body=1
+      background.proc.input                      # MPI rank assignments
       sphere_boxes.vtm                           # standalone box visualisation
       assembly.grd                               # merged: background + wall
       assembly.cc.par                            # merged: background + wall
+      assembly.proc.input                        # merged: background + wall
 
 Run from the project root after activating .venv::
 
     python examples/05-chimera-assembly/cc_par_assembly.py
     python examples/05-chimera-assembly/cc_par_assembly.py -o my_run
+    python examples/05-chimera-assembly/cc_par_assembly.py --np 16
     python examples/05-chimera-assembly/cc_par_assembly.py --view      # open interactive viewer
 """
 
@@ -312,6 +326,16 @@ def main() -> None:
         default=None,
         help="Save a PNG screenshot instead of opening a window (implies --view).",
     )
+    parser.add_argument(
+        "--np",
+        type=int,
+        default=4,
+        help=(
+            "Number of MPI ranks for proc.input load balancing.  "
+            "Default 4 (the wall and background each have enough blocks "
+            "for a non-trivial 4-way distribution).  Use 1 for serial."
+        ),
+    )
 
     args = parser.parse_args()
     out_dir: Path = args.output
@@ -433,7 +457,42 @@ def main() -> None:
         block_metadata=bg_meta,
     )
 
-    # 9. Merge into a single Xall multi-mesh job.
+    # 9. Per-component proc.input — Xall's runtime work-distribution descriptor.
+    #
+    # cc.par is consumed by the overset preprocessor (which produces the runtime
+    # artefacts the solver reads); proc.input is consumed directly by Xall at MPI
+    # startup to learn block→rank assignments and per-block group / body indices.
+    #
+    # Block ordering and weights come from each component's .grd; without
+    # explicit assignments, ranks are distributed by greedy weight-balanced
+    # descent across range(np).  body=1 marks every wall block as belonging
+    # to the same physical body for force / moment integration; the
+    # background blocks stay at body=0 (no rigid-body motion).
+    from shore.io.proc_input import write_proc_input
+
+    print(f"\nWriting proc.input files (np={args.np}):")
+    nb_proc_path, nb_proc_summary = write_proc_input(
+        out_dir / "wall.grd",
+        out_dir / "wall.proc.input",
+        np=args.np,
+        body_assignment=dict.fromkeys(range(1, len(nb_blocks) + 1), 1),
+    )
+    print(f"  wrote {nb_proc_path}")
+    if args.np > 1:
+        for line in nb_proc_summary.format().splitlines():
+            print(f"    {line}")
+
+    bg_proc_path, bg_proc_summary = write_proc_input(
+        out_dir / "background.grd",
+        out_dir / "background.proc.input",
+        np=args.np,
+    )
+    print(f"  wrote {bg_proc_path}")
+    if args.np > 1:
+        for line in bg_proc_summary.format().splitlines():
+            print(f"    {line}")
+
+    # 10. Merge into a single Xall multi-mesh job.
     #
     # The wall (6 blocks) and background (5 blocks) are independent
     # Chimera components — they overlap in world space but share no
@@ -447,8 +506,9 @@ def main() -> None:
     # ordering to break level / priority ties.
     from shore.io.cc_par import merge_cc_par
     from shore.io.grd import merge_grd
+    from shore.io.proc_input import merge_proc_input
 
-    print("\nMerging into one assembly grid + cc.par:")
+    print("\nMerging into one assembly grid + cc.par + proc.input:")
     assembly_grd = merge_grd(
         [out_dir / "background.grd", out_dir / "wall.grd"],
         out_dir / "assembly.grd",
@@ -460,13 +520,25 @@ def main() -> None:
         grd_filename="assembly.grd",
     )
     print(f"  wrote {assembly_ccpar}  (block comments auto-prefixed background.* / wall.*)")
+    # Pass grd_path=assembly_grd so the merged summary carries real
+    # cell-count weights (the merger reads them from the merged .grd).
+    # Without it the summary would show only per-rank block counts.
+    assembly_proc, assembly_proc_summary = merge_proc_input(
+        [out_dir / "background.proc.input", out_dir / "wall.proc.input"],
+        out_dir / "assembly.proc.input",
+        grd_path=assembly_grd,
+    )
+    print(f"  wrote {assembly_proc}")
+    if assembly_proc_summary.np > 1:
+        for line in assembly_proc_summary.format().splitlines():
+            print(f"    {line}")
 
-    # 10. Spot-check printout
+    # 11. Spot-check printout
     print_cc_par_summary(nb_ccpar)
     print_cc_par_summary(bg_ccpar)
     print_cc_par_summary(assembly_ccpar)
 
-    # 11. Equivalent CLI commands (for reference)
+    # 12. Equivalent CLI commands (for reference)
     import json
 
     nb_meta_json = json.dumps({k: {"free_face_bc": v.free_face_bc} for k, v in nb_meta.items()})
@@ -482,12 +554,24 @@ def main() -> None:
         f"--boxes {out_dir / 'sphere_boxes.json'}"
     )
     print(f"  shore cc-par {bg_adj} {bg_ccpar} --grd background.grd --meta '{bg_meta_json}'")
+    nb_proc_meta_json = json.dumps(
+        {str(i): {"body": 1} for i in range(1, len(nb_blocks) + 1)}
+    )
+    print(
+        f"  shore proc-input {out_dir / 'wall.grd'} {nb_proc_path} "
+        f"--np {args.np} --meta '{nb_proc_meta_json}'"
+    )
+    print(f"  shore proc-input {out_dir / 'background.grd'} {bg_proc_path} --np {args.np}")
     print(
         f"  shore grd-merge {out_dir / 'background.grd'} {out_dir / 'wall.grd'} -o {assembly_grd}"
     )
     print(
         f"  shore cc-par-merge {out_dir / 'background.cc.par'} {out_dir / 'wall.cc.par'} "
         f"-o {assembly_ccpar} --grd assembly.grd"
+    )
+    print(
+        f"  shore proc-input-merge {out_dir / 'background.proc.input'} "
+        f"{out_dir / 'wall.proc.input'} -o {assembly_proc} --grd {assembly_grd}"
     )
 
     if not args.view and args.screenshot is None:
