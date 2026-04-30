@@ -19,8 +19,22 @@ All Python dependencies are installed automatically:
 ## From PyPI
 
 ```bash
-pip install shore
+pip install shore-mesh
 ```
+
+::: tip Distribution name vs import name
+The PyPI distribution name is `shore-mesh` (the unprefixed `shore` was
+already taken on PyPI). The Python import name and CLI entry point
+both stay `shore`:
+
+```python
+import shore
+```
+
+```bash
+shore --help
+```
+:::
 
 Verify the installation:
 
@@ -56,7 +70,7 @@ under a minute on a modern laptop):
 ## Optional: pyvista for visualisation
 
 ```bash
-pip install shore[vis]
+pip install shore-mesh[vis]
 # or
 pip install pyvista
 ```

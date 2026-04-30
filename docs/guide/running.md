@@ -375,7 +375,7 @@ The `shore view` command and the example script's interactive mode
 require pyvista:
 
 ```bash
-pip install shore[vis]
+pip install shore-mesh[vis]
 ```
 
 Without pyvista, `--screenshot` and `--no-view` still work for offline

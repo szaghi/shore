@@ -3,7 +3,7 @@
 VTK StructuredGrid export for ParaView, VisIt, and PyVista.
 
 ::: warning Optional dependency
-This module requires **pyvista** (`pip install shore[vis]`). Import will fail with `ImportError` if pyvista is not installed.
+This module requires **pyvista** (`pip install shore-mesh[vis]`). Import will fail with `ImportError` if pyvista is not installed.
 :::
 
 ## O-grid periodicity and VTK

@@ -3,10 +3,28 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "shore"
+name = "shore-mesh"
 version = "0.1.0"
 description = "SHORE — Structured Hyperbolic Overlapping Remeshing Engine"
+readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Stefano Zaghi", email = "stefano.zaghi@gmail.com" },
+    { name = "Andrea Di Mascio", email = "andrea.dimascio@univaq.it" },
+]
+keywords = ["mesh", "cfd", "chimera", "overset", "structured-grid", "hyperbolic-mesh"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
     "numpy>=1.26",
     "trimesh>=4.0",
@@ -15,7 +33,13 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.0",
 ]
-authors = [{ name = "Stefano Zaghi", email = "stefano.zaghi@gmail.com" }]
+
+[project.urls]
+Homepage      = "https://szaghi.github.io/shore/"
+Documentation = "https://szaghi.github.io/shore/"
+Repository    = "https://github.com/szaghi/shore"
+Issues        = "https://github.com/szaghi/shore/issues"
+Changelog     = "https://github.com/szaghi/shore/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

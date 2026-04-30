@@ -214,7 +214,7 @@ export and **PyVista** for interactive Python views.
 
 ::: tip Install the vis extras
 ```bash
-pip install shore[vis]   # adds pyvista
+pip install shore-mesh[vis]   # adds pyvista
 ```
 :::
 

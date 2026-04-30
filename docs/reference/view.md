@@ -3,7 +3,7 @@
 Open an interactive PyVista viewer for a `.geo` volume or `.npz` surface layer.
 
 ::: warning Optional dependency
-`shore view` requires **pyvista** (`pip install shore[vis]`). The command exits with code 1 and a clear error message if pyvista is not installed.
+`shore view` requires **pyvista** (`pip install shore-mesh[vis]`). The command exits with code 1 and a clear error message if pyvista is not installed.
 :::
 
 ## Synopsis

@@ -69,7 +69,10 @@ shore check fuselage_sub0.geo
 ### Installation
 
 ```bash
-pip install shore
+pip install shore-mesh           # distribution name on PyPI
+# the import / CLI name stays `shore`:
+#   import shore
+#   shore --help
 ```
 
 Or from source for development:
