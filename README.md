@@ -68,12 +68,27 @@ shore check fuselage_sub0.geo
 
 ### Installation
 
+The fastest path on Linux / macOS / WSL — installs SHORE in an
+isolated pipx venv with the `shore` CLI on your PATH:
+
 ```bash
-pip install shore-mesh           # distribution name on PyPI
-# the import / CLI name stays `shore`:
-#   import shore
-#   shore --help
+curl -fsSL https://raw.githubusercontent.com/szaghi/shore/main/install.sh | bash
 ```
+
+Or, equivalently, with pipx directly:
+
+```bash
+pipx install shore-mesh
+```
+
+Or, with pip inside a virtual environment (when you want `import shore` from your own scripts):
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install shore-mesh
+```
+
+> The PyPI distribution name is `shore-mesh`. The Python import name and CLI entry point both stay `shore` — `import shore`, `shore --help`.
 
 Or from source for development:
 

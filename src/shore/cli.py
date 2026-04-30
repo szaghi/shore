@@ -60,6 +60,29 @@ _console = Console()
 _err = Console(stderr=True)
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from shore import __version__
+
+        _console.print(f"shore {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: Annotated[
+        bool | None,
+        typer.Option(
+            "--version",
+            help="Show the SHORE version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = None,
+) -> None:
+    """SHORE root callback — only handles --version for now."""
+
+
 # ---------------------------------------------------------------------------
 # Shared option aliases
 # ---------------------------------------------------------------------------

@@ -1,5 +1,16 @@
 # Quick Start
 
+::: tip Not installed yet?
+The fastest install on Linux / macOS / WSL:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/szaghi/shore/main/install.sh | bash
+```
+
+See the full [Installation guide](./installation.md) for `pipx` and
+`pip` alternatives.
+:::
+
 ## Your first O-grid
 
 Given a body surface `sphere.stl`, generate a 6-block cubed-sphere
