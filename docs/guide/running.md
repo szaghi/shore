@@ -245,7 +245,59 @@ examples_out/
   background.adjacency.json
   wall.cc.par                   # near-body Xall cc.par
   background.cc.par             # background Xall cc.par
+  assembly.{grd,cc.par,proc.input}   # merged Xall job
 ```
+
+::: tip CLI-only equivalent
+[`examples/05-chimera-assembly/chimera_assembly.sh`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.sh)
+runs the same pipeline through `shore` subcommands alone — no Python
+imports.  The Python and bash paths produce **byte-identical**
+`assembly.{grd, cc.par, proc.input}` outputs:
+
+```bash
+./examples/05-chimera-assembly/chimera_assembly.sh           # default examples_out/
+./examples/05-chimera-assembly/chimera_assembly.sh -o my_run
+./examples/05-chimera-assembly/chimera_assembly.sh --np 16
+```
+:::
+
+### `examples/06-c-grid/visualize_naca0012.py` — C-grid around a NACA 0012 wing
+
+Builds a NACA 0012 wing analytically (`shore.profiles` + `shore.shapes`),
+runs the C-grid pipeline (TE detection → span slice → C-curve build →
+hyperbolic march), and writes a ParaView `.vtm`.
+
+```bash
+# Generate naca0012.{stl,geo,vtm}; opens the PyVista viewer at the end.
+python examples/06-c-grid/visualize_naca0012.py --generate
+
+# Larger C-grid, finer wake clustering, no viewer.
+python examples/06-c-grid/visualize_naca0012.py --generate \
+    --ni-body 160 --ni-wake 40 --n-stations 8 \
+    --wake-length 25 --wake-growth 1.20 \
+    --nk 30 --ds 5e-4 --growth 1.15 --no-view
+```
+
+Output:
+
+```
+examples_out/
+  naca0012.stl     # extruded wing STL
+  naca0012.geo    # marched C-grid block
+  naca0012.vtm    # ParaView MultiBlock
+```
+
+::: tip CLI-only equivalent
+[`examples/06-c-grid/visualize_naca0012.sh`](https://github.com/szaghi/shore/blob/main/examples/06-c-grid/visualize_naca0012.sh)
+chains `shore profile naca` → `shore body extrude` → `shore mesh
+--topology cgrid` → `shore export` to produce the same outputs (plus
+the intermediate `naca0012.dat` Selig section):
+
+```bash
+./examples/06-c-grid/visualize_naca0012.sh
+./examples/06-c-grid/visualize_naca0012.sh --ni-body 160 --nk 30
+```
+:::
 
 ### `examples/01-body-fitted/tour.ipynb` — Jupyter Notebook
 

@@ -897,9 +897,10 @@ def export(
         list[Path],
         typer.Argument(
             help=(
-                "One or more input files. A single .geo writes a .vts; a "
-                "single .npz writes a .vts; multiple .geo files are bundled "
-                "into a single .vtm MultiBlock."
+                "One or more input files.  A single .geo / .npz writes a "
+                ".vts (or a .vtm with one block when --output ends in .vtm); "
+                "multiple .geo files are bundled into a single .vtm "
+                "MultiBlock."
             ),
         ),
     ],
@@ -928,7 +929,11 @@ def export(
             raise typer.Exit(1) from None
 
     # Single-input dispatch (preserved from the original command).
-    if len(inputs) == 1:
+    # Exception: if the user explicitly asks for a .vtm output, fall
+    # through to the multi-input path with one block — useful for
+    # single-block topologies (O-grid, C-grid) whose authors want a
+    # MultiBlock for consistency with multi-block topologies.
+    if len(inputs) == 1 and not (output is not None and output.suffix.lower() == ".vtm"):
         input = inputs[0]
         suffix = input.suffix.lower()
         try:

@@ -376,6 +376,15 @@ class TestExport:
         assert r.exit_code == 1
         assert "file not found" in r.output
 
+    def test_single_geo_with_vtm_output_creates_vtm(self, valid_geo, tmp_path):
+        # Single-block topologies (O-grid, C-grid) sometimes want a .vtm
+        # for consistency with multi-block exports.  --output X.vtm on a
+        # single-input call should write a 1-block MultiBlock.
+        out = tmp_path / "single.vtm"
+        r = _invoke("export", str(valid_geo), "-o", str(out))
+        assert r.exit_code == 0, r.output
+        assert out.exists()
+
 
 # ---------------------------------------------------------------------------
 # shore profile

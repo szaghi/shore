@@ -13,6 +13,8 @@ title: Changelog
 - **`install.sh`** `curl | bash` installer for Linux / macOS / WSL: detects Python ≥ 3.11, installs `pipx` if missing (apt on Debian/Ubuntu, pip elsewhere — handles PEP 668), then `pipx install shore-mesh`. Supports `--vis` for the pyvista extras and `--version X.Y.Z` to pin.
 - **`--adjacency-json PATH`** flag on `shore mesh` and `shore primitive {box, annulus, flat-caps}`: emit the `.adjacency.json` sidecar at generation time. Closes the CLI gap that previously forced users to drop into Python to feed `shore cc-par` for cubed-sphere walls and flat-caps backgrounds. Single-block primitives still emit a sidecar (no SHARED faces) for downstream-tool consistency.
 - **`examples/05-chimera-assembly/chimera_assembly.sh`**: bash equivalent of `chimera_assembly.py`, using only `shore` CLI calls. Produces a byte-identical `assembly.{grd, cc.par, proc.input}` triple. The canonical reference for end-to-end Chimera assembly via shell.
+- **`examples/06-c-grid/visualize_naca0012.sh`**: bash equivalent of `visualize_naca0012.py`. Chains `shore profile naca` -> `shore body extrude` -> `shore mesh --topology cgrid` -> `shore export` to build a NACA 0012 C-grid + ParaView `.vtm` from scratch, no Python imports.
+- **`shore export`** now writes a single-block `.vtm` (instead of a `.vts`) when given one input and an `--output` ending in `.vtm`. Lets single-block topologies (O-grid, C-grid) emit a MultiBlock for ParaView consistency with multi-block topologies.
 
 ### Changed
 - The C-grid example (`examples/06-c-grid/visualize_naca0012.py`) and the `naca0012_stl` test fixture both now build their NACA 0012 STL via `shore.profiles` + `shore.shapes` instead of inline polynomial math. The two near-duplicate copies of the NACA polynomial are gone.

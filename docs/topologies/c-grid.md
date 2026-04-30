@@ -146,9 +146,14 @@ The C-grid k=0 layer is built in four stages — see
   non-span axes is auto-picked as the chord direction; the
   freestream defaults to chord-axis +1.
 
-The example at
-[`examples/06-c-grid/visualize_naca0012.py`](https://github.com/szaghi/shore/blob/main/examples/06-c-grid/visualize_naca0012.py)
-runs end-to-end on a NACA 0012 fixture without external data.
+Two end-to-end examples run on a NACA 0012 fixture without external
+data:
+
+- [`examples/06-c-grid/visualize_naca0012.py`](https://github.com/szaghi/shore/blob/main/examples/06-c-grid/visualize_naca0012.py)
+  — Python script with optional PyVista viewer.
+- [`examples/06-c-grid/visualize_naca0012.sh`](https://github.com/szaghi/shore/blob/main/examples/06-c-grid/visualize_naca0012.sh)
+  — bash equivalent using only `shore` CLI calls (`shore profile naca`
+  → `shore body extrude` → `shore mesh --topology cgrid` → `shore export`).
 
 ## Face boundary conditions
 

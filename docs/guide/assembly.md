@@ -192,6 +192,13 @@ python examples/05-chimera-assembly/chimera_assembly.py -o my_run
 python examples/05-chimera-assembly/chimera_assembly.py --view
 ```
 
+::: tip CLI-only equivalent
+The same pipeline runs through `shore` subcommands alone — see
+[`examples/05-chimera-assembly/chimera_assembly.sh`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.sh).
+The Python and bash paths produce byte-identical
+`assembly.{grd, cc.par, proc.input}` outputs.
+:::
+
 The script uses `shore.io.cc_par.BlockMeta` to assign **per-block** BC
 codes — demonstrating that `write_cc_par`'s `block_metadata` argument
 (and the matching CLI `--meta` flag) give full per-block control:

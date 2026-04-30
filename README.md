@@ -173,7 +173,7 @@ shore cc-par-merge     background.cc.par       wall.cc.par       -o assembly.cc.
 shore proc-input-merge background.proc.input   wall.proc.input   -o assembly.proc.input
 ```
 
-The full walkthrough — including the `examples/05-chimera-assembly/chimera_assembly.py` reference script — is at the [cc.par + boxes pipeline guide](https://szaghi.github.io/shore/guide/cc-par-pipeline).
+The full walkthrough — with both Python (`examples/05-chimera-assembly/chimera_assembly.py`) and bash (`chimera_assembly.sh`) reference scripts — is at the [cc.par + boxes pipeline guide](https://szaghi.github.io/shore/guide/cc-par-pipeline).
 
 ## CLI reference
 

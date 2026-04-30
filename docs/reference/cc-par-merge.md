@@ -91,9 +91,12 @@ shore cc-par-merge background.cc.par wall.cc.par -o assembly.cc.par \
                    --grd assembly.grd
 ```
 
-The example at `examples/05-chimera-assembly/chimera_assembly.py` builds the wall and
-background meshes from scratch, runs both merges, and prints the
-equivalent CLI commands. See the
+The example at `examples/05-chimera-assembly/chimera_assembly.py`
+builds the wall and background meshes from scratch, runs both merges,
+and prints the equivalent CLI commands.  Its bash sibling
+`examples/05-chimera-assembly/chimera_assembly.sh` runs the same
+pipeline through `shore` subcommands alone — useful as a
+copy-pasteable reference.  See the
 [cc.par + boxes pipeline](/guide/cc-par-pipeline) walkthrough for the
 end-to-end story.
 
