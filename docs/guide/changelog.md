@@ -4,6 +4,17 @@ title: Changelog
 
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`shore.profiles`** module + **`shore profile naca`** CLI command: generate 2D NACA airfoil section coordinates analytically, write as Selig-format `.dat` files (UIUC-compatible). Supports the full 4-digit family (`naca4`) and the 5-digit family with both standard and reflexed mean lines (`naca5`); the `naca` dispatcher picks the right one by digit count. Pure NumPy, no external deps. See [Algorithm — airfoil profiles](/algorithm/airfoil-profiles).
+- **`shore.shapes`** module + **`shore body`** CLI command: generate 3D body STL files. Analytic primitives (`sphere`, `cylinder`, `torus`, `box`, `capsule`) wrap `trimesh.creation`; `extrude_section` lifts any 2D Selig profile to a 3D wing with optional taper, sweep, and twist. `shore body extrude` consumes Selig `.dat` files (from `shore profile naca` or any UIUC-style source). Default open ends are intentionally non-watertight so the C-grid topology's per-station slicer doesn't trip on end-cap triangles; pass `--end-caps` for a watertight body.
+- **`shore --version`** flag: prints `shore <version>` and exits.
+- **`install.sh`** `curl | bash` installer for Linux / macOS / WSL: detects Python ≥ 3.11, installs `pipx` if missing (apt on Debian/Ubuntu, pip elsewhere — handles PEP 668), then `pipx install shore-mesh`. Supports `--vis` for the pyvista extras and `--version X.Y.Z` to pin.
+
+### Changed
+- The C-grid example (`examples/06-c-grid/visualize_naca0012.py`) and the `naca0012_stl` test fixture both now build their NACA 0012 STL via `shore.profiles` + `shore.shapes` instead of inline polynomial math. The two near-duplicate copies of the NACA polynomial are gone.
+
 ## [0.1.0] — 2026-04-30
 
 ### Added

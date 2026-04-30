@@ -77,6 +77,7 @@ export default defineConfig({
           items: [
             { text: 'Marker boxes (voxel-fill + greedy merge)', link: '/algorithm/boxes' },
             { text: 'C-grid construction',                       link: '/algorithm/c-grid' },
+            { text: 'Airfoil profiles (NACA 4 + 5-digit)',       link: '/algorithm/airfoil-profiles' },
           ],
         },
       ],
@@ -106,6 +107,13 @@ export default defineConfig({
             { text: 'shore mesh',      link: '/reference/mesh' },
             { text: 'shore primitive', link: '/reference/primitive' },
             { text: 'shore project',   link: '/reference/project' },
+          ],
+        },
+        {
+          text: 'Body generation commands',
+          items: [
+            { text: 'shore profile', link: '/reference/profile' },
+            { text: 'shore body',    link: '/reference/body' },
           ],
         },
         {

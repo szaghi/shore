@@ -375,3 +375,112 @@ class TestExport:
         r = _invoke("export", str(valid_geo_set[0]), str(ghost), "-o", str(tmp_path / "x.vtm"))
         assert r.exit_code == 1
         assert "file not found" in r.output
+
+
+# ---------------------------------------------------------------------------
+# shore profile
+# ---------------------------------------------------------------------------
+
+
+class TestProfileNaca:
+    def test_4digit_writes_dat(self, tmp_path):
+        out = tmp_path / "naca0012.dat"
+        r = _invoke("profile", "naca", "0012", "-o", str(out))
+        assert r.exit_code == 0, r.output
+        assert out.exists()
+        # Header line + data lines; 159 = 2*80 - 1 chord-point coords.
+        lines = out.read_text().strip().split("\n")
+        assert len(lines) == 1 + 159  # name + coords
+
+    def test_5digit_writes_dat(self, tmp_path):
+        out = tmp_path / "naca23012.dat"
+        r = _invoke("profile", "naca", "23012", "--n-pts", "40", "-o", str(out))
+        assert r.exit_code == 0, r.output
+        assert out.exists()
+
+    def test_open_te_flag(self, tmp_path):
+        out = tmp_path / "naca0012-open.dat"
+        r = _invoke("profile", "naca", "0012", "--open-te", "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_invalid_designation_exits_1(self, tmp_path):
+        r = _invoke("profile", "naca", "abcd", "-o", str(tmp_path / "x.dat"))
+        assert r.exit_code == 1
+        assert "digit string" in r.output
+
+
+# ---------------------------------------------------------------------------
+# shore body
+# ---------------------------------------------------------------------------
+
+
+class TestBody:
+    def test_sphere(self, tmp_path):
+        out = tmp_path / "sphere.stl"
+        r = _invoke("body", "sphere", "--radius", "1.5", "-o", str(out))
+        assert r.exit_code == 0, r.output
+        assert out.exists()
+
+    def test_cylinder(self, tmp_path):
+        out = tmp_path / "cyl.stl"
+        r = _invoke("body", "cylinder", "--radius", "0.3", "--height", "2.0", "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_torus(self, tmp_path):
+        out = tmp_path / "torus.stl"
+        r = _invoke("body", "torus", "--r-major", "2", "--r-minor", "0.5", "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_box(self, tmp_path):
+        out = tmp_path / "box.stl"
+        r = _invoke("body", "box", "--extents", "1", "2", "3", "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_capsule(self, tmp_path):
+        out = tmp_path / "cap.stl"
+        r = _invoke("body", "capsule", "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_invalid_radius_exits_1(self, tmp_path):
+        r = _invoke("body", "sphere", "--radius", "-1", "-o", str(tmp_path / "x.stl"))
+        assert r.exit_code == 1
+
+    def test_extrude_naca_pipeline(self, tmp_path):
+        # 1) generate Selig .dat via shore profile
+        dat = tmp_path / "naca0012.dat"
+        r1 = _invoke("profile", "naca", "0012", "-o", str(dat))
+        assert r1.exit_code == 0, r1.output
+        # 2) extrude into a wing STL via shore body extrude
+        stl = tmp_path / "wing.stl"
+        r2 = _invoke(
+            "body",
+            "extrude",
+            "--section",
+            str(dat),
+            "--span",
+            "1.0",
+            "--n-stations",
+            "6",
+            "--end-caps",
+            "-o",
+            str(stl),
+        )
+        assert r2.exit_code == 0, r2.output
+        assert stl.exists()
+
+    def test_extrude_missing_section_exits_1(self, tmp_path):
+        ghost = tmp_path / "ghost.dat"
+        r = _invoke(
+            "body",
+            "extrude",
+            "--section",
+            str(ghost),
+            "--span",
+            "1.0",
+            "--n-stations",
+            "5",
+            "-o",
+            str(tmp_path / "x.stl"),
+        )
+        assert r.exit_code == 1
+        assert "file not found" in r.output

@@ -119,11 +119,11 @@ class TestDetectTEErrors:
             detect_te_edges(mesh, dihedral_deg=60.0)
 
     def test_high_dihedral_yields_empty(self, naca0012_stl):
-        # The fixture's TE dihedral peaks around 95°.  Asking for
-        # candidates >= 100° finds none — error.
+        # The fixture's max dihedral peaks below 170°; asking for
+        # candidates above that finds none -- error.
         mesh = trimesh.load(str(naca0012_stl), force="mesh")
         with pytest.raises(MeshInputError, match="dihedral"):
-            detect_te_edges(mesh, dihedral_deg=100.0)
+            detect_te_edges(mesh, dihedral_deg=170.0)
 
 
 # ---------------------------------------------------------------------------

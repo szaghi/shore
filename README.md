@@ -56,6 +56,11 @@ shore mesh naca0012.stl --topology cgrid \
     --ni-body 120 --ni-wake 30 --n-stations 5 --wake-length 15 \
     --nk 30 --ds 5e-4 --growth 1.15 -o naca0012
 
+# Need an STL?  Generate one analytically:
+shore profile naca 0012 -o naca0012.dat                    # 2D Selig section
+shore body extrude --section naca0012.dat --span 1.0 -o naca0012.stl  # 3D wing
+shore body sphere --radius 1.5 -o sphere.stl               # primitive bodies
+
 # Parametric background — no STL needed
 shore primitive flat-caps --r-out 10 --z0 -10 --z1 50 --ni 16 --nc 24 --nk 60 -o background
 
@@ -172,11 +177,12 @@ The full walkthrough — including the `examples/05-chimera-assembly/chimera_ass
 
 ## CLI reference
 
-Nineteen commands, grouped by purpose:
+Twenty-one commands, grouped by purpose:
 
 | Group | Commands |
 |---|---|
 | **Mesh generation** | `shore mesh`, `shore primitive`, `shore project` |
+| **Body generation** | `shore profile`, `shore body` |
 | **Adjacency / parallelism** | `shore split`, `shore balance` |
 | **Xall pipeline** | `shore grd`, `shore grd-merge`, `shore cc-par`, `shore cc-par-merge`, `shore proc-input`, `shore proc-input-merge`, `shore boxes-from-stl` |
 | **Inspection** | `shore info`, `shore check` |

@@ -48,25 +48,9 @@ import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
-
 # ---------------------------------------------------------------------------
-# NACA 0012 STL builder (standalone copy of the test fixture)
+# NACA 0012 STL builder
 # ---------------------------------------------------------------------------
-
-
-def _naca0012_section(n_pts: int = 80) -> np.ndarray:
-    """Cosine-spaced NACA 0012 section on chord [0, 1], sharp TE."""
-    t = 0.12
-    beta = np.linspace(0.0, np.pi, n_pts)
-    x = 0.5 * (1.0 - np.cos(beta))
-    yt = (
-        5.0 * t * (0.2969 * np.sqrt(x) - 0.1260 * x - 0.3516 * x**2 + 0.2843 * x**3 - 0.1015 * x**4)
-    )
-    yt[-1] = 0.0  # close the TE exactly
-    upper = np.stack([x, yt], axis=1)
-    lower = np.stack([x[::-1][1:], -yt[::-1][1:]], axis=1)
-    return np.concatenate([upper, lower], axis=0)
 
 
 def _make_naca0012_stl(
@@ -77,48 +61,21 @@ def _make_naca0012_stl(
     chord: float = 1.0,
     span: float = 0.5,
 ) -> None:
-    """Write a NACA 0012 wing STL with sharp TE and centroid-fan end caps."""
-    import trimesh
+    """Write a NACA 0012 wing STL with sharp TE and centroid-fan end caps.
 
-    section = _naca0012_section(n_section_pts) * chord
-    n_sec = len(section)
+    Uses :func:`shore.profiles.naca` for the analytic 2D section and
+    :func:`shore.shapes.extrude_section` for the 3D extrusion.
+    """
+    from shore.profiles import naca
+    from shore.shapes import extrude_section
 
-    z_stations = np.linspace(0.0, span, n_stations)
-    section_3d = np.stack(
-        [np.column_stack([section[:, 0], section[:, 1], np.full(n_sec, z)]) for z in z_stations],
-        axis=0,
-    )  # (n_stations, n_sec, 3)
-
-    vertices = section_3d.reshape(-1, 3)
-    faces = []
-    # Side faces.
-    for k in range(n_stations - 1):
-        for i in range(n_sec):
-            i_next = (i + 1) % n_sec
-            v00 = k * n_sec + i
-            v01 = k * n_sec + i_next
-            v10 = (k + 1) * n_sec + i
-            v11 = (k + 1) * n_sec + i_next
-            faces.append([v00, v10, v11])
-            faces.append([v00, v11, v01])
-
-    # End caps: centroid fan.
-    for cap_k in (0, n_stations - 1):
-        ring = section_3d[cap_k]
-        centroid = ring.mean(axis=0)
-        cid = len(vertices)
-        vertices = np.vstack([vertices, centroid])
-        for i in range(n_sec):
-            i_next = (i + 1) % n_sec
-            v_a = cap_k * n_sec + i
-            v_b = cap_k * n_sec + i_next
-            if cap_k == 0:
-                faces.append([cid, v_b, v_a])
-            else:
-                faces.append([cid, v_a, v_b])
-
-    mesh = trimesh.Trimesh(vertices=vertices, faces=np.asarray(faces))
-    mesh.merge_vertices()
+    section = naca("0012", n_pts=n_section_pts // 2) * chord
+    mesh = extrude_section(
+        section,
+        span=span,
+        n_stations=n_stations,
+        end_caps=True,
+    )
     mesh.export(str(path))
 
 

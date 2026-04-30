@@ -2405,3 +2405,299 @@ def boxes_export(
 
     out = write_boxes_vtm(boxes, output)
     _console.print(f"[green]✓[/green] Wrote {out} ({len(boxes)} box(es))")
+
+
+# ---------------------------------------------------------------------------
+# shore profile  (2D airfoil section coordinates)
+# ---------------------------------------------------------------------------
+
+
+profile_app = typer.Typer(
+    name="profile",
+    help="2D airfoil section coordinate generators (NACA 4-digit, 5-digit).",
+    no_args_is_help=True,
+)
+app.add_typer(profile_app)
+
+
+@profile_app.command("naca")
+def profile_naca(
+    designation: Annotated[
+        str,
+        typer.Argument(help="NACA digit string (e.g. '0012', '2412', '23012')."),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Output .dat file (Selig format)."),
+    ],
+    n_pts: Annotated[
+        int,
+        typer.Option("--n-pts", help="Chord samples per side (LE..TE)."),
+    ] = 80,
+    closed_te: Annotated[
+        bool,
+        typer.Option(
+            "--closed-te/--open-te",
+            help="Use the closed-TE thickness polynomial.",
+        ),
+    ] = True,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", help="Optional name comment on the .dat header."),
+    ] = None,
+) -> None:
+    """Generate a NACA airfoil section and write it as a Selig .dat file.
+
+    The output is a ``(2 * n_pts - 1, 2)`` polyline ordered upper-TE
+    -> LE -> lower-TE, written as whitespace-separated ``x y`` rows.
+    Compatible with the UIUC airfoil database format.
+
+    Examples
+    --------
+
+        shore profile naca 0012 -o naca0012.dat
+        shore profile naca 2412 --n-pts 120 -o naca2412.dat
+        shore profile naca 23012 -o naca23012.dat --name "NACA 23012"
+    """
+    from shore.exceptions import ParameterError
+    from shore.profiles import naca, write_section
+
+    try:
+        coords = naca(designation, n_pts=n_pts, closed_te=closed_te)
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    name_label = name if name is not None else f"NACA {designation}"
+    write_section(output, coords, name=name_label)
+    _console.print(
+        f"[green]✓[/green] Wrote {output}  ({coords.shape[0]} points, "
+        f"{'closed' if closed_te else 'open'} TE)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# shore body  (3D STL bodies)
+# ---------------------------------------------------------------------------
+
+
+body_app = typer.Typer(
+    name="body",
+    help="3D STL body generators (analytic primitives + section extrusion).",
+    no_args_is_help=True,
+)
+app.add_typer(body_app)
+
+
+def _write_stl(mesh_obj, output: Path, *, label: str) -> None:
+    """Export a trimesh.Trimesh to *output* and print a summary."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    mesh_obj.export(str(output))
+    _console.print(
+        f"[green]✓[/green] Wrote {output}  "
+        f"({len(mesh_obj.vertices)} vertices, {len(mesh_obj.faces)} faces, "
+        f"{label})"
+    )
+
+
+@body_app.command("sphere")
+def body_sphere(
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output .stl file.")],
+    radius: Annotated[float, typer.Option("--radius", help="Sphere radius.")] = 1.0,
+    subdivisions: Annotated[
+        int,
+        typer.Option(
+            "--subdivisions",
+            help="Icosphere subdivision level (0..6+, each level x4 triangles).",
+        ),
+    ] = 3,
+) -> None:
+    """Build an icosahedral sphere STL centred at the origin."""
+    from shore.exceptions import ParameterError
+    from shore.shapes import sphere
+
+    try:
+        mesh_obj = sphere(radius=radius, subdivisions=subdivisions)
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    _write_stl(mesh_obj, output, label="sphere")
+
+
+@body_app.command("cylinder")
+def body_cylinder(
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output .stl file.")],
+    radius: Annotated[float, typer.Option("--radius", help="Cylinder radius.")] = 1.0,
+    height: Annotated[float, typer.Option("--height", help="Cylinder height (z-extent).")] = 1.0,
+    sections: Annotated[
+        int, typer.Option("--sections", help="Segments around the circumference.")
+    ] = 32,
+) -> None:
+    """Build a right circular cylinder STL, axis along z."""
+    from shore.exceptions import ParameterError
+    from shore.shapes import cylinder
+
+    try:
+        mesh_obj = cylinder(radius=radius, height=height, sections=sections)
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    _write_stl(mesh_obj, output, label="cylinder")
+
+
+@body_app.command("torus")
+def body_torus(
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output .stl file.")],
+    r_major: Annotated[
+        float, typer.Option("--r-major", help="Major radius (centre of tube).")
+    ] = 1.0,
+    r_minor: Annotated[float, typer.Option("--r-minor", help="Minor radius (tube radius).")] = 0.25,
+    major_sections: Annotated[
+        int, typer.Option("--major-sections", help="Segments around the major circle.")
+    ] = 32,
+    minor_sections: Annotated[
+        int, typer.Option("--minor-sections", help="Segments around the tube.")
+    ] = 32,
+) -> None:
+    """Build a torus STL (axis of revolution = z)."""
+    from shore.exceptions import ParameterError
+    from shore.shapes import torus
+
+    try:
+        mesh_obj = torus(
+            r_major=r_major,
+            r_minor=r_minor,
+            major_sections=major_sections,
+            minor_sections=minor_sections,
+        )
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    _write_stl(mesh_obj, output, label="torus")
+
+
+@body_app.command("box")
+def body_box(
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output .stl file.")],
+    extents: Annotated[
+        tuple[float, float, float],
+        typer.Option("--extents", help="Side lengths (dx dy dz)."),
+    ] = (1.0, 1.0, 1.0),
+) -> None:
+    """Build a rectangular box STL centred at the origin."""
+    from shore.exceptions import ParameterError
+    from shore.shapes import box as _box
+
+    try:
+        mesh_obj = _box(extents=extents)
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    _write_stl(mesh_obj, output, label="box")
+
+
+@body_app.command("capsule")
+def body_capsule(
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output .stl file.")],
+    radius: Annotated[float, typer.Option("--radius", help="Cap and cylinder radius.")] = 0.5,
+    height: Annotated[float, typer.Option("--height", help="Cylindrical middle length.")] = 1.0,
+    sections: Annotated[
+        int, typer.Option("--sections", help="Segments per circumferential / meridional axis.")
+    ] = 16,
+) -> None:
+    """Build a capsule STL (cylinder + hemispherical caps), axis along z."""
+    from shore.exceptions import ParameterError
+    from shore.shapes import capsule
+
+    try:
+        mesh_obj = capsule(radius=radius, height=height, sections=sections)
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    _write_stl(mesh_obj, output, label="capsule")
+
+
+@body_app.command("extrude")
+def body_extrude(
+    section: Annotated[
+        Path,
+        typer.Option(
+            "--section",
+            help="Selig .dat section file (use 'shore profile naca' to generate one).",
+        ),
+    ],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output .stl file.")],
+    span: Annotated[float, typer.Option("--span", help="Total wing span.")] = 1.0,
+    n_stations: Annotated[
+        int, typer.Option("--n-stations", help="Span stations including root and tip.")
+    ] = 8,
+    taper: Annotated[float, typer.Option("--taper", help="Tip-to-root chord ratio.")] = 1.0,
+    sweep_deg: Annotated[
+        float, typer.Option("--sweep-deg", help="Sweep angle of the LE in degrees.")
+    ] = 0.0,
+    twist_deg: Annotated[
+        float, typer.Option("--twist-deg", help="Geometric twist at tip in degrees.")
+    ] = 0.0,
+    span_axis: Annotated[
+        str, typer.Option("--span-axis", help="Span axis: 'x', 'y', or 'z'.")
+    ] = "z",
+    end_caps: Annotated[
+        bool,
+        typer.Option(
+            "--end-caps/--open-ends",
+            help="Add centroid-fan caps at the span ends (watertight).",
+        ),
+    ] = False,
+) -> None:
+    """Extrude a 2D Selig section into a 3D wing STL.
+
+    Reads ``--section`` as a Selig .dat (see `shore profile naca`),
+    builds a wing by stacking copies along ``--span-axis`` with
+    optional taper, sweep, and twist, and writes an STL.
+
+    Examples
+    --------
+
+        # Constant-section straight wing:
+        shore profile naca 0012 -o naca0012.dat
+        shore body extrude --section naca0012.dat --span 1.0 --n-stations 8 -o wing.stl
+
+        # Tapered swept twisted wing with watertight ends:
+        shore body extrude --section naca0012.dat --span 2.0 --n-stations 12 \\
+            --taper 0.6 --sweep-deg 25 --twist-deg -3 --end-caps -o wing.stl
+    """
+    from shore.exceptions import MeshInputError, ParameterError
+    from shore.profiles import read_section
+    from shore.shapes import extrude_section
+
+    try:
+        coords = read_section(section)
+    except (MeshInputError, ParameterError) as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    try:
+        mesh_obj = extrude_section(
+            coords,
+            span=span,
+            n_stations=n_stations,
+            taper=taper,
+            sweep_deg=sweep_deg,
+            twist_deg=twist_deg,
+            span_axis=span_axis,
+            end_caps=end_caps,
+        )
+    except ParameterError as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    label = f"wing, {n_stations} stations"
+    if taper != 1.0:
+        label += f", taper={taper}"
+    if sweep_deg != 0.0:
+        label += f", sweep={sweep_deg}°"
+    if twist_deg != 0.0:
+        label += f", twist={twist_deg}°"
+    if end_caps:
+        label += ", capped"
+    _write_stl(mesh_obj, output, label=label)
