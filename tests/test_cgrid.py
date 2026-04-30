@@ -453,13 +453,44 @@ class TestBuildCGridK0:
                 freestream_world=np.array([0.0, 0.0, 0.0]),
             )
 
+    def test_per_block_layers_shapes(self, naca0012_stl):
+        r = self._build(naca0012_stl)
+        upper, body, lower = r.per_block_layers()
+        # ni_wake=20, ni_body=80, n_stations=5
+        assert upper.shape == (20, 5, 3)
+        assert body.shape == (80, 5, 3)
+        assert lower.shape == (20, 5, 3)
+        assert r.ni_total == 118
+
+    def test_per_block_layers_share_te_columns(self, naca0012_stl):
+        r = self._build(naca0012_stl)
+        upper, body, lower = r.per_block_layers()
+        # Upper-TE column: upper[-1] == body[0] (numpy view aliasing).
+        np.testing.assert_array_equal(upper[-1], body[0])
+        # Lower-TE column: body[-1] == lower[0].
+        np.testing.assert_array_equal(body[-1], lower[0])
+        # And they share memory.
+        assert np.shares_memory(upper, body)
+        assert np.shares_memory(body, lower)
+
+    def test_per_block_layers_aliasing_propagates(self, naca0012_stl):
+        # Writing to a TE node through one view must update the other.
+        r = self._build(naca0012_stl)
+        upper, body, lower = r.per_block_layers()
+        upper[-1, 0, :] = [42.0, 42.0, 42.0]
+        np.testing.assert_array_equal(body[0, 0, :], [42.0, 42.0, 42.0])
+        body[-1, 0, :] = [99.0, 99.0, 99.0]
+        np.testing.assert_array_equal(lower[0, 0, :], [99.0, 99.0, 99.0])
+
 
 # ---------------------------------------------------------------------------
 # CGridTopology
 # ---------------------------------------------------------------------------
 
 
-class TestCGridTopology:
+class TestCGridTopologySingleBlock:
+    """Legacy 1-block C-grid topology (opt-in via ``blocks=1``)."""
+
     def _build(self, naca0012_stl, *, nk=10, **kwargs):
         mesh = trimesh.load(str(naca0012_stl), force="mesh")
         defaults = {
@@ -468,6 +499,7 @@ class TestCGridTopology:
             "n_stations": 5,
             "wake_length": 20.0,
             "span_axis": "z",
+            "blocks": 1,
         }
         defaults.update(kwargs)
         with warnings.catch_warnings():
@@ -530,7 +562,7 @@ class TestCGridTopology:
                 wake_length=20.0,
                 span_axis="z",
             )
-        blocks = CGridTopology().build(surface=k0.nodes, nk=8)
+        blocks = CGridTopology().build(surface=k0.nodes, nk=8, ni_body=80, ni_wake=20, blocks=1)
         b = blocks[0]
         assert b.nodes.shape == (118, 5, 8, 3)
         np.testing.assert_array_equal(b.nodes[:, :, 0, :], k0.nodes)
@@ -559,7 +591,9 @@ class TestCGridTopology:
 # ---------------------------------------------------------------------------
 
 
-class TestCGridMarch:
+class TestCGridMarchSingleBlock:
+    """Legacy 1-block C-grid marcher (opt-in via ``blocks=1``)."""
+
     def test_march_naca0012(self, naca0012_stl):
         from shore.mesh import Body, Mesh
 
@@ -575,6 +609,7 @@ class TestCGridMarch:
                 ni_wake=20,
                 n_stations=5,
                 wake_length=15.0,
+                blocks=1,
             )
             m = Mesh(body=body, blocks=blocks, topology=topo)
             m.march(ds=5e-4, growth=1.15, smooth_strength=0.1, smooth_iters=1)
@@ -603,6 +638,7 @@ class TestCGridMarch:
                 ni_wake=15,
                 n_stations=4,
                 wake_length=10.0,
+                blocks=1,
             )
             m = Mesh(body=body, blocks=blocks, topology=topo)
             m.march(ds=1e-3, growth=1.2, smooth_strength=0.0, smooth_iters=0)
@@ -626,6 +662,7 @@ class TestCGridMarch:
                 ni_wake=20,
                 n_stations=5,
                 wake_length=20.0,
+                blocks=1,
             )
             m = Mesh(body=body, blocks=blocks, topology=topo)
             # Crank smoothing so the LE inverts on first march.
@@ -635,4 +672,364 @@ class TestCGridMarch:
                     growth=1.15,
                     smooth_strength=0.5,
                     smooth_iters=4,
+                )
+
+
+# ---------------------------------------------------------------------------
+# 3-block sharp-TE C-grid (default topology in v0.2)
+# ---------------------------------------------------------------------------
+
+
+class TestThreeBlockCGrid:
+    """Default 3-block C-grid: upper / body / lower with SHARED seams."""
+
+    def _build(self, naca0012_stl, *, nk=10, **kwargs):
+        from shore.mesh import Body
+
+        body = Body.from_stl(naca0012_stl, skip_hygiene=True)
+        topo = CGridTopology()
+        defaults = {
+            "ni_body": 80,
+            "ni_wake": 20,
+            "n_stations": 5,
+            "wake_length": 15.0,
+            "blocks": 3,
+        }
+        defaults.update(kwargs)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            blocks = topo.build(surface=None, nk=nk, mesh=body.mesh, **defaults)
+        return body, topo, blocks
+
+    # ---- block list shape ---------------------------------------------------
+
+    def test_returns_three_blocks_in_order(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        assert len(blocks) == 3
+        assert [b.label for b in blocks] == ["upper", "body", "lower"]
+
+    def test_block_shapes(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl, nk=12)
+        u, b, lo = blocks
+        # ni_wake=20, ni_body=80, n_stations=5, nk=12
+        assert u.nodes.shape == (20, 5, 12, 3)
+        assert b.nodes.shape == (80, 5, 12, 3)
+        assert lo.nodes.shape == (20, 5, 12, 3)
+
+    # ---- TE column coincidence (numpy view aliasing) ------------------------
+
+    def test_upper_te_column_coincident(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        u, b, _ = blocks
+        # upper.i_hi (row -1) should equal body.i_lo (row 0) bit-exactly.
+        np.testing.assert_array_equal(u.nodes[-1, :, :, :], b.nodes[0, :, :, :])
+
+    def test_lower_te_column_coincident(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        _, b, lo = blocks
+        np.testing.assert_array_equal(b.nodes[-1, :, :, :], lo.nodes[0, :, :, :])
+
+    # ---- SHARED seam wiring ------------------------------------------------
+
+    def test_upper_te_seam_shared(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        u, b, _ = blocks
+        assert u.face("i_hi").bc == FaceBC.SHARED
+        assert b.face("i_lo").bc == FaceBC.SHARED
+        # Partner pointers cross-reference each other.
+        assert u.face("i_hi").partner is b.face("i_lo")
+        assert b.face("i_lo").partner is u.face("i_hi")
+
+    def test_lower_te_seam_shared(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        _, b, lo = blocks
+        assert b.face("i_hi").bc == FaceBC.SHARED
+        assert lo.face("i_lo").bc == FaceBC.SHARED
+        assert b.face("i_hi").partner is lo.face("i_lo")
+
+    def test_wake_cut_seam_shared(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        u, _, lo = blocks
+        assert u.face("k_lo").bc == FaceBC.SHARED
+        assert lo.face("k_lo").bc == FaceBC.SHARED
+        assert u.face("k_lo").partner is lo.face("k_lo")
+
+    def test_wake_cut_axis_map_has_i_reversal(self, naca0012_stl):
+        # The wake cut on upper.k_lo is the same physical line as
+        # lower.k_lo, but upper's i runs far-tip→TE while lower's
+        # i runs TE→far-tip.  AxisMap must record the i-flip.
+        _, _, blocks = self._build(naca0012_stl)
+        u, _, _ = blocks
+        amap = u.face("k_lo").axis_map
+        assert amap is not None
+        # k_lo's along-axes are (i, j); we expect ((i, True), (j, False)).
+        assert amap.along == (("i", True), ("j", False))
+
+    def test_te_seam_axis_maps_are_identity(self, naca0012_stl):
+        # Same-axis i↔i seams: along-seam (j, k) preserved, no flips.
+        _, _, blocks = self._build(naca0012_stl)
+        u, b, lo = blocks
+        for face_owner, face_name in (
+            (u, "i_hi"),
+            (b, "i_lo"),
+            (b, "i_hi"),
+            (lo, "i_lo"),
+        ):
+            amap = face_owner.face(face_name).axis_map
+            assert amap is not None
+            assert amap.along == (("j", False), ("k", False))
+
+    # ---- non-shared faces ---------------------------------------------------
+
+    def test_outer_far_tips_are_free(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        u, _, lo = blocks
+        # upper.i_lo = upper-wake far-field tip.
+        assert u.face("i_lo").bc == FaceBC.FREE
+        # lower.i_hi = lower-wake far-field tip.
+        assert lo.face("i_hi").bc == FaceBC.FREE
+
+    def test_body_k_lo_is_wall(self, naca0012_stl):
+        _, _, blocks = self._build(naca0012_stl)
+        _, b, _ = blocks
+        # The body block's k_lo is the airfoil wall (not part of any seam).
+        assert b.face("k_lo").bc == FaceBC.WALL
+
+    # ---- end-to-end march ---------------------------------------------------
+
+    def test_march_keeps_all_blocks_jacobian_positive(self, naca0012_stl):
+        from shore.mesh import Mesh
+        from shore.volume.jacobian import _jacobian_field_open
+
+        body, topo, blocks = self._build(naca0012_stl, nk=10)
+        m = Mesh(body=body, blocks=blocks, topology=topo)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m.march(ds=5e-4, growth=1.15, smooth_strength=0.1, smooth_iters=1)
+        # Match the marcher's own tolerance: -1e-6 absorbs FP noise
+        # in the per-cell scalar triple product without masking real
+        # cell inversions (which are -1e-5 or larger).
+        for blk in m.blocks:
+            jac = _jacobian_field_open(blk.nodes)
+            assert jac.min() > -1e-6, f"{blk.label}: jac.min() = {jac.min():.3e}"
+
+    def test_march_preserves_te_column_coincidence(self, naca0012_stl):
+        # After marching, the SHARED TE columns should still be
+        # bit-coincident across all k layers — the marcher's
+        # restitch step averages the upper-TE and lower-TE columns
+        # back into agreement after every step.
+        from shore.mesh import Mesh
+
+        body, topo, blocks = self._build(naca0012_stl, nk=8)
+        m = Mesh(body=body, blocks=blocks, topology=topo)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m.march(ds=5e-4, growth=1.15, smooth_strength=0.1, smooth_iters=1)
+        u, b, lo = m.blocks
+        np.testing.assert_array_equal(u.nodes[-1, :, :, :], b.nodes[0, :, :, :])
+        np.testing.assert_array_equal(b.nodes[-1, :, :, :], lo.nodes[0, :, :, :])
+
+    # ---- error paths --------------------------------------------------------
+
+    def test_blunt_te_rejected(self, naca0012_blunt_stl):
+        from shore.mesh import Body
+
+        body = Body.from_stl(naca0012_blunt_stl, skip_hygiene=True)
+        topo = CGridTopology()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="3-block layout requires a sharp TE"):
+                topo.build(
+                    surface=None,
+                    nk=10,
+                    mesh=body.mesh,
+                    ni_body=80,
+                    ni_wake=20,
+                    n_stations=5,
+                    wake_length=15.0,
+                    blocks=3,
+                )
+
+    def test_invalid_blocks_value_rejected(self, naca0012_stl):
+        from shore.mesh import Body
+
+        body = Body.from_stl(naca0012_stl, skip_hygiene=True)
+        topo = CGridTopology()
+        with pytest.raises(ValueError, match="blocks"):
+            topo.build(
+                surface=None,
+                nk=10,
+                mesh=body.mesh,
+                ni_body=80,
+                ni_wake=20,
+                n_stations=5,
+                wake_length=15.0,
+                blocks=2,
+            )
+
+
+# ---------------------------------------------------------------------------
+# 4-block blunt-TE C-grid (with wake-base block W)
+# ---------------------------------------------------------------------------
+
+
+class TestFourBlockCGrid:
+    """Blunt-TE 4-block C-grid: upper / body / lower / wake_base."""
+
+    def _build(self, naca0012_blunt_stl, *, nk=10, nk_w=3, **kwargs):
+        from shore.mesh import Body
+
+        body = Body.from_stl(naca0012_blunt_stl, skip_hygiene=True)
+        topo = CGridTopology()
+        defaults = {
+            "ni_body": 80,
+            "ni_wake": 20,
+            "n_stations": 5,
+            "wake_length": 15.0,
+            "blocks": 4,
+            "nk_w": nk_w,
+            "te_dihedral_deg": 20.0,  # blunt TE has shallower dihedral
+        }
+        defaults.update(kwargs)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            blocks = topo.build(surface=None, nk=nk, mesh=body.mesh, **defaults)
+        return body, topo, blocks
+
+    # ---- block list shape ---------------------------------------------------
+
+    def test_returns_four_blocks_in_order(self, naca0012_blunt_stl):
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        assert len(blocks) == 4
+        assert [b.label for b in blocks] == ["upper", "body", "lower", "wake_base"]
+
+    def test_wake_base_shape(self, naca0012_blunt_stl):
+        _, _, blocks = self._build(naca0012_blunt_stl, nk=12, nk_w=5)
+        wb = blocks[3]
+        # ni_wake=20, n_stations=5, nk_w=5
+        assert wb.nodes.shape == (20, 5, 5, 3)
+
+    def test_wake_base_nk_w_minimum_enforced(self, naca0012_blunt_stl):
+        # nk_w >= 2 (need at least 2 layers to bridge the gap).
+        from shore.mesh import Body
+
+        body = Body.from_stl(naca0012_blunt_stl, skip_hygiene=True)
+        topo = CGridTopology()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="nk_w"):
+                topo.build(
+                    surface=None,
+                    nk=10,
+                    mesh=body.mesh,
+                    ni_body=80,
+                    ni_wake=20,
+                    n_stations=5,
+                    wake_length=15.0,
+                    blocks=4,
+                    nk_w=1,
+                    te_dihedral_deg=20.0,
+                )
+
+    # ---- W's geometry: bridges the TE thickness gap -------------------------
+
+    def test_wake_base_k_lo_matches_lower_k0_reversed(self, naca0012_blunt_stl):
+        # W's k=0 layer = lower's k=0 strip with i reversed (W's i and L's
+        # i run opposite directions along the wake).
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        _, _, lower, wb = blocks
+        np.testing.assert_array_equal(wb.nodes[:, :, 0, :], lower.nodes[::-1, :, 0, :])
+
+    def test_wake_base_k_hi_matches_upper_k0(self, naca0012_blunt_stl):
+        # W's k=last layer = upper's k=0 strip directly (same i direction).
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        upper, _, _, wb = blocks
+        np.testing.assert_array_equal(wb.nodes[:, :, -1, :], upper.nodes[:, :, 0, :])
+
+    def test_wake_base_thickness_matches_te_thickness(self, naca0012_blunt_stl):
+        # The fixture is 1% chord blunt; W's k-extent (= TE thickness)
+        # should be 0.01 along y (the thickness axis).
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        wb = blocks[3]
+        y_extent = wb.nodes[..., 1].max() - wb.nodes[..., 1].min()
+        assert abs(y_extent - 0.01) < 1e-9
+
+    # ---- SHARED seam wiring ------------------------------------------------
+
+    def test_wake_base_kh_seam_to_upper_is_identity(self, naca0012_blunt_stl):
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        upper, _, _, wb = blocks
+        assert wb.face("k_hi").bc == FaceBC.SHARED
+        assert upper.face("k_lo").bc == FaceBC.SHARED
+        assert wb.face("k_hi").partner is upper.face("k_lo")
+        # Same i direction → identity AxisMap.
+        assert wb.face("k_hi").axis_map.along == (("i", False), ("j", False))
+
+    def test_wake_base_kl_seam_to_lower_has_i_flip(self, naca0012_blunt_stl):
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        _, _, lower, wb = blocks
+        assert wb.face("k_lo").bc == FaceBC.SHARED
+        assert lower.face("k_lo").bc == FaceBC.SHARED
+        assert wb.face("k_lo").partner is lower.face("k_lo")
+        # i flips because lower's i runs TE → far-tip while W's runs far-tip → TE.
+        assert wb.face("k_lo").axis_map.along == (("i", True), ("j", False))
+
+    def test_wake_base_te_face_is_wall(self, naca0012_blunt_stl):
+        # W.i_hi sits at the TE base — the bluff-base wall of the airfoil.
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        wb = blocks[3]
+        assert wb.face("i_hi").bc == FaceBC.WALL
+
+    def test_wake_base_far_tip_face_is_free(self, naca0012_blunt_stl):
+        _, _, blocks = self._build(naca0012_blunt_stl)
+        wb = blocks[3]
+        assert wb.face("i_lo").bc == FaceBC.FREE
+
+    # ---- end-to-end march --------------------------------------------------
+
+    def test_march_keeps_all_four_blocks_jacobian_positive(self, naca0012_blunt_stl):
+        from shore.mesh import Mesh
+        from shore.volume.jacobian import _jacobian_field_open
+
+        body, topo, blocks = self._build(naca0012_blunt_stl, nk=10)
+        m = Mesh(body=body, blocks=blocks, topology=topo)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m.march(ds=5e-4, growth=1.15, smooth_strength=0.1, smooth_iters=1)
+        for blk in m.blocks:
+            jac = _jacobian_field_open(blk.nodes)
+            assert jac.min() > -1e-6, f"{blk.label}: jac.min() = {jac.min():.3e}"
+
+    def test_wake_base_unchanged_by_march(self, naca0012_blunt_stl):
+        # W is a static block — geometry is fixed at build time.
+        from shore.mesh import Mesh
+
+        body, topo, blocks = self._build(naca0012_blunt_stl, nk=10)
+        wb_before = blocks[3].nodes.copy()
+        m = Mesh(body=body, blocks=blocks, topology=topo)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m.march(ds=5e-4, growth=1.15, smooth_strength=0.1, smooth_iters=1)
+        np.testing.assert_array_equal(m.blocks[3].nodes, wb_before)
+
+    # ---- error paths --------------------------------------------------------
+
+    def test_sharp_te_rejected_for_4_blocks(self, naca0012_stl):
+        # A sharp TE has zero gap to bridge — W would be degenerate.
+        from shore.mesh import Body
+
+        body = Body.from_stl(naca0012_stl, skip_hygiene=True)
+        topo = CGridTopology()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="4-block layout requires a blunt TE"):
+                topo.build(
+                    surface=None,
+                    nk=10,
+                    mesh=body.mesh,
+                    ni_body=80,
+                    ni_wake=20,
+                    n_stations=5,
+                    wake_length=15.0,
+                    blocks=4,
                 )

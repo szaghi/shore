@@ -643,6 +643,171 @@ class Mesh:
             if layer_callback is not None:
                 layer_callback(k + 1, jmin_global)
 
+    def _march_cgrid_three(
+        self,
+        ds: float,
+        growth: float,
+        smooth_strength: float,
+        smooth_iters: int,
+        steps: np.ndarray | None,
+        layer_callback: Callable[[int, float], None] | None,
+        blend_normals_k: int = 0,
+    ) -> None:
+        """Hyperbolic march for the 3-block C-grid (upper / body / lower).
+
+        Per layer: snapshot all three blocks; supply ghost rows so
+        each block's i-tangent at the upper-TE / lower-TE seams is a
+        centred difference against the partner block; advance each
+        block; restitch the SHARED TE columns to absorb FP noise from
+        the Laplacian boundary clamp.
+
+        The wake-cut SHARED seam (``upper.k_lo ↔ lower.k_lo``) is
+        purely structural — it tells Xall the two faces share data,
+        but the marcher itself doesn't need cross-block coordination
+        at k=0 (it's the seed surface, never modified) or at k>0
+        (the SHARED face only exists at k=0, no seam to cross above).
+        Per-block Jacobian guards skip k=0 on the wake blocks (upper
+        and lower) because the wake-cut k=0 cells have collapsing
+        volumes for sharp TE — see the C-grid topology docs.
+
+        For the 4-block blunt-TE layout, the wake-base block W
+        (``self.blocks[3]``) is **not marched** — its geometry is
+        fully determined at build time by linear interpolation
+        across the TE thickness gap.  Only blocks U / B / L are
+        advanced layer by layer.
+        """
+        upper, body, lower = self.blocks[:3]
+        nk = body.nodes.shape[2]
+        _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
+
+        do_blend = blend_normals_k > 0
+        if do_blend:
+            from shore.volume.hyperbolic import _stl_normals
+
+            trimesh_obj = self.body.mesh
+
+        periodic = (False, False)
+
+        for k in range(nk - 1):
+            step = float(_steps[k])
+
+            # Snapshots of every block's k-layer — the consistent
+            # neighbour data for centred-difference normals at the
+            # TE seams.
+            u_k = upper.nodes[:, :, k, :]
+            b_k = body.nodes[:, :, k, :]
+            l_k = lower.nodes[:, :, k, :]
+
+            # ----- ghost rows at the TE seams ------------------------
+            # Each block's i-tangent at its own seam needs the
+            # one-row-inside-the-partner data.
+            upper_ghost = {"i_hi": b_k[1, :, :]}  # body row 1 (after upper-TE)
+            body_ghost = {
+                "i_lo": u_k[-2, :, :],  # upper row -2 (before upper-TE)
+                "i_hi": l_k[1, :, :],  # lower row 1 (after lower-TE)
+            }
+            lower_ghost = {"i_lo": b_k[-2, :, :]}  # body row -2 (before lower-TE)
+
+            # ----- per-block STL-blend normals override --------------
+            # Compute the blend factor once for this layer; reuse it
+            # for all three blocks.
+            do_blend_now = do_blend and k < blend_normals_k
+            blend_alpha = (1.0 - k / blend_normals_k) if do_blend_now else 0.0
+
+            def _blend(
+                layer: np.ndarray,
+                ghost: dict,
+                *,
+                _alpha: float = blend_alpha,
+                _periodic: tuple[bool, bool] = periodic,
+            ) -> np.ndarray:
+                grid_n = _compute_normals(layer, periodic=_periodic, ghost_rows=ghost)
+                ni_q, nj_q = layer.shape[:2]
+                stl_n = _stl_normals(trimesh_obj, layer.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
+                blended = _alpha * stl_n + (1.0 - _alpha) * grid_n
+                mag = np.linalg.norm(blended, axis=-1, keepdims=True)
+                return blended / np.where(mag < 1e-15, 1.0, mag)
+
+            # ----- advance each block --------------------------------
+            new_u = _march_one_layer(
+                u_k,
+                step,
+                smooth_strength,
+                smooth_iters,
+                periodic=periodic,
+                normals_override=_blend(u_k, upper_ghost) if do_blend_now else None,
+                ghost_rows=upper_ghost,
+            )
+            new_b = _march_one_layer(
+                b_k,
+                step,
+                smooth_strength,
+                smooth_iters,
+                periodic=periodic,
+                normals_override=_blend(b_k, body_ghost) if do_blend_now else None,
+                ghost_rows=body_ghost,
+            )
+            new_l = _march_one_layer(
+                l_k,
+                step,
+                smooth_strength,
+                smooth_iters,
+                periodic=periodic,
+                normals_override=_blend(l_k, lower_ghost) if do_blend_now else None,
+                ghost_rows=lower_ghost,
+            )
+
+            # ----- re-stitch SHARED TE columns ----------------------
+            # FP noise from the Laplacian boundary clamp can let the
+            # upper-TE column drift between U and B (likewise B↔L);
+            # average to keep the seams bit-coincident.
+            te_upper = 0.5 * (new_u[-1, :, :] + new_b[0, :, :])
+            new_u[-1, :, :] = te_upper
+            new_b[0, :, :] = te_upper
+            te_lower = 0.5 * (new_b[-1, :, :] + new_l[0, :, :])
+            new_b[-1, :, :] = te_lower
+            new_l[0, :, :] = te_lower
+
+            # ----- per-block Jacobian guards -------------------------
+            # Skip k=0 on upper / lower because the wake-cut at k=0
+            # has zero volume (sharp TE) — that's geometric, not a bug.
+            jmin_u = _check_jacobian(
+                layer=u_k,
+                new_layer=new_u,
+                periodic_j=False,
+                label="cgrid.upper",
+                k=k,
+                exclude_corners=False,
+                tol=-1e-6,
+            )
+            jmin_b = _check_jacobian(
+                layer=b_k,
+                new_layer=new_b,
+                periodic_j=False,
+                label="cgrid.body",
+                k=k,
+                exclude_corners=False,
+                tol=-1e-6,
+            )
+            jmin_l = _check_jacobian(
+                layer=l_k,
+                new_layer=new_l,
+                periodic_j=False,
+                label="cgrid.lower",
+                k=k,
+                exclude_corners=False,
+                tol=-1e-6,
+            )
+            jmin = float(min(jmin_u, jmin_b, jmin_l))
+
+            # Commit.
+            upper.nodes[:, :, k + 1, :] = new_u
+            body.nodes[:, :, k + 1, :] = new_b
+            lower.nodes[:, :, k + 1, :] = new_l
+
+            if layer_callback is not None:
+                layer_callback(k + 1, jmin)
+
     def _march_cgrid(
         self,
         ds: float,
@@ -653,13 +818,19 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
     ) -> None:
-        """Single-block hyperbolic march for ``CGridTopology``.
-
-        Both i and j directions are non-periodic.  i-boundaries (the
-        wake far-field tips) and j-boundaries (the wing tips) are
-        clamped during Laplacian smoothing.  The Jacobian guard uses
-        the open (non-periodic) field.
-        """
+        """Hyperbolic march for ``CGridTopology`` (1, 3, or 4 blocks)."""
+        if len(self.blocks) in (3, 4):
+            self._march_cgrid_three(
+                ds=ds,
+                growth=growth,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                steps=steps,
+                layer_callback=layer_callback,
+                blend_normals_k=blend_normals_k,
+            )
+            return
+        # blocks == 1: legacy single-block path.
         block = self.blocks[0]
         nk = block.nodes.shape[2]
         _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)

@@ -480,42 +480,62 @@ class OGridTopology(Topology):
 
 
 class CGridTopology(Topology):
-    """Single-block C-grid topology for sharp-TE bodies (airfoils, hydrofoils).
+    """C-grid topology for sharp-TE bodies (airfoils, hydrofoils).
 
-    A single hexahedral block of shape ``(ni_total, n_stations, nk, 3)``,
-    where the i-axis sweeps **upper-wake-tip → upper-TE → suction →
-    LE → pressure → lower-TE → lower-wake-tip** as one continuous
-    parametric line.  The j-axis is the span (one node per span station);
-    the k-axis is the wall-normal extrusion direction.
+    Two block layouts are supported, selected via the ``blocks``
+    argument to :meth:`build`:
 
-    The TE sits at two i-indices: ``i = ni_wake - 1`` (upper-TE,
-    transition from upper wake to suction surface) and ``i = ni_wake -
-    1 + ni_body - 1`` (lower-TE, transition from pressure surface to
-    lower wake).  The two TE indices coincide in space for **sharp**
-    TEs (the wake cut starts at the same point) and are separated by
-    ``te_thickness`` for **blunt** TEs.
+    **3-block (default, Xall-correct).** Three hex blocks ``upper``,
+    ``body``, ``lower``:
 
-    Conventions:
+    - ``upper`` ``(ni_wake, n_stations, nk)`` — sweeps i from the
+      upper-wake far-field tip toward the upper-TE.
+    - ``body`` ``(ni_body, n_stations, nk)`` — sweeps i from the
+      upper-TE around the LE to the lower-TE.
+    - ``lower`` ``(ni_wake, n_stations, nk)`` — sweeps i from the
+      lower-TE toward the lower-wake far-field tip.
+
+    Three SHARED seams:
+
+    - ``upper.i_hi  ↔ body.i_lo``  — upper-TE column (same axis,
+      identity AxisMap on along-seam ``(j, k)``).
+    - ``body.i_hi   ↔ lower.i_lo`` — lower-TE column (same).
+    - ``upper.k_lo  ↔ lower.k_lo`` — wake cut.  Same-axis (k↔k) but
+      ``i`` reverses on the partner side: upper's ``i = 0`` is the
+      far-field tip while lower's ``i = 0`` is the TE.  AxisMap on
+      ``upper.k_lo``: ``from_pairs(("i", True), ("j", False))``.
+
+    For sharp TE the wake-cut nodes coincide bit-exactly in space and
+    SHARED is a true memory-aliased view; for blunt TE the upper and
+    lower wake k=0 strips are parallel-but-separated and the 3-block
+    topology is rejected (use the 4-block variant instead — see the
+    ``blocks=4`` arm of :meth:`build`).
+
+    **1-block (legacy, retained for opt-in compatibility).** A single
+    hex block of shape ``(ni_total, n_stations, nk)`` whose i-axis
+    sweeps ``upper-wake-far-tip → upper-TE → suction → LE → pressure
+    → lower-TE → lower-wake-far-tip`` as one continuous parametric
+    line.  The wake cut is encoded as an i-direction overlap: the
+    upper wake column at ``i = 0..ni_wake - 1`` and the lower wake
+    column at ``i = ni_wake + ni_body - 1..ni_total - 1`` are
+    geometrically coincident at k=0 but topologically distinct in i.
+    Xall cannot apply BCs cleanly on the wake-cut faces in this
+    layout (the j-counter "flips direction" along the overlapping
+    edge); use ``blocks=3`` instead for new work.
+
+    Conventions, both layouts:
 
     - ``span_axis`` defaults to ``"z"``.
-    - ``i_lo`` and ``i_hi`` faces are the upper- and lower-wake
-      far-field tips.  Both are ``FREE`` by default — typically
-      Chimera fringes (BC code ``40``) or extrapolation (``-9``) in
-      a downstream ``cc.par``.
-    - ``j_lo`` and ``j_hi`` are wing-tip faces.  Both are ``FREE``
-      by default.  For symmetric (mirrored) studies replace them
-      with WALL externally; for an annular wing, swap them to
-      SHARED with each other (j-periodic).
-    - ``k_lo`` is ``WALL`` over the body region and effectively
-      degenerate over the wake region (the wake i-range has its
-      ``k_lo`` nodes on the wake cut, not on a body surface).
-      Downstream ``cc.par`` writers treat the whole ``k_lo`` face
-      as a wall patch; that's correct for the body part and
-      benign for the wake part because the marched volume nodes
-      are valid hex cells either way.
+    - Wake far-field tips (``upper.i_lo``, ``lower.i_hi`` for the
+      3-block layout; ``i_lo`` and ``i_hi`` for the 1-block layout)
+      are ``FREE`` by default — typically Chimera fringes (BC code
+      ``40``) or extrapolation (``-9``) in a downstream ``cc.par``.
+    - ``j_lo`` and ``j_hi`` on every block are wing-tip ``FREE``.
+    - ``k_lo`` is ``WALL`` on the body block; on upper / lower it
+      is ``FREE`` (the wake-cut faces become SHARED in 3-block
+      layout, so the FREE default only ever surfaces in the
+      legacy 1-block path).
     - ``k_hi`` is ``FREE`` (outer / Chimera fringe).
-
-    The block is **non-periodic** in i and j by default.
 
     See Also
     --------
@@ -537,18 +557,26 @@ class CGridTopology(Topology):
         wake_growth: float = 1.15,
         spacing_k: Spacing1D | None = None,
         mesh: object | None = None,
+        blocks: int = 3,
+        nk_w: int = 3,
         **kwargs,
     ) -> list[HexBlock]:
-        """Build a single C-grid block from a body STL.
+        """Build a C-grid block list from a body STL.
 
         Parameters
         ----------
         surface :
             Optional pre-built ``(ni_total, n_stations, 3)`` k=0 layer
             from :func:`shore.surface.cgrid.build_cgrid_k0`.  When
-            supplied, *ni_body* / *ni_wake* / *n_stations* / *wake_length*
-            are ignored.  When ``None``, the k=0 layer is built from
-            *mesh* using the supplied parameters.
+            supplied, *ni_body* / *ni_wake* / *n_stations* /
+            *wake_length* are ignored.  When ``None``, the k=0 layer
+            is built from *mesh* using the supplied parameters.
+
+            For ``blocks=3`` the surface is split internally into per-
+            block (upper / body / lower) k=0 layers via
+            :meth:`shore.surface.cgrid.CGridK0Result.per_block_layers`;
+            pre-built surfaces work equivalently as long as the
+            ``ni_total = 2 * (ni_wake - 1) + ni_body`` invariant holds.
         nk :
             Total number of wall-normal layers (including k=0).
         ni_body :
@@ -559,7 +587,7 @@ class CGridTopology(Topology):
             Required when *surface* is None.
         n_stations :
             Number of span-axis stations.  Required when *surface* is
-            None.  Becomes the block's nj.
+            None.  Becomes each block's ``nj``.
         wake_length :
             Length of each wake branch from the TE.  Required when
             *surface* is None.
@@ -576,13 +604,34 @@ class CGridTopology(Topology):
         mesh :
             ``trimesh.Trimesh`` instance.  Required when *surface* is
             None.
+        blocks :
+            ``3`` (default, Xall-correct sharp-TE), ``4`` (Xall-correct
+            blunt-TE: adds a wake-base block W bridging the TE
+            thickness gap), or ``1`` (legacy single-block).  See class
+            docstring for the trade-offs.
+        nk_w :
+            Wake-base block W's resolution across the TE thickness
+            gap.  Used only for ``blocks=4``.  Default ``3`` is
+            adequate for the thin gaps (≤ 1% chord) typical of
+            blunt-TE airfoils.
 
         Returns
         -------
         list[HexBlock]
-            Single-element list containing the C-grid block, labelled
-            ``"cgrid"``.
+            For ``blocks=3``: ``[upper, body, lower]``.
+            For ``blocks=4``: ``[upper, body, lower, wake_base]``.
+            For ``blocks=1``: ``[cgrid]``.
         """
+        if blocks not in (1, 3, 4):
+            raise ValueError(
+                f"CGridTopology.build: `blocks` must be 1, 3, or 4; got {blocks}.  "
+                "Use blocks=3 (default, sharp-TE), blocks=4 (blunt-TE), "
+                "or blocks=1 (legacy)."
+            )
+
+        # ------------------------------------------------------------
+        # Build / accept the k=0 layer + locate the TE columns.
+        # ------------------------------------------------------------
         if surface is None:
             if mesh is None:
                 raise ValueError(
@@ -609,26 +658,341 @@ class CGridTopology(Topology):
                 wake_growth=wake_growth,
             )
             surface = k0_result.nodes  # (ni_total, n_stations, 3)
-
-        ni_total, nj, _ = surface.shape
+            _ni_body = k0_result.ni_body
+            _ni_wake = k0_result.ni_wake
+            _is_blunt = k0_result.te_result.is_blunt
+        else:
+            if ni_body is None or ni_wake is None:
+                raise ValueError(
+                    "CGridTopology.build with a pre-built `surface` requires "
+                    "explicit `ni_body=` and `ni_wake=` so the wake / body "
+                    "split point is unambiguous."
+                )
+            _ni_body = int(ni_body)
+            _ni_wake = int(ni_wake)
+            _is_blunt = False  # caller-supplied surface; trust them
+            if surface.shape[0] != 2 * (_ni_wake - 1) + _ni_body:
+                raise ValueError(
+                    f"CGridTopology.build: surface i-extent {surface.shape[0]} "
+                    f"does not match 2*(ni_wake-1) + ni_body = "
+                    f"{2 * (_ni_wake - 1) + _ni_body}."
+                )
 
         _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
 
-        # Allocate the volume array and fill k=0.
+        # ------------------------------------------------------------
+        # Dispatch by block count.
+        # ------------------------------------------------------------
+        if blocks == 1:
+            return self._build_single_block(surface, nk, _sp_k)
+        if blocks == 3:
+            if _is_blunt:
+                raise ValueError(
+                    "CGridTopology.build: 3-block layout requires a sharp TE, "
+                    "but the body's TE was detected as blunt.  Either close the "
+                    "TE (e.g. shore profile naca --closed-te) or pass blocks=4 "
+                    "to get the wake-base block W that meshes the TE gap."
+                )
+            return self._build_three_blocks(surface, nk, _sp_k, _ni_body, _ni_wake)
+        # blocks == 4
+        if not _is_blunt:
+            raise ValueError(
+                "CGridTopology.build: 4-block layout requires a blunt TE "
+                "(non-zero TE thickness), but the body's TE was detected as "
+                "sharp.  The wake-base block W has no thickness to bridge — "
+                "use blocks=3 (default) for sharp-TE bodies."
+            )
+        return self._build_four_blocks(surface, nk, _sp_k, _ni_body, _ni_wake, nk_w=int(nk_w))
+
+    # ------------------------------------------------------------------
+    # Internal block builders
+    # ------------------------------------------------------------------
+
+    def _build_single_block(
+        self,
+        surface: np.ndarray,
+        nk: int,
+        spacing_k: Spacing1D,
+    ) -> list[HexBlock]:
+        """Legacy 1-block C-grid (single hex block, wake cut as i-overlap)."""
+        ni_total, nj, _ = surface.shape
         nodes = np.empty((ni_total, nj, nk, 3), dtype=np.float64)
         nodes[:, :, 0, :] = surface
-
         block = HexBlock(
             label="cgrid",
             nodes=nodes,
             periodic_i=False,
             periodic_j=False,
-            spacing_k=_sp_k,
+            spacing_k=spacing_k,
+        )
+        return [block]
+
+    def _build_three_blocks(
+        self,
+        surface: np.ndarray,
+        nk: int,
+        spacing_k: Spacing1D,
+        ni_body: int,
+        ni_wake: int,
+    ) -> list[HexBlock]:
+        """3-block C-grid (upper wake / body / lower wake) with SHARED seams."""
+        nj = surface.shape[1]
+        # The full (ni_total, nj, nk, 3) array.  We allocate one
+        # contiguous buffer and carve three views from it so that
+        # node coincidence at the upper-TE and lower-TE columns
+        # comes for free via numpy view aliasing.
+        ni_total = 2 * (ni_wake - 1) + ni_body
+        nodes_all = np.empty((ni_total, nj, nk, 3), dtype=np.float64)
+        nodes_all[:, :, 0, :] = surface
+
+        i_te_upper = ni_wake - 1
+        i_te_lower = i_te_upper + ni_body - 1
+        upper_nodes = nodes_all[: i_te_upper + 1, :, :, :]
+        body_nodes = nodes_all[i_te_upper : i_te_lower + 1, :, :, :]
+        lower_nodes = nodes_all[i_te_lower:, :, :, :]
+
+        upper = HexBlock(
+            label="upper",
+            nodes=upper_nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=spacing_k,
+        )
+        body = HexBlock(
+            label="body",
+            nodes=body_nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=spacing_k,
+        )
+        lower = HexBlock(
+            label="lower",
+            nodes=lower_nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=spacing_k,
         )
 
-        # Default face BCs are already correct: i_lo/i_hi/j_lo/j_hi/k_hi
-        # = FREE, k_lo = WALL.  No multi-block seams to wire.
-        return [block]
+        # ------------------------------------------------------------
+        # Wire SHARED seams.
+        # ------------------------------------------------------------
+        # 1. upper.i_hi  ↔ body.i_lo  (upper-TE column, identity).
+        upper._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=body.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        body._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=upper.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+
+        # 2. body.i_hi   ↔ lower.i_lo (lower-TE column, identity).
+        body._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=body.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+
+        # 3. upper.k_lo  ↔ lower.k_lo (wake cut).
+        # Same axis (k↔k); along-seam axes (i, j); i flipped, j identity.
+        wake_cut_axis_map = AxisMap.from_pairs(("i", True), ("j", False))
+        upper._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=lower.face("k_lo"),
+            axis_map=wake_cut_axis_map,
+        )
+        lower._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=upper.face("k_lo"),
+            axis_map=wake_cut_axis_map.inverse("k_lo", "k_lo"),
+        )
+
+        return [upper, body, lower]
+
+    def _build_four_blocks(
+        self,
+        surface: np.ndarray,
+        nk: int,
+        spacing_k: Spacing1D,
+        ni_body: int,
+        ni_wake: int,
+        *,
+        nk_w: int,
+    ) -> list[HexBlock]:
+        """4-block C-grid for blunt TE: 3-block layout + wake-base block W.
+
+        The wake-base block W bridges the TE thickness gap between
+        the upper and lower wake k=0 strips.  W's k axis runs from
+        ``y = -te_thickness/2`` (= L's k=0 line) to ``y = +te_thickness/2``
+        (= U's k=0 line).  W's i axis matches U's (far-tip → TE):
+
+        - ``W.i_lo`` (far-tip, *FREE*).
+        - ``W.i_hi`` (TE base wall, *WALL*).  The bluff-base of the
+          airfoil is meshed by this face — the structural fix the
+          single-block C-grid couldn't represent.
+        - ``W.j_lo`` / ``W.j_hi`` (wing tips, *FREE*).
+        - ``W.k_lo`` (lower face, ``SHARED`` with L.k_lo).  Same-axis
+          (k↔k); along-axes (i, j); i flipped because L's i runs the
+          opposite direction (TE → far-tip).
+        - ``W.k_hi`` (upper face, ``SHARED`` with U.k_lo).  Same-axis;
+          identity AxisMap (W's i and U's i match).
+
+        W is **not marched** — its geometry is fully determined at
+        build time by linear interpolation in k between the lower-
+        wake and upper-wake k=0 strips.  The marcher's per-block
+        loop must skip W (see :meth:`Mesh._march_cgrid_three_or_four`).
+        """
+        if nk_w < 2:
+            raise ValueError(f"_build_four_blocks: nk_w must be >= 2, got {nk_w}")
+
+        # ------------------------------------------------------------
+        # Build the 3 marching blocks (upper, body, lower) the usual
+        # way — same SHARED seams at the upper-TE and lower-TE
+        # columns.  The wake-cut SHARED face wiring differs: in the
+        # 4-block layout, U.k_lo partners W.k_hi (not L.k_lo) and
+        # L.k_lo partners W.k_lo (not U.k_lo).
+        # ------------------------------------------------------------
+        nj = surface.shape[1]
+        ni_total = 2 * (ni_wake - 1) + ni_body
+        nodes_all = np.empty((ni_total, nj, nk, 3), dtype=np.float64)
+        nodes_all[:, :, 0, :] = surface
+
+        i_te_upper = ni_wake - 1
+        i_te_lower = i_te_upper + ni_body - 1
+        upper_nodes = nodes_all[: i_te_upper + 1, :, :, :]
+        body_nodes = nodes_all[i_te_upper : i_te_lower + 1, :, :, :]
+        lower_nodes = nodes_all[i_te_lower:, :, :, :]
+
+        upper = HexBlock(
+            label="upper",
+            nodes=upper_nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=spacing_k,
+        )
+        body = HexBlock(
+            label="body",
+            nodes=body_nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=spacing_k,
+        )
+        lower = HexBlock(
+            label="lower",
+            nodes=lower_nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=spacing_k,
+        )
+
+        # ------------------------------------------------------------
+        # Build the wake-base block W.
+        # ------------------------------------------------------------
+        # W's i-axis matches U's (far-tip → TE).  W's k-axis spans
+        # the TE thickness from the lower-wake k=0 strip up to the
+        # upper-wake k=0 strip.
+        upper_k0 = upper_nodes[:, :, 0, :]  # (ni_wake, nj, 3) at y = +te/2
+        lower_k0 = lower_nodes[:, :, 0, :]  # (ni_wake, nj, 3) at y = -te/2
+        # Reverse lower_k0 along i so W's i orientation matches upper.
+        lower_k0_rev = lower_k0[::-1, :, :]
+
+        # Linear interpolation across the gap.
+        ts = np.linspace(0.0, 1.0, nk_w)  # k=0 -> lower; k=last -> upper
+        wake_base_nodes = np.empty((ni_wake, nj, nk_w, 3), dtype=np.float64)
+        for k_idx, t in enumerate(ts):
+            wake_base_nodes[:, :, k_idx, :] = (1.0 - t) * lower_k0_rev + t * upper_k0
+
+        wake_base = HexBlock(
+            label="wake_base",
+            nodes=wake_base_nodes,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=spacing_k,
+        )
+
+        # ------------------------------------------------------------
+        # Wire SHARED seams (4-block topology).
+        # ------------------------------------------------------------
+        # 1-2. Upper-TE and lower-TE columns — identical to 3-block.
+        upper._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=body.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        body._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=upper.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        body._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=body.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+
+        # 3. W.k_hi ↔ upper.k_lo (top of W bridges to upper-wake k=0).
+        # Same-axis (k↔k), identity AxisMap on (i, j) — W's i and
+        # upper's i both run far-tip → TE.
+        wake_base._set_face_bc(
+            "k_hi",
+            FaceBC.SHARED,
+            partner=upper.face("k_lo"),
+            axis_map=AxisMap.identity("k_hi"),
+        )
+        upper._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=wake_base.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+
+        # 4. W.k_lo ↔ lower.k_lo (bottom of W bridges to lower-wake k=0).
+        # Same-axis (k↔k); along-axes (i, j); i flipped because lower's
+        # i runs TE → far-tip while W's runs far-tip → TE.
+        i_flip_axis_map = AxisMap.from_pairs(("i", True), ("j", False))
+        wake_base._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=lower.face("k_lo"),
+            axis_map=i_flip_axis_map,
+        )
+        lower._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=wake_base.face("k_lo"),
+            axis_map=i_flip_axis_map.inverse("k_lo", "k_lo"),
+        )
+
+        # ------------------------------------------------------------
+        # W's i_hi face is the airfoil's TE-base WALL.  The default
+        # FaceBC at construction is FREE; promote it to WALL so
+        # downstream cc.par writers see the bluff-base.
+        # ------------------------------------------------------------
+        wake_base._set_face_bc("i_hi", FaceBC.WALL)
+
+        return [upper, body, lower, wake_base]
 
 
 def _projector_from_mesh(mesh: object) -> object:

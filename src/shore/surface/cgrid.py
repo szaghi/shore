@@ -495,13 +495,25 @@ def slice_by_span(
 
     # Per-station TE position lookup: linear-interpolate the
     # te_result's polyline (sorted by span_axis) to each station.
+    # For blunt TE, also build a lookup on the second strand (lower TE)
+    # so the body wrap can terminate cleanly at the lower-TE node
+    # without traversing the TE-base segment.
+    is_blunt = te_result is not None and te_result.is_blunt
     if te_result is not None:
-        te_polyline = te_result.polyline  # (n_te, 3)
+        te_polyline = te_result.polyline  # (n_te, 3) — upper strand
         te_span = te_polyline[:, span_idx]
         te_chord = te_polyline[:, chord_axis]
         te_thick = te_polyline[:, thick_axis]
+        if is_blunt:
+            lower_polyline = te_result.polylines[1]  # (n_te, 3) — lower strand
+            lower_span = lower_polyline[:, span_idx]
+            lower_chord = lower_polyline[:, chord_axis]
+            lower_thick = lower_polyline[:, thick_axis]
+        else:
+            lower_span = lower_chord = lower_thick = None  # type: ignore[assignment]
     else:
         te_span = te_chord = te_thick = None  # type: ignore[assignment]
+        lower_span = lower_chord = lower_thick = None  # type: ignore[assignment]
 
     plane_normal = np.zeros(3)
     plane_normal[span_idx] = 1.0
@@ -538,19 +550,26 @@ def slice_by_span(
                 "multi-component at this station)."
             )
 
-        # TE anchor for this station: interpolate from te_result.
+        # TE anchor(s) for this station: interpolate from te_result.
+        lower_anchor: np.ndarray | None = None
         if te_result is not None:
             te_chord_at_s = float(np.interp(s_coord, te_span, te_chord))
             te_thick_at_s = float(np.interp(s_coord, te_span, te_thick))
             te_anchor = np.array([te_chord_at_s, te_thick_at_s])
+            if is_blunt:
+                lower_chord_at_s = float(np.interp(s_coord, lower_span, lower_chord))
+                lower_thick_at_s = float(np.interp(s_coord, lower_span, lower_thick))
+                lower_anchor = np.array([lower_chord_at_s, lower_thick_at_s])
         else:
             # Fallback: the TE is the point on the polyline at maximum chord.
             te_idx = int(np.argmax(polyline_2d[:, 0]))
             te_anchor = polyline_2d[te_idx]
 
         # Reorder the polyline so it starts at the upper-TE and walks
-        # forward (around the LE) to the lower-TE.
-        ordered = _reorder_polyline_around_te(polyline_2d, te_anchor)
+        # forward (around the LE) to the lower-TE.  For blunt TE, the
+        # walk terminates at the lower-TE anchor (excluding the TE-base
+        # segment from the body wrap).
+        ordered = _reorder_polyline_around_te(polyline_2d, te_anchor, lower_anchor)
 
         # Resample by arclength fraction to ``ni_body`` points.
         resampled = _resample_by_arclength(ordered, ni_body)
@@ -661,18 +680,38 @@ def _stitch_segments(segs_2d: np.ndarray) -> np.ndarray | None:
     return polyline
 
 
-def _reorder_polyline_around_te(polyline: np.ndarray, te_anchor: np.ndarray) -> np.ndarray:
+def _reorder_polyline_around_te(
+    polyline: np.ndarray,
+    te_anchor: np.ndarray,
+    lower_te_anchor: np.ndarray | None = None,
+) -> np.ndarray:
     """Reorder a closed cross-section polyline to start at the upper-TE.
 
     The input polyline is closed (loop) but unordered relative to the
-    TE.  Find the polyline node closest to ``te_anchor``, rotate the
-    array so that node is at index 0, and orient the walk so that
-    after a quarter-loop we're climbing to higher chord (= LE side).
+    TE.  Find the polyline node closest to ``te_anchor`` (= upper-TE),
+    rotate the array so that node is at index 0, and orient the walk
+    so that the next step climbs onto the suction (positive-thickness)
+    surface.
 
     The rotation/flip ensures the canonical SHORE convention:
-    i = 0 is upper-TE, sweep over the suction (positive-thickness)
-    surface to the LE, then back over the pressure (negative-thickness)
-    surface to lower-TE at i = ni_body - 1.
+    ``i = 0`` is upper-TE, sweep over the suction surface to the LE,
+    then back over the pressure surface to lower-TE at ``i = ni_body - 1``.
+
+    Parameters
+    ----------
+    polyline :
+        ``(N, 2)`` closed cross-section polyline (LE / TE order arbitrary).
+    te_anchor :
+        ``(2,)`` upper-TE position; the walk starts at the polyline
+        node closest to this point.
+    lower_te_anchor :
+        Optional ``(2,)`` lower-TE position.  When supplied (blunt TE),
+        the walk **stops** at the polyline node closest to this point,
+        excluding the TE-base segment from the body wrap.  When omitted
+        (sharp TE), the walk traverses the entire closed polyline and
+        re-appends the start vertex so arclength parametrisation
+        includes the closing edge — both endpoints land at the same
+        point.
     """
     # Closest node to te_anchor.
     dists = np.linalg.norm(polyline - te_anchor[None, :], axis=1)
@@ -690,15 +729,24 @@ def _reorder_polyline_around_te(polyline: np.ndarray, te_anchor: np.ndarray) -> 
         # Walking down — flip the loop so we walk up first.
         rotated = np.concatenate([[rotated[0]], rotated[:0:-1]])
 
-    # The result is a closed polyline (last vertex coincides with the
-    # first under modular indexing, but we don't repeat it).  The
-    # consumer's resampling treats it as an open polyline from
-    # rotated[0] (upper-TE) to rotated[0] again (lower-TE for sharp;
-    # different node for blunt).  For consistency in resampling, we
-    # **re-append** the start vertex at the end so arclength
-    # parametrisation includes the closing edge.
-    rotated = np.vstack([rotated, rotated[0:1]])
-    return rotated
+    if lower_te_anchor is None:
+        # Sharp TE: closed polyline, re-append the start vertex at
+        # the end so arclength parametrisation includes the closing
+        # edge (both endpoints coincide in space).
+        return np.vstack([rotated, rotated[0:1]])
+
+    # Blunt TE: truncate the walk at the polyline node closest to
+    # the lower-TE anchor.  This excludes the TE-base segment of the
+    # closed polyline from the body wrap — the wake-base block W
+    # meshes the TE base in the 4-block topology.
+    lower_dists = np.linalg.norm(rotated - lower_te_anchor[None, :], axis=1)
+    lower_idx = int(np.argmin(lower_dists))
+    if lower_idx == 0:
+        raise MeshInputError(
+            "_reorder_polyline_around_te: lower-TE anchor closest to "
+            "the upper-TE node — degenerate blunt TE detection."
+        )
+    return rotated[: lower_idx + 1]
 
 
 # ---------------------------------------------------------------------------
@@ -922,6 +970,47 @@ class CGridK0Result:
     ni_wake: int
     span_axis: str
     te_result: TEDetectionResult
+
+    @property
+    def ni_total(self) -> int:
+        """Total i-direction node count of the concatenated layer."""
+        return 2 * (self.ni_wake - 1) + self.ni_body
+
+    def per_block_layers(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return per-block k=0 layers for the 3-block C-grid topology.
+
+        Splits the concatenated ``nodes`` array along i into three
+        contiguous segments, one per :class:`CGridTopology` block:
+
+        - **upper wake**: ``nodes[0 : ni_wake]`` — sweeps
+          ``upper-wake-far-tip → upper-TE``.
+        - **body**: ``nodes[ni_wake - 1 : ni_wake - 1 + ni_body]`` —
+          sweeps ``upper-TE → suction → LE → pressure → lower-TE``.
+        - **lower wake**: ``nodes[ni_wake - 1 + ni_body - 1 : ni_total]`` —
+          sweeps ``lower-TE → lower-wake-far-tip``.
+
+        The slices overlap by one node at each TE column (upper wake
+        last = body first, body last = lower wake first), so the
+        returned arrays share TE columns by **numpy view aliasing**
+        — modifying a TE node through one view updates the partner
+        view automatically.  This is the bit-exact node coincidence
+        the 3-block topology's SHARED seams rely on.
+
+        Returns
+        -------
+        (upper, body, lower) : tuple of np.ndarray
+            Each ``(ni_block, n_stations, 3)`` view into ``self.nodes``.
+            Shapes: ``(ni_wake, n_stations, 3)``,
+            ``(ni_body, n_stations, 3)``, ``(ni_wake, n_stations, 3)``.
+        """
+        i_te_upper = self.ni_wake - 1
+        i_te_lower = i_te_upper + self.ni_body - 1
+        upper = self.nodes[: i_te_upper + 1, :, :]
+        body = self.nodes[i_te_upper : i_te_lower + 1, :, :]
+        lower = self.nodes[i_te_lower:, :, :]
+        return upper, body, lower
 
 
 def build_cgrid_k0(

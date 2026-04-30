@@ -247,6 +247,19 @@ _TE_DIHEDRAL_DEG = Annotated[
         help="[cgrid] Sharpness threshold (degrees) for TE detection (default 30.0).",
     ),
 ]
+_CGRID_BLOCKS = Annotated[
+    int,
+    typer.Option(
+        "--cgrid-blocks",
+        help=(
+            "[cgrid] Block layout: 3 (default, Xall-correct sharp-TE: "
+            "upper / body / lower with SHARED seams), 4 (Xall-correct "
+            "blunt-TE: 3 + a wake-base block W bridging the TE gap), "
+            "or 1 (legacy single-block, kept for opt-in compatibility — "
+            "Xall cannot apply BCs cleanly on its wake-cut overlap)."
+        ),
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +407,7 @@ def mesh(
     wake_growth: _WAKE_GROWTH = 1.15,
     span_axis: _SPAN_AXIS = "z",
     te_dihedral_deg: _TE_DIHEDRAL_DEG = 30.0,
+    cgrid_blocks: _CGRID_BLOCKS = 3,
     adjacency_json: Annotated[
         Path | None,
         typer.Option(
@@ -490,6 +504,13 @@ def mesh(
                 f"[red]Error:[/red] --span-axis must be 'x', 'y', or 'z'; got {span_axis!r}."
             )
             raise typer.Exit(1) from None
+        if cgrid_blocks not in (1, 3, 4):
+            _err.print(
+                f"[red]Error:[/red] --cgrid-blocks must be 1, 3, or 4; "
+                f"got {cgrid_blocks}.  Use 3 (default, sharp-TE), "
+                "4 (blunt-TE), or 1 (legacy single-block)."
+            )
+            raise typer.Exit(1) from None
 
     # theta_cap is special: CLI exposes two flags (--theta-cap and
     # --theta-cap-deg) but the config has a single resolved radian
@@ -574,6 +595,7 @@ def mesh(
                 wake_growth=wake_growth,
                 span_axis=span_axis,
                 te_dihedral_deg=te_dihedral_deg,
+                blocks=cgrid_blocks,
             )
         else:
             blocks = topo.build(
@@ -639,8 +661,9 @@ def mesh(
             _console.print(
                 f"[green]✓[/green] Wrote 6 .geo files  (sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
             )
-    else:
-        # Single-block O-grid / C-grid: write one ``<stem>.geo`` (no _<label>).
+    elif len(m.blocks) == 1:
+        # Single-block O-grid / 1-block C-grid: write one
+        # ``<stem>.geo`` (no ``_<label>`` suffix).
         from shore.io.geo import write_geo
 
         single_path = out_stem if out_stem.suffix == ".geo" else out_stem.with_suffix(".geo")
@@ -650,6 +673,15 @@ def mesh(
             _console.print(
                 f"[green]✓[/green] Wrote {single_path}  ({shape[0]}x{shape[1]}x{shape[2]})"
             )
+    else:
+        # Multi-block C-grid (3-block sharp / 4-block blunt): one
+        # ``<stem>_<label>.geo`` per block, matching the cubed-sphere
+        # convention.
+        m.write_geo(out_stem)
+        if verbose:
+            n = len(m.blocks)
+            labels = ", ".join(b.label for b in m.blocks)
+            _console.print(f"[green]✓[/green] Wrote {n} .geo files ({labels})")
 
     if adjacency_json is not None:
         from shore.io.adjacency import write_adjacency_json

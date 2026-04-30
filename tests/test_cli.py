@@ -123,18 +123,24 @@ class TestMeshCGrid:
         r = _invoke("mesh", str(naca0012_stl), *self._CGRID, "-o", str(out))
         assert r.exit_code == 0, r.output
 
-    def test_writes_single_geo(self, naca0012_stl, tmp_path):
+    def test_writes_three_geo(self, naca0012_stl, tmp_path):
+        # Default --topology cgrid emits 3 blocks (upper / body / lower).
         out = tmp_path / "cgrid"
         _invoke("mesh", str(naca0012_stl), *self._CGRID, "-o", str(out))
-        path = tmp_path / "cgrid.geo"
-        assert path.exists()
+        for label in ("upper", "body", "lower"):
+            assert (tmp_path / f"cgrid_{label}.geo").exists(), f"missing {label}.geo"
 
-    def test_block_shape(self, naca0012_stl, tmp_path):
+    def test_block_shapes(self, naca0012_stl, tmp_path):
+        # ni_body=60, ni_wake=15, n_stations=4, nk=8.
+        # upper / lower: (15, 4, 8, 3); body: (60, 4, 8, 3).
         out = tmp_path / "cgrid"
         _invoke("mesh", str(naca0012_stl), *self._CGRID, "-o", str(out))
-        grid = read_geo(tmp_path / "cgrid.geo")
-        # 2 * (ni_wake - 1) + ni_body = 28 + 60 = 88; nj=4; nk=8
-        assert grid.shape == (88, 4, 8, 3)
+        upper = read_geo(tmp_path / "cgrid_upper.geo")
+        body = read_geo(tmp_path / "cgrid_body.geo")
+        lower = read_geo(tmp_path / "cgrid_lower.geo")
+        assert upper.shape == (15, 4, 8, 3)
+        assert body.shape == (60, 4, 8, 3)
+        assert lower.shape == (15, 4, 8, 3)
 
     def test_missing_required_flag_exits_1(self, naca0012_stl, tmp_path):
         # Missing --wake-length.
@@ -154,6 +160,50 @@ class TestMeshCGrid:
 
     def test_unknown_topology_exits_1(self, sphere_stl, tmp_path):
         r = _invoke("mesh", str(sphere_stl), "--topology", "garbage")
+        assert r.exit_code == 1
+
+    def test_cgrid_blocks_1_writes_single_geo(self, naca0012_stl, tmp_path):
+        # Legacy single-block C-grid: --cgrid-blocks 1 emits one .geo.
+        out = tmp_path / "legacy"
+        r = _invoke(
+            "mesh",
+            str(naca0012_stl),
+            *self._CGRID,
+            "--cgrid-blocks",
+            "1",
+            "-o",
+            str(out),
+        )
+        assert r.exit_code == 0, r.output
+        assert (tmp_path / "legacy.geo").exists()
+        for label in ("upper", "body", "lower"):
+            assert not (tmp_path / f"legacy_{label}.geo").exists()
+
+    def test_cgrid_blocks_4_rejected_for_sharp_te(self, naca0012_stl, tmp_path):
+        # 4-block layout requires a blunt TE; the sharp NACA 0012 fixture
+        # must be rejected with a clear error.
+        r = _invoke(
+            "mesh",
+            str(naca0012_stl),
+            *self._CGRID,
+            "--cgrid-blocks",
+            "4",
+            "-o",
+            str(tmp_path / "x"),
+        )
+        assert r.exit_code == 1
+        assert "blunt" in r.output.lower() or "sharp" in r.output.lower()
+
+    def test_cgrid_blocks_invalid_rejected(self, naca0012_stl, tmp_path):
+        r = _invoke(
+            "mesh",
+            str(naca0012_stl),
+            *self._CGRID,
+            "--cgrid-blocks",
+            "2",
+            "-o",
+            str(tmp_path / "x"),
+        )
         assert r.exit_code == 1
 
 

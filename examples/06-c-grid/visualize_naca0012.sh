@@ -2,25 +2,32 @@
 # visualize_naca0012.sh — bash equivalent of visualize_naca0012.py.
 #
 # Builds a C-grid mesh around a NACA 0012 wing using only `shore`
-# CLI calls (no Python imports).  Produces the same outputs as the
-# Python script:
+# CLI calls (no Python imports).  Default 3-block layout (Xall-correct);
+# pass --cgrid-blocks 1 for the legacy single-block layout.
+#
+# Outputs (3-block default):
 #
 #     examples_out/
 #         naca0012.dat               # 2D Selig section (intermediate)
 #         naca0012.stl               # 3D wing STL
-#         naca0012.geo               # marched C-grid block
-#         naca0012.vtm               # ParaView MultiBlock
+#         naca0012_upper.geo         # upper-wake block
+#         naca0012_body.geo          # body wrap block
+#         naca0012_lower.geo         # lower-wake block
+#         naca0012.vtm               # ParaView MultiBlock (3 blocks)
+#
+# With --cgrid-blocks 1: a single ``naca0012.geo`` instead of the three.
 #
 # Pipeline:
 #   1. shore profile naca 0012   ->  2D Selig section .dat
 #   2. shore body extrude        ->  3D wing STL with end caps
-#   3. shore mesh --topology cgrid -> single-block C-grid .geo
+#   3. shore mesh --topology cgrid -> 3 (default) or 1 .geo files
 #   4. shore export              ->  ParaView .vtm
 #
 # Usage:
 #   ./examples/06-c-grid/visualize_naca0012.sh                 # default examples_out/
 #   ./examples/06-c-grid/visualize_naca0012.sh -o /tmp/out
 #   ./examples/06-c-grid/visualize_naca0012.sh --ni-body 160 --nk 30
+#   ./examples/06-c-grid/visualize_naca0012.sh --cgrid-blocks 1   # legacy single-block
 
 set -euo pipefail
 
@@ -36,6 +43,7 @@ DS=5e-4
 GROWTH=1.15
 SMOOTH=0.1
 SMOOTH_ITERS=1
+CGRID_BLOCKS=3
 
 # Wing-STL parameters: span and section density.  The STL needs more
 # span stations than the C-grid slicer (so the slice planes land
@@ -48,25 +56,26 @@ OUT_DIR="examples_out"
 SHORE="${SHORE:-shore}"
 
 usage() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -o | --output)   OUT_DIR="$2"; shift 2 ;;
-    --ni-body)       NI_BODY="$2"; shift 2 ;;
-    --ni-wake)       NI_WAKE="$2"; shift 2 ;;
-    --n-stations)    N_STATIONS="$2"; shift 2 ;;
-    --wake-length)   WAKE_LENGTH="$2"; shift 2 ;;
-    --wake-growth)   WAKE_GROWTH="$2"; shift 2 ;;
-    --span-axis)     SPAN_AXIS="$2"; shift 2 ;;
-    --nk)            NK="$2"; shift 2 ;;
-    --ds)            DS="$2"; shift 2 ;;
-    --growth)        GROWTH="$2"; shift 2 ;;
-    --smooth)        SMOOTH="$2"; shift 2 ;;
-    --smooth-iters)  SMOOTH_ITERS="$2"; shift 2 ;;
-    -h | --help)     usage 0 ;;
+    -o | --output)    OUT_DIR="$2"; shift 2 ;;
+    --ni-body)        NI_BODY="$2"; shift 2 ;;
+    --ni-wake)        NI_WAKE="$2"; shift 2 ;;
+    --n-stations)     N_STATIONS="$2"; shift 2 ;;
+    --wake-length)    WAKE_LENGTH="$2"; shift 2 ;;
+    --wake-growth)    WAKE_GROWTH="$2"; shift 2 ;;
+    --span-axis)      SPAN_AXIS="$2"; shift 2 ;;
+    --nk)             NK="$2"; shift 2 ;;
+    --ds)             DS="$2"; shift 2 ;;
+    --growth)         GROWTH="$2"; shift 2 ;;
+    --smooth)         SMOOTH="$2"; shift 2 ;;
+    --smooth-iters)   SMOOTH_ITERS="$2"; shift 2 ;;
+    --cgrid-blocks)   CGRID_BLOCKS="$2"; shift 2 ;;
+    -h | --help)      usage 0 ;;
     *) echo "Unknown option: $1" >&2; usage 1 ;;
   esac
 done
@@ -106,9 +115,10 @@ info "2. wing STL (span=$STL_SPAN, n_stations=$STL_N_STATIONS, --end-caps)"
   -o "$OUT_DIR/naca0012.stl"
 
 # ── 3. C-grid mesh ───────────────────────────────────────────────────────────
-info "3. C-grid (ni_body=$NI_BODY, ni_wake=$NI_WAKE, n_stations=$N_STATIONS, nk=$NK)"
+info "3. C-grid (blocks=$CGRID_BLOCKS, ni_body=$NI_BODY, ni_wake=$NI_WAKE, n_stations=$N_STATIONS, nk=$NK)"
 "$SHORE" mesh "$OUT_DIR/naca0012.stl" \
   --topology cgrid \
+  --cgrid-blocks "$CGRID_BLOCKS" \
   --ni-body "$NI_BODY" \
   --ni-wake "$NI_WAKE" \
   --n-stations "$N_STATIONS" \
@@ -123,13 +133,30 @@ info "3. C-grid (ni_body=$NI_BODY, ni_wake=$NI_WAKE, n_stations=$N_STATIONS, nk=
   -o "$OUT_DIR/naca0012"
 
 # ── 4. ParaView .vtm ─────────────────────────────────────────────────────────
+# Single .geo (legacy --cgrid-blocks 1) -> single-block .vtm via the
+# new shore export single-input .vtm path.  Three .geo (default 3-block
+# layout) -> standard MultiBlock .vtm.
 info "4. ParaView .vtm"
-"$SHORE" export "$OUT_DIR/naca0012.geo" -o "$OUT_DIR/naca0012.vtm" \
-  || info "  (pyvista not installed; skipped naca0012.vtm)"
+if [[ "$CGRID_BLOCKS" -eq 1 ]]; then
+  "$SHORE" export "$OUT_DIR/naca0012.geo" -o "$OUT_DIR/naca0012.vtm" \
+    || info "  (pyvista not installed; skipped naca0012.vtm)"
+else
+  "$SHORE" export \
+    "$OUT_DIR/naca0012_upper.geo" \
+    "$OUT_DIR/naca0012_body.geo" \
+    "$OUT_DIR/naca0012_lower.geo" \
+    -o "$OUT_DIR/naca0012.vtm" \
+    || info "  (pyvista not installed; skipped naca0012.vtm)"
+fi
 
 info "Done — outputs in $OUT_DIR"
 echo
 echo "Inspect with:"
-echo "  $SHORE info $OUT_DIR/naca0012.geo"
-echo "  $SHORE check $OUT_DIR/naca0012.geo"
+if [[ "$CGRID_BLOCKS" -eq 1 ]]; then
+  echo "  $SHORE info $OUT_DIR/naca0012.geo"
+  echo "  $SHORE check $OUT_DIR/naca0012.geo"
+else
+  echo "  $SHORE info $OUT_DIR/naca0012_body.geo"
+  echo "  $SHORE check $OUT_DIR/naca0012_body.geo"
+fi
 echo "  paraview $OUT_DIR/naca0012.vtm"

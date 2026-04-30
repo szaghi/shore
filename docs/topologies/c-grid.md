@@ -1,61 +1,152 @@
 # C-grid topology
 
 A C-grid is a structured grid topology that **wraps a body with a
-sharp trailing edge** (airfoil, hydrofoil, wing) and **extends two
-wake branches downstream**. Looking at a span station, the grid
-lines form the letter C: the outer envelope opens downstream of the
-TE, leaving a wake-cut where the upper and lower surfaces meet.
+sharp or blunt trailing edge** (airfoil, hydrofoil, wing) and
+**extends two wake branches downstream**. Looking at a span station,
+the grid lines form the letter C: the outer envelope opens
+downstream of the TE, leaving a wake-cut where the upper and lower
+surfaces meet.
 
-The single-block C-grid is a **first-class topology** in SHORE: build
-it with `shore mesh --topology cgrid` (or `topology = "cgrid"` in a
-TOML config). It coexists with the [O-grid](o-grid) and
-[cubed-sphere](cubed-sphere) topologies as a peer; the three pick
-different trade-offs:
+The C-grid is a **first-class topology** in SHORE: build it with
+`shore mesh --topology cgrid` (or `topology = "cgrid"` in a TOML
+config). It coexists with the [O-grid](o-grid) and
+[cubed-sphere](cubed-sphere) topologies as a peer.
 
-| | C-grid | O-grid | Cubed sphere |
+## Block layouts
+
+`shore mesh --topology cgrid` supports three layouts via
+`--cgrid-blocks`:
+
+| Layout | Blocks | TE | Use case |
 |---|---|---|---|
-| Blocks | 1 | 1 | 6 |
-| Body shape | sharp-TE (airfoil) | star-shaped (sphere-like) | star-shaped |
-| Wake handling | wake branches in i-direction | none | none |
-| Periodicity | non-periodic in i, j | j-periodic | conforming SHARED seams |
-| Best for | airfoils, hydrofoils | Chimera background, smooth bodies | production near-body meshing on smooth bodies |
+| **3-block** (default) | upper / body / lower | sharp | The Xall-correct sharp-TE C-grid; SHARED seams at the upper-TE column, lower-TE column, and wake cut |
+| **4-block** | upper / body / lower / wake_base | blunt | 3-block + a wake-base block W bridging the TE thickness gap; W's `i_hi` face is the bluff-base WALL |
+| **1-block** (legacy) | one concatenated block | sharp only | Single hex block with the wake cut encoded as an i-direction overlap; **Xall cannot apply BCs cleanly** on this overlap (the j-counter "flips direction" along the self-overlapping edge).  Kept for opt-in compatibility with downstream tools that don't have the j-flip issue. |
 
-## i-axis layout
+::: warning Migration from v0.1.0
+v0.1.0 shipped the 1-block layout as the default.  v0.2.0 makes
+**3-block the default**.  If you have a v0.1.0 workflow that relies
+on the single-block layout, pass `--cgrid-blocks 1` to opt in.  See
+[the v0.2.0 changelog](/guide/changelog) for the migration note.
+:::
 
-The C-grid uses a **single continuous parametric line** along i,
-sweeping from one wake far-field tip, around the body, to the other
-wake far-field tip:
+## 3-block layout (sharp TE, default)
+
+The 3-block layout splits the C-grid into three hex blocks:
 
 ```
-i = 0                                  i = ni_total - 1
-upper-wake-far  →  upper-TE  →  suction  →  LE  →  pressure  →  lower-TE  →  lower-wake-far
-                       i = ni_wake - 1                              i = ni_wake + ni_body - 1
+                      BLOCK upper (upper wake)
+upper-wake-far-tip ──────────────────────── upper-TE
+                                                │
+                                                │ BLOCK body (suction → LE → pressure)
+                                                │
+                                            lower-TE
+lower-wake-far-tip ──────────────────────── lower-TE
+                      BLOCK lower (lower wake)
 ```
 
-`ni_total = 2 * (ni_wake - 1) + ni_body`, where `ni_body` is the
-per-station body wrap node count (upper-TE → LE → lower-TE) and
-`ni_wake` is the per-branch wake node count (the TE node is shared
-with the body, so it is counted once but appears twice in the layout
-above for clarity).
+Per-block dimensions:
 
-j is the **span direction** — one node per span station. k is
-wall-normal as usual.
+- **`upper`** `(ni_wake, n_stations, nk, 3)` — i sweeps `upper-wake-far-tip → upper-TE`.
+- **`body`** `(ni_body, n_stations, nk, 3)` — i sweeps `upper-TE → suction → LE → pressure → lower-TE`.
+- **`lower`** `(ni_wake, n_stations, nk, 3)` — i sweeps `lower-TE → lower-wake-far-tip`.
 
-The TE sits at two i-indices: `i = ni_wake - 1` (upper-TE) and
-`i = ni_wake + ni_body - 1` (lower-TE). For a **sharp** TE the two
-TE nodes coincide in space; for a **blunt** TE they are separated by
-the TE thickness.
+j is the span direction; k is wall-normal extrusion.
+
+### SHARED seams
+
+Three SHARED face pairs:
+
+| Seam | Faces | AxisMap (this side) | Notes |
+|---|---|---|---|
+| Upper-TE column | `upper.i_hi ↔ body.i_lo` | identity on `(j, k)` | Same-axis i↔i; node coincidence via numpy view aliasing. |
+| Lower-TE column | `body.i_hi ↔ lower.i_lo` | identity on `(j, k)` | Same as above. |
+| Wake cut       | `upper.k_lo ↔ lower.k_lo` | `((i, True), (j, False))` | Same-axis k↔k; **i flipped** because upper sweeps far-tip→TE while lower sweeps TE→far-tip.  This i-reversal is the manifestation of what was the "j-counter flips direction" pathology in the 1-block layout's self-overlap. |
+
+For sharp TE the wake-cut nodes coincide bit-exactly in space at
+k=0 — the SHARED face is a true memory-aliased view.  Xall sees a
+clean face-to-face adjacency on all three seams and applies BCs
+correctly.
+
+### Face boundary conditions (defaults)
+
+| Block | i_lo | i_hi | j_lo | j_hi | k_lo | k_hi |
+|---|---|---|---|---|---|---|
+| `upper` | `FREE` (far-tip) | `SHARED → body.i_lo` | `FREE` | `FREE` | `SHARED → lower.k_lo` | `FREE` |
+| `body`  | `SHARED → upper.i_hi` | `SHARED → lower.i_lo` | `FREE` | `FREE` | `WALL` (airfoil surface) | `FREE` |
+| `lower` | `SHARED → body.i_hi` | `FREE` (far-tip) | `FREE` | `FREE` | `SHARED → upper.k_lo` | `FREE` |
+
+For a chimera assembly, the `FREE` faces become BC code `40`
+(chimera fringe) or `-9` (extrapolation) in a downstream `cc.par`.
+
+## 4-block layout (blunt TE)
+
+For a body with a blunt (finite-thickness) TE, the upper and lower
+wake k=0 strips are **parallel but separated by the TE thickness**.
+The 3-block layout's wake-cut SHARED face would have a non-zero gap
+between U.k_lo and L.k_lo — invalid as SHARED — and the TE base
+wall of the airfoil would not be meshed.
+
+The 4-block layout adds a **wake-base block W** that fills the gap:
+
+```
+y axis up
+   ▲    upper-wake-far-tip ────── upper-TE     (Block upper, k_lo at y = +te/2)
+   │                                  │
+   │                                  │ Block body
+   │                                  │
+   │                                  │
+   │       far-tip W ────── TE base wall      (Block wake_base)
+   │                                  │
+   │    lower-wake-far-tip ────── lower-TE    (Block lower, k_lo at y = -te/2)
+   │
+```
+
+- **`wake_base`** `(ni_wake, n_stations, nk_w, 3)` — i along the
+  wake (far-tip → TE), j is span, k spans the TE thickness from
+  `y = -te/2` to `y = +te/2`.
+
+Two extra SHARED seams (replacing the 3-block wake-cut):
+
+| Seam | Faces | AxisMap (W side) |
+|---|---|---|
+| W upper face ↔ upper k_lo | `wake_base.k_hi ↔ upper.k_lo` | identity on `(i, j)` (W's i and upper's i match) |
+| W lower face ↔ lower k_lo | `wake_base.k_lo ↔ lower.k_lo` | `((i, True), (j, False))` (W's i and lower's i are reversed) |
+
+W's `i_hi` face — the cross-section at the TE — is **`WALL`**: this
+is the bluff-base wall of the airfoil that the 3-block layout
+cannot represent.  The 1-block legacy layout simply ignores it.
+
+W is not marched; its geometry is fully determined at build time by
+linear interpolation in k between the lower- and upper-wake k=0
+strips.  The marcher's per-block loop skips it.
 
 ## Building from the CLI
 
 ```bash
+# Sharp-TE 3-block (default):
 shore mesh naca0012.stl --topology cgrid \
     --ni-body 120 --ni-wake 30 --n-stations 5 --wake-length 15 \
     --nk 30 --ds 5e-4 --growth 1.15 \
     -o naca0012
+# → naca0012_upper.geo + naca0012_body.geo + naca0012_lower.geo
+
+# Blunt-TE 4-block:
+shore mesh naca0012_blunt.stl --topology cgrid --cgrid-blocks 4 \
+    --ni-body 120 --ni-wake 30 --n-stations 5 --wake-length 15 \
+    --nk 30 --ds 5e-4 --growth 1.15 \
+    -o naca0012_blunt
+# → naca0012_blunt_{upper,body,lower,wake_base}.geo
+
+# Legacy 1-block (sharp only):
+shore mesh naca0012.stl --topology cgrid --cgrid-blocks 1 \
+    --ni-body 120 --ni-wake 30 --n-stations 5 --wake-length 15 \
+    --nk 30 --ds 5e-4 --growth 1.15 \
+    -o naca0012
+# → naca0012.geo
 ```
 
-Required flags (non-default for `cgrid` only):
+Required flags (any layout):
 
 - `--ni-body` — per-station body wrap node count.
 - `--ni-wake` — per-branch wake node count (TE included).
@@ -65,6 +156,7 @@ Required flags (non-default for `cgrid` only):
 
 Optional flags:
 
+- `--cgrid-blocks {1,3,4}` — block layout (default `3`).
 - `--span-axis x|y|z` — defaults to `z`. The body's longest non-span
   axis is taken as the chord direction; the freestream defaults to
   `+x_world`-projected-onto-the-station-plane.
@@ -75,7 +167,8 @@ Optional flags:
   `30°`). Lower for blunter TEs (e.g. `20°`); higher to reject
   spurious tessellation seams.
 
-The output is one `<stem>.geo` file with shape `(ni_total, n_stations, nk, 3)`.
+The output is one `<stem>_<label>.geo` file per block (or one
+`<stem>.geo` for `--cgrid-blocks 1`).
 
 ## Python API
 
@@ -92,10 +185,12 @@ blocks = topo.build(
     ni_body=120, ni_wake=30, n_stations=5,
     wake_length=15.0,
     span_axis="z",
+    blocks=3,    # 3 (default), 4 (blunt-TE), or 1 (legacy)
 )
 m = Mesh(body=body, blocks=blocks, topology=topo)
 m.march(ds=5e-4, growth=1.15, smooth_strength=0.1, smooth_iters=1)
-m.write_geo("naca0012")  # → naca0012_cgrid.geo
+m.write_geo("naca0012")
+# → naca0012_upper.geo, naca0012_body.geo, naca0012_lower.geo
 ```
 
 `Mesh.from_stl()` does **not** support `CGridTopology` because the
@@ -110,28 +205,21 @@ resulting blocks as shown above.
 The C-grid k=0 layer is built in four stages — see
 [Algorithm — C-grid construction](/algorithm/c-grid) for derivations.
 
-1. **TE detection** ([`detect_te_edges`](/algorithm/c-grid#trailing-edge-detection))
-   — find the TE polyline on the STL via dihedral classification,
-   span-axis alignment filter, and chord-extreme filter. Sharp TEs
-   produce one strand; blunt TEs produce two (upper + lower).
-
-2. **Span slicing** ([`slice_by_span`](/algorithm/c-grid#span-slicing))
-   — slice the STL with `n_stations` planes perpendicular to the
-   span axis. Each slice is stitched into a closed polyline, rotated
-   so it starts at the upper-TE and walks the suction surface first,
-   and **resampled by arclength fraction** to a common `ni_body`
-   node count. This common parametrisation is what makes
-   tapered / swept wings line up at the same parametric i-position
-   on every station.
-
-3. **C-curve construction** ([`build_c_curve`](/algorithm/c-grid#c-curve))
-   — append two wake branches per station, each extending in the
-   freestream direction with geometric i-spacing rooted at the
-   body's TE-cell length.
-
-4. **Hyperbolic march** — standard SHORE hyperbolic extrusion with
-   both axes non-periodic. The wake far-field tips and wing tips
-   are clamped during Laplacian smoothing.
+1. **TE detection** (`detect_te_edges`) — find the TE polyline(s)
+   via dihedral classification.  Sharp TEs produce one strand;
+   blunt TEs produce two (upper + lower).
+2. **Span slicing** (`slice_by_span`) — slice the STL with
+   `n_stations` planes perpendicular to the span axis.  Each slice
+   is reordered to start at the upper-TE and resampled by
+   arclength fraction.  For blunt TEs the body wrap terminates at
+   the lower-TE node, excluding the TE-base segment.
+3. **C-curve construction** (`build_c_curve`) — append upper and
+   lower wake branches per station with geometric i-spacing.
+4. **Topology assembly** + **hyperbolic march** — split the
+   per-station polyline into 1, 3, or 4 blocks (`per_block_layers`
+   on `CGridK0Result`); wire SHARED seams; march each block layer
+   by layer with seam-aware ghost rows at the upper-TE and
+   lower-TE seams.
 
 ## Body requirements
 
@@ -155,26 +243,11 @@ data:
   — bash equivalent using only `shore` CLI calls (`shore profile naca`
   → `shore body extrude` → `shore mesh --topology cgrid` → `shore export`).
 
-## Face boundary conditions
-
-| Face | Default BC | Meaning |
-|---|---|---|
-| `i_lo` | `FREE` | upper-wake far-field tip (chimera fringe / extrapolation) |
-| `i_hi` | `FREE` | lower-wake far-field tip |
-| `j_lo` | `FREE` | inboard wing tip |
-| `j_hi` | `FREE` | outboard wing tip |
-| `k_lo` | `WALL` | body wrap (over the body i-range; degenerate over the wake i-range — the wake-cut sits at k=0) |
-| `k_hi` | `FREE` | outer / chimera fringe |
-
-For a chimera assembly, replace `i_lo` / `i_hi` / `j_lo` / `j_hi` /
-`k_hi` with a downstream `cc.par` `free_face_bc=40` (chimera fringe)
-or `-9` (extrapolation). For symmetric (mirrored) studies, the
-`j_lo` / `j_hi` faces become symmetry walls externally.
-
 ## See also
 
 - [Algorithm — C-grid construction](/algorithm/c-grid) — full derivation
-  of TE detection, span slicing, C-curve build.
+  of TE detection, span slicing, C-curve build, and the SHARED-seam
+  wiring for 3-block / 4-block topologies.
 - [`shore mesh` reference](/reference/mesh) — full CLI command reference.
 - [Pipeline overview](/guide/pipeline) — where the C-grid fits in the
   body-fitted workflow.

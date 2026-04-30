@@ -2,19 +2,29 @@
 
 Builds a NACA 0012 STL from the analytic 4-digit profile, runs the
 SHORE C-grid pipeline (TE detection -> span slice -> C-curve build ->
-hyperbolic march), and writes a ``.geo`` plus a ParaView ``.vtm``.
+hyperbolic march), and writes ``.geo`` files plus a ParaView ``.vtm``.
 
-By default everything lands under ``examples_out/`` (cwd-relative):
+By default everything lands under ``examples_out/`` (cwd-relative).
+With the default 3-block layout (Xall-correct):
+
+    examples_out/
+        naca0012.stl              # input wing STL
+        naca0012_upper.geo        # upper-wake block
+        naca0012_body.geo         # body wrap block (TE -> suction -> LE -> pressure -> TE)
+        naca0012_lower.geo        # lower-wake block
+        naca0012.vtm              # ParaView MultiBlock (3 blocks)
+        naca0012/                 # block payloads referenced by the .vtm
+
+With ``--cgrid-blocks 1`` (legacy single-block layout):
 
     examples_out/
         naca0012.stl
-        naca0012.geo
+        naca0012.geo              # one concatenated block (wake cut as i-overlap)
         naca0012.vtm
-        naca0012/                 # block payloads referenced by the .vtm
 
 Run from the project root after activating .venv:
 
-    # Generate a small C-grid and write naca0012.{stl,geo,vtm}:
+    # Generate the 3-block C-grid (default) and write the .geo / .vtm files:
     python examples/06-c-grid/visualize_naca0012.py --generate
 
     # Larger C-grid with finer wake clustering:
@@ -23,23 +33,31 @@ Run from the project root after activating .venv:
         --wake-length 25 --wake-growth 1.20 \\
         --nk 30 --ds 5e-4 --growth 1.15
 
+    # Legacy single-block layout (Xall has trouble with the wake-cut overlap):
+    python examples/06-c-grid/visualize_naca0012.py --generate --cgrid-blocks 1
+
     # Visualise an existing .geo (any topology):
-    python examples/06-c-grid/visualize_naca0012.py naca0012.geo
+    python examples/06-c-grid/visualize_naca0012.py naca0012_body.geo
 
-C-grid layout
--------------
-A C-grid wraps a sharp-TE body (airfoil, hydrofoil) with a single
-hexahedral block and adds two wake branches downstream of the TE.
-The i-axis sweeps as one continuous parametric line:
+C-grid layout (3-block default)
+-------------------------------
+Three hex blocks with SHARED seams at the upper-TE column, the
+lower-TE column, and the wake cut.  The wake cut SHARED face has an
+i-reversal AxisMap on the partner side, the manifestation of the
+"j-counter flips direction" pathology that the 1-block layout's
+self-overlap encoded silently.  Xall sees clean face-to-face
+adjacency on all three seams and applies BCs correctly.
 
-    upper-wake-far-tip  ->  upper-TE  ->  suction  ->  LE
-                                                       |
-                                                       v
-    lower-wake-far-tip  <-  lower-TE  <-  pressure   <-
+i-axes per block:
+
+    upper:  upper-wake-far-tip -> upper-TE
+    body:   upper-TE -> suction -> LE -> pressure -> lower-TE
+    lower:  lower-TE -> lower-wake-far-tip
 
 The j-axis is the span direction (one node per station); the k-axis
-is the wall-normal extrusion.  See :mod:`shore.surface.cgrid` for the
-detection / slicing / wake-construction details.
+is the wall-normal extrusion.  See :mod:`shore.surface.cgrid` and
+:class:`shore.mesh.CGridTopology` for the detection / slicing /
+wake-construction / SHARED-seam details.
 """
 
 from __future__ import annotations
@@ -86,7 +104,7 @@ def _make_naca0012_stl(
 
 def generate_cgrid(
     stl_path: Path,
-    geo_path: Path,
+    geo_stem: Path,
     *,
     ni_body: int,
     ni_wake: int,
@@ -99,9 +117,12 @@ def generate_cgrid(
     growth: float,
     smooth: float,
     smooth_iters: int,
-) -> Path:
-    """Build the STL (if missing), march the C-grid, write the .geo."""
-    from shore.io.geo import write_geo
+    cgrid_blocks: int = 3,
+) -> list[Path]:
+    """Build the STL (if missing), march the C-grid, write the .geo files.
+
+    Returns the list of ``.geo`` paths written (one per block).
+    """
     from shore.mesh import Body, CGridTopology, Mesh, Spacing1D
 
     if not stl_path.exists():
@@ -109,13 +130,9 @@ def generate_cgrid(
         _make_naca0012_stl(stl_path, n_stations=max(8, n_stations + 2))
         print("  STL written.")
 
-    if geo_path.exists():
-        print(f"  {geo_path} already exists, skipping marching.")
-        return geo_path
-
     print(
-        f"Building C-grid: ni_body={ni_body} ni_wake={ni_wake} "
-        f"n_stations={n_stations} wake_length={wake_length}"
+        f"Building C-grid (blocks={cgrid_blocks}): ni_body={ni_body} "
+        f"ni_wake={ni_wake} n_stations={n_stations} wake_length={wake_length}"
     )
     body = Body.from_stl(stl_path, skip_hygiene=True)
     topo = CGridTopology()
@@ -131,6 +148,7 @@ def generate_cgrid(
         wake_length=wake_length,
         wake_growth=wake_growth,
         span_axis=span_axis,
+        blocks=cgrid_blocks,
     )
     m = Mesh(body=body, blocks=blocks, topology=topo)
 
@@ -146,20 +164,33 @@ def generate_cgrid(
     )
     print()
 
-    write_geo(geo_path, m.blocks[0].nodes)
-    print(f"  {geo_path} written  shape={m.blocks[0].nodes.shape[:3]}")
-    return geo_path
+    geo_stem.parent.mkdir(parents=True, exist_ok=True)
+    if cgrid_blocks == 1:
+        from shore.io.geo import write_geo
+
+        single = geo_stem.with_suffix(".geo")
+        write_geo(single, m.blocks[0].nodes)
+        print(f"  {single} written  shape={m.blocks[0].nodes.shape[:3]}")
+        return [single]
+    # Multi-block: <stem>_<label>.geo via Mesh.write_geo.
+    m.write_geo(geo_stem)
+    paths: list[Path] = []
+    for blk in m.blocks:
+        p = geo_stem.parent / f"{geo_stem.name}_{blk.label}.geo"
+        print(f"  {p} written  shape={blk.nodes.shape[:3]}")
+        paths.append(p)
+    return paths
 
 
-def export_to_vtk(geo_path: Path) -> Path:
-    """Write a single-block .vtm next to the .geo."""
+def export_to_vtk(geo_paths: list[Path], vtm_path: Path) -> Path:
+    """Bundle one or more .geo files into a single ParaView .vtm."""
     from shore.io.geo import read_geo
     from shore.io.vtk import write_caps_vtm
 
-    vtm_path = geo_path.with_suffix(".vtm")
-    grid = read_geo(geo_path)
-    write_caps_vtm(vtm_path, [grid], labels=["cgrid"], with_jacobian=True)
-    print(f"  {vtm_path} written.")
+    grids = [read_geo(p) for p in geo_paths]
+    labels = [p.stem.split("_")[-1] if "_" in p.stem else "cgrid" for p in geo_paths]
+    write_caps_vtm(vtm_path, grids, labels=labels, with_jacobian=True)
+    print(f"  {vtm_path} written  ({len(grids)} block(s))")
     return vtm_path
 
 
@@ -190,6 +221,13 @@ def main() -> None:
     parser.add_argument("--smooth", type=float, default=0.1)
     parser.add_argument("--smooth-iters", type=int, default=1)
     parser.add_argument(
+        "--cgrid-blocks",
+        type=int,
+        default=3,
+        choices=[1, 3],
+        help="Block layout: 3 (default, Xall-correct) or 1 (legacy single-block).",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         type=Path,
@@ -209,13 +247,14 @@ def main() -> None:
     out_dir: Path = args.output
     out_dir.mkdir(parents=True, exist_ok=True)
     stl_path = out_dir / "naca0012.stl"
-    geo_path = out_dir / "naca0012.geo"
+    geo_stem = out_dir / "naca0012"
+    vtm_path = out_dir / "naca0012.vtm"
 
     if args.generate:
         try:
-            generate_cgrid(
+            geo_paths = generate_cgrid(
                 stl_path,
-                geo_path,
+                geo_stem,
                 ni_body=args.ni_body,
                 ni_wake=args.ni_wake,
                 n_stations=args.n_stations,
@@ -227,16 +266,19 @@ def main() -> None:
                 growth=args.growth,
                 smooth=args.smooth,
                 smooth_iters=args.smooth_iters,
+                cgrid_blocks=args.cgrid_blocks,
             )
         except Exception as exc:  # pragma: no cover - example script
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        export_to_vtk(geo_path)
+        export_to_vtk(geo_paths, vtm_path)
 
         if args.no_view:
             return
-        target = geo_path
+        # Default viewer target: first emitted .geo (body block in the
+        # 3-block layout, or the sole .geo in the 1-block layout).
+        target = geo_paths[0] if args.cgrid_blocks == 1 else geo_paths[1]
     else:
         target = args.input
         if target is None:
