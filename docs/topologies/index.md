@@ -14,11 +14,12 @@ them.
 |---|---|---|---|
 | [O-grid](o-grid) | first-class | 1 (single, j-periodic) | `shore mesh --topology ogrid`; Chimera background, downstream tools that expect a single periodic-j block |
 | [Cubed sphere (6-block)](cubed-sphere) | **production default** | 6 (4 sub-blocks + 2 caps) | `shore mesh` (default); clean polar coverage with no singular axis |
-| [C-grid (sharp-TE)](c-grid) | first-class | 1 (single, non-periodic) | `shore mesh --topology cgrid`; airfoils, hydrofoils, wings — wraps a sharp-TE body with downstream wake branches |
+| [C-grid (sharp / blunt TE)](c-grid) | first-class | 3 (sharp, default) / 4 (blunt) / 1 (legacy) | `shore mesh --topology cgrid`; airfoils, hydrofoils, wings — wraps a sharp- or blunt-TE body with downstream wake branches |
+| [H-grid (rect / tube)](h-grid) | first-class (analytic primitives) | 1 single block | `shore primitive h-grid-rect` / `h-grid-tube`; prismatic ducts, internal flow without an internal body — the analytic baseline for SRM-style cavities |
 
 Future topologies that fit naturally into this framework:
 
-- **H-grid** for bluff bodies and internal flows
+- **STL-driven H-grid** for variable-cross-section ducts (`shore mesh --topology hgrid`, planned)
 - **Multi-body Chimera assemblies** for compound geometries
 
 Each new topology gets one page here; the algorithm pages stay shared.

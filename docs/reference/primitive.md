@@ -166,6 +166,93 @@ shore primitive flat-caps --axis x --r-out 5.0 --z0 0 --z1 10 \
                           --ni 24 --nc 32 --nk 50 -o tunnel
 ```
 
+## `shore primitive h-grid-rect`
+
+Rectangular-duct H-grid: a single hex block filling a Cartesian box,
+default BCs streamwise=FREE / cross-section=WALL.  Use case:
+prismatic ducts, internal flow without an internal body.  See
+[H-grid topology](/topologies/h-grid) for the conceptual overview.
+
+### Synopsis
+
+```
+shore primitive h-grid-rect [OPTIONS]
+```
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `-o` / `--output PATH` | `h_grid_rect.geo` | Output `.geo` file |
+| `--length FLOAT` | 1.0 | Duct length along the streamwise axis |
+| `--width FLOAT` | 0.1 | Cross-section width (along block `j`) |
+| `--height FLOAT` | 0.1 | Cross-section height (along block `k`) |
+| `--ni INTEGER` | 40 | Streamwise node count |
+| `--nj INTEGER` | 20 | Cross-section width node count |
+| `--nk INTEGER` | 20 | Cross-section height node count |
+| `--streamwise-axis TEXT` | `x` | World axis the duct is aligned with: `x` / `y` / `z` |
+| `--i-spacing` / `--j-spacing` / `--k-spacing` | `uniform` | Per-axis spacing law (`uniform` / `tanh` / `tanh2`) |
+| `--i-beta` / `--j-beta` / `--k-beta` | 3.0 | Clustering strength for `tanh` / `tanh2` |
+| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (single block, no SHARED) |
+
+### Examples
+
+```bash
+# 1m-long square duct, BL clustering on both cross-section axes:
+shore primitive h-grid-rect \
+    --length 1.0 --width 0.1 --height 0.2 \
+    --ni 80 --nj 20 --nk 24 \
+    --streamwise-axis x \
+    --j-spacing tanh2 --j-beta 4.0 \
+    --k-spacing tanh2 --k-beta 4.0 \
+    -o duct
+```
+
+## `shore primitive h-grid-tube`
+
+Circular-bore H-grid: a single hex block with a 2D polar
+cross-section (j-periodic circumferential + radial), default BCs
+streamwise=FREE / k_lo=k_hi=WALL.  Use case: straight cylindrical
+ducts, simple SRM chambers.  See
+[H-grid topology — circular tube](/topologies/h-grid#circular-tube)
+for the polar singular axis caveat.
+
+### Synopsis
+
+```
+shore primitive h-grid-tube [OPTIONS]
+```
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `-o` / `--output PATH` | `h_grid_tube.geo` | Output `.geo` file |
+| `--length FLOAT` | 1.0 | Tube length along the streamwise axis |
+| `--radius FLOAT` | 0.05 | Outer-wall radius |
+| `--n-axial INTEGER` | 40 | Streamwise node count (block `i`) |
+| `--n-circ INTEGER` | 32 | Circumferential node count (block `j`, periodic) |
+| `--n-radial INTEGER` | 8 | Radial node count (block `k`: 0 = centerline, last = wall) |
+| `--streamwise-axis TEXT` | `x` | World axis the tube is aligned with |
+| `--i-spacing` / `--k-spacing` | `uniform` | Streamwise / radial spacing law (`uniform` / `tanh` / `tanh2`) |
+| `--i-beta` / `--k-beta` | 3.0 | Clustering strength |
+| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (single block, j-periodic) |
+
+The circumferential direction (`j`) is uniform by construction —
+clustering on a periodic axis is unsupported.
+
+### Examples
+
+```bash
+# 0.5m-long tube, radial clustering toward the centerline:
+shore primitive h-grid-tube \
+    --length 0.5 --radius 0.05 \
+    --n-axial 60 --n-circ 32 --n-radial 10 \
+    --streamwise-axis x \
+    --k-spacing tanh --k-beta 3.0 \
+    -o tube
+```
+
 ## TOML schema (primitive configs)
 
 Primitive configs are identified by `kind = "primitive"` at the top

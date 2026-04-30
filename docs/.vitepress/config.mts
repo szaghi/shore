@@ -89,7 +89,8 @@ export default defineConfig({
             { text: 'Overview & taxonomy',    link: '/topologies/' },
             { text: 'O-grid (single-block)',  link: '/topologies/o-grid' },
             { text: 'Cubed sphere (6-block)', link: '/topologies/cubed-sphere' },
-            { text: 'C-grid (sharp-TE)',      link: '/topologies/c-grid' },
+            { text: 'C-grid (sharp / blunt TE)', link: '/topologies/c-grid' },
+            { text: 'H-grid (duct, internal flow)', link: '/topologies/h-grid' },
           ],
         },
         {

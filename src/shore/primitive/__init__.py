@@ -19,6 +19,14 @@ Available primitives
   flat-caps cylinder (central square + 4 trapezoidal sub-blocks).
   Use case: cylindrical background without Chimera fringes (high-order
   schemes, conservation, GPU memory locality).
+- :class:`~shore.primitive.h_grid_rect.HGridRectMesh` — single-block
+  rectangular-duct H-grid: streamwise faces FREE (inflow / outflow),
+  the four cross-section walls WALL.  Use case: prismatic ducts,
+  internal flow without an internal body.
+- :class:`~shore.primitive.h_grid_tube.HGridTubeMesh` — single-block
+  circular-bore H-grid (lat-lon polar cross-section): streamwise faces
+  FREE, j-periodic, centerline singular axis + outer wall WALL.  Use
+  case: straight cylindrical ducts, simple SRM chambers.
 """
 
 from __future__ import annotations
@@ -27,6 +35,8 @@ from shore.primitive.annulus import AnnularCylinderMesh, AnnulusExtent
 from shore.primitive.base import PrimitiveMesh, axis_frame, coords_1d, resolve_axis
 from shore.primitive.box import BoxExtent, BoxMesh
 from shore.primitive.flat_caps import FlatCapsCylinder, FlatCapsExtent
+from shore.primitive.h_grid_rect import HGridRectMesh
+from shore.primitive.h_grid_tube import HGridTubeMesh
 
 __all__ = [
     "AnnularCylinderMesh",
@@ -35,6 +45,8 @@ __all__ = [
     "BoxMesh",
     "FlatCapsCylinder",
     "FlatCapsExtent",
+    "HGridRectMesh",
+    "HGridTubeMesh",
     "PrimitiveMesh",
     "axis_frame",
     "coords_1d",

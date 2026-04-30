@@ -47,6 +47,8 @@ from shore.primitive import (
     AnnularCylinderMesh,
     BoxMesh,
     FlatCapsCylinder,
+    HGridRectMesh,
+    HGridTubeMesh,
 )
 
 app = typer.Typer(
@@ -1465,6 +1467,165 @@ def primitive_flat_caps(
         raise typer.Exit(1) from None
 
     _emit_primitive_writeback(prim, output, default_name="flat_caps", adjacency_json=adjacency_json)
+
+
+# ----- shore primitive h-grid-rect ---------------------------------------
+
+
+@primitive_app.command("h-grid-rect")
+def primitive_h_grid_rect(
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Output .geo file."),
+    ] = None,
+    length: Annotated[
+        float, typer.Option("--length", help="Duct length along the streamwise axis.")
+    ] = 1.0,
+    width: Annotated[
+        float, typer.Option("--width", help="Cross-section width (along block j).")
+    ] = 0.1,
+    height: Annotated[
+        float, typer.Option("--height", help="Cross-section height (along block k).")
+    ] = 0.1,
+    ni: Annotated[int, typer.Option(help="Streamwise node count (i-axis).")] = 40,
+    nj: Annotated[int, typer.Option(help="Cross-section width node count (j-axis).")] = 20,
+    nk: Annotated[int, typer.Option(help="Cross-section height node count (k-axis).")] = 20,
+    streamwise_axis: Annotated[
+        str,
+        typer.Option(
+            "--streamwise-axis",
+            help="World axis the duct is aligned with: 'x' (default), 'y', or 'z'.",
+        ),
+    ] = "x",
+    i_law: Annotated[
+        str, typer.Option("--i-spacing", help="Streamwise spacing: uniform | tanh | tanh2.")
+    ] = "uniform",
+    j_law: Annotated[str, typer.Option("--j-spacing", help="Cross-section j spacing.")] = "uniform",
+    k_law: Annotated[str, typer.Option("--k-spacing", help="Cross-section k spacing.")] = "uniform",
+    i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
+    j_beta: Annotated[float, typer.Option("--j-beta")] = 3.0,
+    k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+    adjacency_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency-json",
+            help="Also write a .adjacency.json sidecar (for shore cc-par).",
+        ),
+    ] = None,
+) -> None:
+    """Build a rectangular-duct H-grid (single block, internal flow).
+
+    Default BCs: i-faces FREE (streamwise inflow / outflow), the four
+    cross-section faces (j_lo, j_hi, k_lo, k_hi) WALL.  Use case:
+    prismatic ducts; the analytic baseline for internal flow.
+    """
+    try:
+        prim = HGridRectMesh.build(
+            length=length,
+            width=width,
+            height=height,
+            ni=ni,
+            nj=nj,
+            nk=nk,
+            streamwise_axis=streamwise_axis,
+            i_law=i_law,
+            j_law=j_law,
+            k_law=k_law,
+            i_beta=i_beta,
+            j_beta=j_beta,
+            k_beta=k_beta,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _emit_primitive_writeback(
+        prim, output, default_name="h_grid_rect", adjacency_json=adjacency_json
+    )
+
+
+# ----- shore primitive h-grid-tube ---------------------------------------
+
+
+@primitive_app.command("h-grid-tube")
+def primitive_h_grid_tube(
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Output .geo file."),
+    ] = None,
+    length: Annotated[
+        float, typer.Option("--length", help="Tube length along the streamwise axis.")
+    ] = 1.0,
+    radius: Annotated[float, typer.Option("--radius", help="Outer-wall radius.")] = 0.05,
+    n_axial: Annotated[int, typer.Option("--n-axial", help="Streamwise node count.")] = 40,
+    n_circ: Annotated[
+        int, typer.Option("--n-circ", help="Circumferential node count (j-axis, periodic).")
+    ] = 32,
+    n_radial: Annotated[
+        int,
+        typer.Option(
+            "--n-radial",
+            help="Radial node count (k-axis: 0 = centerline, last = wall).",
+        ),
+    ] = 8,
+    streamwise_axis: Annotated[
+        str,
+        typer.Option(
+            "--streamwise-axis",
+            help="World axis the tube is aligned with: 'x' (default), 'y', or 'z'.",
+        ),
+    ] = "x",
+    i_law: Annotated[
+        str, typer.Option("--i-spacing", help="Streamwise spacing: uniform | tanh | tanh2.")
+    ] = "uniform",
+    k_law: Annotated[
+        str,
+        typer.Option(
+            "--k-spacing",
+            help="Radial spacing (centerline → wall).  Use tanh / tanh2 to cluster near the wall.",
+        ),
+    ] = "uniform",
+    i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
+    k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+    adjacency_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency-json",
+            help="Also write a .adjacency.json sidecar (for shore cc-par).",
+        ),
+    ] = None,
+) -> None:
+    """Build a circular-bore H-grid (single block, j-periodic).
+
+    The cross-section is a 2D polar grid: ``j`` circumferential (periodic),
+    ``k`` radial from the centerline (k=0, polar singular axis) to the
+    outer wall (k=n_radial-1).  Default BCs: i-faces FREE, k_lo and k_hi
+    WALL.  Use case: straight cylindrical ducts, simple SRM chambers.
+
+    The k=0 polar axis collapses every angular node to a single point —
+    accept the singularity (Xall handles it) or use ``h-grid-rect`` if
+    you want a non-singular cross-section.
+    """
+    try:
+        prim = HGridTubeMesh.build(
+            length=length,
+            radius=radius,
+            n_axial=n_axial,
+            n_circ=n_circ,
+            n_radial=n_radial,
+            streamwise_axis=streamwise_axis,
+            i_law=i_law,
+            k_law=k_law,
+            i_beta=i_beta,
+            k_beta=k_beta,
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    _emit_primitive_writeback(
+        prim, output, default_name="h_grid_tube", adjacency_json=adjacency_json
+    )
 
 
 # ---------------------------------------------------------------------------

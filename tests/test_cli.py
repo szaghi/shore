@@ -673,3 +673,216 @@ class TestAdjacencyJsonSidecar:
         # Box is a single block — no SHARED faces.
         no_shared = all(face["bc"] != "SHARED" for face in payload["blocks"][0]["faces"].values())
         assert no_shared
+
+
+# ---------------------------------------------------------------------------
+# shore primitive h-grid-rect / h-grid-tube
+# ---------------------------------------------------------------------------
+
+
+class TestPrimitiveHGridRect:
+    def test_writes_geo(self, tmp_path):
+        out = tmp_path / "duct"
+        r = _invoke(
+            "primitive",
+            "h-grid-rect",
+            "--length",
+            "1.0",
+            "--width",
+            "0.1",
+            "--height",
+            "0.2",
+            "--ni",
+            "20",
+            "--nj",
+            "8",
+            "--nk",
+            "6",
+            "-o",
+            str(out),
+        )
+        assert r.exit_code == 0, r.output
+        assert (tmp_path / "duct.geo").exists()
+
+    def test_streamwise_z_block_dimensions(self, tmp_path):
+        out = tmp_path / "duct"
+        _invoke(
+            "primitive",
+            "h-grid-rect",
+            "--length",
+            "1.0",
+            "--width",
+            "0.1",
+            "--height",
+            "0.2",
+            "--ni",
+            "20",
+            "--nj",
+            "8",
+            "--nk",
+            "6",
+            "--streamwise-axis",
+            "z",
+            "-o",
+            str(out),
+        )
+        grid = read_geo(tmp_path / "duct.geo")
+        assert grid.shape == (20, 8, 6, 3)
+        assert abs(grid[..., 2].max() - 1.0) < 1e-12
+
+    def test_adjacency_json_emitted(self, tmp_path):
+        import json
+
+        out = tmp_path / "duct"
+        adj = tmp_path / "duct.adjacency.json"
+        r = _invoke(
+            "primitive",
+            "h-grid-rect",
+            "--length",
+            "1.0",
+            "--width",
+            "0.1",
+            "--height",
+            "0.2",
+            "--ni",
+            "10",
+            "--nj",
+            "5",
+            "--nk",
+            "5",
+            "-o",
+            str(out),
+            "--adjacency-json",
+            str(adj),
+        )
+        assert r.exit_code == 0, r.output
+        payload = json.loads(adj.read_text())
+        assert len(payload["blocks"]) == 1
+        # H-grid rect has FREE on i-faces, WALL on the four cross-section faces.
+        faces = payload["blocks"][0]["faces"]
+        assert faces["i_lo"]["bc"] == "FREE"
+        assert faces["i_hi"]["bc"] == "FREE"
+        assert faces["j_lo"]["bc"] == "WALL"
+        assert faces["j_hi"]["bc"] == "WALL"
+        assert faces["k_lo"]["bc"] == "WALL"
+        assert faces["k_hi"]["bc"] == "WALL"
+
+    def test_invalid_streamwise_axis_exits_1(self, tmp_path):
+        r = _invoke(
+            "primitive",
+            "h-grid-rect",
+            "--length",
+            "1.0",
+            "--width",
+            "0.1",
+            "--height",
+            "0.2",
+            "--ni",
+            "10",
+            "--nj",
+            "5",
+            "--nk",
+            "5",
+            "--streamwise-axis",
+            "w",
+            "-o",
+            str(tmp_path / "x"),
+        )
+        assert r.exit_code == 1
+
+
+class TestPrimitiveHGridTube:
+    def test_writes_geo(self, tmp_path):
+        out = tmp_path / "tube"
+        r = _invoke(
+            "primitive",
+            "h-grid-tube",
+            "--length",
+            "1.0",
+            "--radius",
+            "0.05",
+            "--n-axial",
+            "20",
+            "--n-circ",
+            "16",
+            "--n-radial",
+            "6",
+            "-o",
+            str(out),
+        )
+        assert r.exit_code == 0, r.output
+        assert (tmp_path / "tube.geo").exists()
+
+    def test_block_shape(self, tmp_path):
+        out = tmp_path / "tube"
+        _invoke(
+            "primitive",
+            "h-grid-tube",
+            "--length",
+            "1.0",
+            "--radius",
+            "0.05",
+            "--n-axial",
+            "20",
+            "--n-circ",
+            "16",
+            "--n-radial",
+            "6",
+            "-o",
+            str(out),
+        )
+        grid = read_geo(tmp_path / "tube.geo")
+        assert grid.shape == (20, 16, 6, 3)
+
+    def test_adjacency_json_emitted(self, tmp_path):
+        import json
+
+        out = tmp_path / "tube"
+        adj = tmp_path / "tube.adjacency.json"
+        r = _invoke(
+            "primitive",
+            "h-grid-tube",
+            "--length",
+            "1.0",
+            "--radius",
+            "0.05",
+            "--n-axial",
+            "10",
+            "--n-circ",
+            "8",
+            "--n-radial",
+            "4",
+            "-o",
+            str(out),
+            "--adjacency-json",
+            str(adj),
+        )
+        assert r.exit_code == 0, r.output
+        payload = json.loads(adj.read_text())
+        assert len(payload["blocks"]) == 1
+        faces = payload["blocks"][0]["faces"]
+        # i_lo / i_hi = FREE (inflow/outflow); k_lo (centerline) and k_hi
+        # (outer wall) = WALL.
+        assert faces["i_lo"]["bc"] == "FREE"
+        assert faces["i_hi"]["bc"] == "FREE"
+        assert faces["k_lo"]["bc"] == "WALL"
+        assert faces["k_hi"]["bc"] == "WALL"
+
+    def test_invalid_radius_exits_1(self, tmp_path):
+        r = _invoke(
+            "primitive",
+            "h-grid-tube",
+            "--length",
+            "1.0",
+            "--radius",
+            "0.0",
+            "--n-axial",
+            "10",
+            "--n-circ",
+            "8",
+            "--n-radial",
+            "4",
+            "-o",
+            str(tmp_path / "x"),
+        )
+        assert r.exit_code == 1
