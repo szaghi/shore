@@ -394,6 +394,16 @@ def mesh(
     wake_growth: _WAKE_GROWTH = 1.15,
     span_axis: _SPAN_AXIS = "z",
     te_dihedral_deg: _TE_DIHEDRAL_DEG = 30.0,
+    adjacency_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency-json",
+            help=(
+                "Also write a .adjacency.json sidecar describing the SHARED "
+                "/ DIRICHLET face graph.  Required by `shore cc-par`."
+            ),
+        ),
+    ] = None,
     verbose: _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL -> structured volume -> geo files.
@@ -640,6 +650,14 @@ def mesh(
             _console.print(
                 f"[green]✓[/green] Wrote {single_path}  ({shape[0]}x{shape[1]}x{shape[2]})"
             )
+
+    if adjacency_json is not None:
+        from shore.io.adjacency import write_adjacency_json
+
+        adjacency_json.parent.mkdir(parents=True, exist_ok=True)
+        write_adjacency_json(m.blocks, adjacency_json)
+        if verbose:
+            _console.print(f"[green]✓[/green] Wrote {adjacency_json}")
 
 
 # ---------------------------------------------------------------------------
@@ -1033,8 +1051,15 @@ def _emit_primitive_writeback(
     primitive_obj: BoxMesh | AnnularCylinderMesh | FlatCapsCylinder,
     output: Path | None,
     default_name: str,
+    adjacency_json: Path | None = None,
 ) -> None:
-    """Resolve output path and call write_geo on the primitive."""
+    """Resolve output path and call write_geo on the primitive.
+
+    When ``adjacency_json`` is set, also emit a ``.adjacency.json``
+    sidecar describing the SHARED / DIRICHLET face graph (for
+    ``shore cc-par`` consumption).  Single-block primitives (box,
+    annulus) emit a sidecar with one block and no connection patches.
+    """
     out = output if output is not None else Path(f"{default_name}.geo")
     primitive_obj.write_geo(out)
     if isinstance(primitive_obj, FlatCapsCylinder):
@@ -1044,6 +1069,13 @@ def _emit_primitive_writeback(
     else:
         target = out if out.suffix == ".geo" else out.with_suffix(".geo")
         _console.print(f"[green]wrote[/green] {target}")
+
+    if adjacency_json is not None:
+        from shore.io.adjacency import write_adjacency_json
+
+        adjacency_json.parent.mkdir(parents=True, exist_ok=True)
+        write_adjacency_json(primitive_obj.blocks, adjacency_json)
+        _console.print(f"[green]wrote[/green] {adjacency_json}")
 
 
 def _load_prim_config(path: Path | None) -> PrimitiveConfig | None:
@@ -1112,6 +1144,13 @@ def primitive_box(
     i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
     j_beta: Annotated[float, typer.Option("--j-beta")] = 3.0,
     k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+    adjacency_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency-json",
+            help="Also write a .adjacency.json sidecar (for shore cc-par).",
+        ),
+    ] = None,
 ) -> None:
     """Build a Cartesian box primitive (single block)."""
     cfg = _load_prim_config(config)
@@ -1157,7 +1196,7 @@ def primitive_box(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    _emit_primitive_writeback(prim, output, default_name="box")
+    _emit_primitive_writeback(prim, output, default_name="box", adjacency_json=adjacency_json)
 
 
 # ----- shore primitive annulus -------------------------------------------
@@ -1202,6 +1241,13 @@ def primitive_annulus(
     i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
     j_beta: Annotated[float, typer.Option("--j-beta")] = 3.0,
     k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+    adjacency_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency-json",
+            help="Also write a .adjacency.json sidecar (for shore cc-par).",
+        ),
+    ] = None,
 ) -> None:
     """Build an annular-cylinder primitive (single block, optionally periodic-j)."""
     cfg = _load_prim_config(config)
@@ -1260,7 +1306,7 @@ def primitive_annulus(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    _emit_primitive_writeback(prim, output, default_name="annulus")
+    _emit_primitive_writeback(prim, output, default_name="annulus", adjacency_json=adjacency_json)
 
 
 # ----- shore primitive flat-caps -----------------------------------------
@@ -1316,6 +1362,13 @@ def primitive_flat_caps(
     i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
     c_beta: Annotated[float, typer.Option("--c-beta")] = 3.0,
     k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+    adjacency_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency-json",
+            help="Also write a .adjacency.json sidecar (for shore cc-par).",
+        ),
+    ] = None,
 ) -> None:
     """Build a 5-block flat-caps cylinder (no central hole - Chimera-free background)."""
     cfg = _load_prim_config(config)
@@ -1374,7 +1427,7 @@ def primitive_flat_caps(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    _emit_primitive_writeback(prim, output, default_name="flat_caps")
+    _emit_primitive_writeback(prim, output, default_name="flat_caps", adjacency_json=adjacency_json)
 
 
 # ---------------------------------------------------------------------------

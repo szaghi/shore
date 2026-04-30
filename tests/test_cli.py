@@ -484,3 +484,133 @@ class TestBody:
         )
         assert r.exit_code == 1
         assert "file not found" in r.output
+
+
+# ---------------------------------------------------------------------------
+# --adjacency-json sidecar emission
+# ---------------------------------------------------------------------------
+
+
+class TestAdjacencyJsonSidecar:
+    """`shore mesh` and `shore primitive *` emit a .adjacency.json on demand."""
+
+    def test_mesh_cubed_sphere_emits_sidecar(self, sphere_stl, tmp_path):
+        out = tmp_path / "wall"
+        adj = tmp_path / "wall.adjacency.json"
+        r = _invoke(
+            "mesh",
+            str(sphere_stl),
+            *_SMALL,
+            "-o",
+            str(out),
+            "--adjacency-json",
+            str(adj),
+        )
+        assert r.exit_code == 0, r.output
+        assert adj.exists()
+
+    def test_mesh_sidecar_has_expected_block_count(self, sphere_stl, tmp_path):
+        import json
+
+        out = tmp_path / "wall"
+        adj = tmp_path / "wall.adjacency.json"
+        _invoke(
+            "mesh",
+            str(sphere_stl),
+            *_SMALL,
+            "-o",
+            str(out),
+            "--adjacency-json",
+            str(adj),
+        )
+        payload = json.loads(adj.read_text())
+        # Cubed sphere = 4 sub + 2 caps.
+        assert len(payload["blocks"]) == 6
+        labels = {b["label"] for b in payload["blocks"]}
+        assert labels == {"sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"}
+
+    def test_primitive_flat_caps_emits_sidecar(self, tmp_path):
+        out = tmp_path / "bg"
+        adj = tmp_path / "bg.adjacency.json"
+        r = _invoke(
+            "primitive",
+            "flat-caps",
+            "--r-out",
+            "5",
+            "--z0",
+            "-2",
+            "--z1",
+            "5",
+            "--ni",
+            "8",
+            "--nc",
+            "10",
+            "--nk",
+            "6",
+            "-o",
+            str(out),
+            "--adjacency-json",
+            str(adj),
+        )
+        assert r.exit_code == 0, r.output
+        assert adj.exists()
+
+    def test_primitive_flat_caps_sidecar_wires_seams(self, tmp_path):
+        import json
+
+        out = tmp_path / "bg"
+        adj = tmp_path / "bg.adjacency.json"
+        _invoke(
+            "primitive",
+            "flat-caps",
+            "--r-out",
+            "5",
+            "--z0",
+            "-2",
+            "--z1",
+            "5",
+            "--ni",
+            "8",
+            "--nc",
+            "10",
+            "--nk",
+            "6",
+            "-o",
+            str(out),
+            "--adjacency-json",
+            str(adj),
+        )
+        payload = json.loads(adj.read_text())
+        # 1 centre + 4 sub-blocks; SHARED face references between
+        # the centre and each sub-block plus sub-sub corner pairs.
+        assert len(payload["blocks"]) == 5
+        shared = sum(
+            1 for b in payload["blocks"] for face in b["faces"].values() if face["bc"] == "SHARED"
+        )
+        assert shared >= 8
+
+    def test_primitive_box_emits_single_block_sidecar(self, tmp_path):
+        import json
+
+        out = tmp_path / "box"
+        adj = tmp_path / "box.adjacency.json"
+        r = _invoke(
+            "primitive",
+            "box",
+            "--ni",
+            "5",
+            "--nj",
+            "5",
+            "--nk",
+            "5",
+            "-o",
+            str(out),
+            "--adjacency-json",
+            str(adj),
+        )
+        assert r.exit_code == 0, r.output
+        payload = json.loads(adj.read_text())
+        assert len(payload["blocks"]) == 1
+        # Box is a single block — no SHARED faces.
+        no_shared = all(face["bc"] != "SHARED" for face in payload["blocks"][0]["faces"].values())
+        assert no_shared

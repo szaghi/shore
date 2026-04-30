@@ -11,6 +11,18 @@ The reference example is at `examples/05-chimera-assembly/chimera_assembly.py` �
 step in this guide maps to a function call in that script, which
 runs end-to-end without external data.
 
+::: tip CLI-only path
+The same pipeline runs end-to-end through `shore` subcommands alone —
+see the bash equivalent at
+[`examples/05-chimera-assembly/chimera_assembly.sh`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.sh).
+It produces byte-identical `assembly.{grd, cc.par, proc.input}`
+outputs by chaining `shore mesh`, `shore primitive flat-caps`,
+`shore boxes-from-stl`, `shore grd`, `shore cc-par`, `shore proc-input`
+and the three `*-merge` commands.  Pass `--adjacency-json PATH` to
+`shore mesh` and `shore primitive flat-caps` to emit the
+`.adjacency.json` sidecar that `shore cc-par` needs.
+:::
+
 ## What you'll build
 
 Two meshes covering the same domain `[-10, 10]² × [-10, 50]`:
@@ -309,7 +321,8 @@ intersect the wall and the body STL.
 
 ## Reference
 
-- [`examples/05-chimera-assembly/chimera_assembly.py`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.py) — the full script.
+- [`examples/05-chimera-assembly/chimera_assembly.py`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.py) — the full Python script.
+- [`examples/05-chimera-assembly/chimera_assembly.sh`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.sh) — bash equivalent using only `shore` CLI calls (byte-identical `assembly.{grd, cc.par, proc.input}` outputs).
 - [`shore cc-par`](/reference/cc-par) — file format reference.
 - [`shore cc-par-merge`](/reference/cc-par-merge) — multi-component merge.
 - [`shore grd`](/reference/grd) and [`shore grd-merge`](/reference/grd-merge) — binary mesh writers.
