@@ -4,7 +4,7 @@ title: Changelog
 
 # Changelog
 
-## [Unreleased]
+## [0.1.0] — 2026-04-30
 
 ### Added
 - Full mesh-generation pipeline driven by `shore mesh`: STL projection + hyperbolic normal extrusion → 6-block cubed-sphere or single-block O-grid, with per-layer Laplacian smoothing and Jacobian guard.
