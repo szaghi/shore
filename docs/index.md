@@ -24,7 +24,7 @@ features:
     linkText: Pipeline walkthrough
   - icon: 📐
     title: Body-fitted near-body meshes
-    details: Three topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, and a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches. One `shore mesh` call from a triangulated body to Xall-compatible .geo files.
+    details: Four topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, and a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box. One `shore mesh` call from a triangulated body to Xall-compatible .geo files.
     link: /topologies/cubed-sphere
     linkText: Cubed sphere
   - icon: 🧱
@@ -135,7 +135,9 @@ Spacing continuity is enforced at two levels:
 
 The single-block O-grid is the simpler alternative — one j-periodic block, polar singular axis rows, one `.geo` file. Suitable for downstream tools that need a single periodic-j block.
 
-See [Cubed-sphere topology](topologies/cubed-sphere.md) and [O-grid topology](topologies/o-grid.md) for the full algorithm.
+The **OH hybrid** topology extends the cubed-sphere wrap with a 6-block structured H-channel that bridges the wrap envelope to a user-supplied axis-aligned bounding box. The wrap and channel are SHARED-by-view (one numpy buffer per pair) and the seam is C1 by construction — wrap and channel cells line up bit-exactly and grow geometrically across the seam. The result is a 12-block, single-component near-body mesh that covers everything from the body surface out to a Cartesian box without a chimera-fringe handover. Available as a Python API (`shore.mesh.OHTopology`); CLI integration is on the roadmap.
+
+See [Cubed-sphere topology](topologies/cubed-sphere.md), [O-grid topology](topologies/o-grid.md), and [OH hybrid topology](topologies/oh-hybrid.md) for the full algorithm.
 
 ## Authors
 

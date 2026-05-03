@@ -32,7 +32,7 @@ class Mesh:
 |---|---|
 | `body` | The triangulated body surface and its cached BVH (only set when built via `from_stl`). |
 | `blocks` | The list of [`HexBlock`](#hexblock-attribute) instances produced by the topology. Order matches the topology's canonical block list (sub0..sub3, cap_north, cap_south for `CubedSphereTopology`). |
-| `topology` | The [`Topology`](./api-topology) instance that produced `blocks`. Determines which marcher `march()` dispatches to. |
+| `topology` | The [`Topology`](./api-topology) instance that produced `blocks`. Determines which marcher `march()` dispatches to (cubed-sphere, O-grid, C-grid, or OH hybrid). |
 
 ## `Mesh.from_stl`
 
@@ -65,7 +65,7 @@ layers.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `path` | `str \| Path` | — | Path to the body's STL file. Loaded via [`load_stl`](./api-surface-io). |
-| `topology` | `Topology` | — | A wired [`Topology`](./api-topology) builder — typically `CubedSphereTopology()` or `OGridTopology()`. |
+| `topology` | `Topology` | — | A wired [`Topology`](./api-topology) builder — typically `CubedSphereTopology()`, `OGridTopology()`, `CGridTopology(...)`, or `OHTopology(...)`. |
 | `ni`, `nj` | `int` | — | Surface **node counts** (the `(ni, nj)` shape of each block's k=0 layer). For `CubedSphereTopology`, `nj` must be a multiple of 4 (rounded down with a warning if not). |
 | `nk` | `int` | — | Wall-normal **node count** including the wall row at k=0. With `nk = 30` the marcher extrudes 29 cells from the wall. |
 | `theta_cap` | `float \| None` | `0.05*pi` | Polar exclusion angle in radians. Mutually exclusive with `theta_cap_deg`. |
@@ -106,7 +106,10 @@ def march(
 Extrude every block in `self.blocks` from layer `k=0` outward, in
 place. Dispatches to the per-topology marcher
 (`CubedSphereTopology` → `_march_caps`, `OGridTopology` →
-`_march_ogrid`).
+`_march_ogrid`, `CGridTopology` → `_march_cgrid_*` per block count,
+`OHTopology` → `_march_caps_blocks` for the wrap then
+`OHTopology.fill_channel_blocks` for the deferred channel
+interior).
 
 **Parameters**
 
@@ -156,7 +159,8 @@ def write_geo(self, stem: str | Path) -> None
 Write each block to `<stem>_<label>.geo`. For
 `CubedSphereTopology`: 6 files (`<stem>_sub0.geo` ...
 `<stem>_cap_south.geo`). For `OGridTopology`: one file
-(`<stem>.geo`).
+(`<stem>.geo`). For `OHTopology`: 12 files (6 wrap +
+6 `<stem>_chan_<label>.geo`).
 
 ### `Mesh.write_vtk` / `Mesh.export`
 
@@ -222,7 +226,7 @@ Each entry in `Mesh.blocks` is a [`HexBlock`](./api-topology#hexblock):
 
 ## See also
 
-- [`shore.mesh.topology`](./api-topology) — `Topology`, `CubedSphereTopology`, `OGridTopology`, `HexBlock`, `Face`, `AxisMap`.
+- [`shore.mesh.topology`](./api-topology) — `Topology`, `CubedSphereTopology`, `OGridTopology`, `CGridTopology`, `OHTopology`, `HexBlock`, `Face`, `AxisMap`.
 - [`shore.mesh.spacing`](./api-spacing) — `Spacing1D` and the per-edge data model.
 - [`shore mesh` CLI](./mesh) — the command that wraps this class.
 - [Hyperbolic marching](/algorithm/hyperbolic-marching) — the algorithm.

@@ -68,6 +68,7 @@ def build_cap_k0(
     projector: object,
     j_spacing: str = "uniform",
     j_beta: float = 3.0,
+    phi_offset: float = 0.0,
 ) -> np.ndarray:
     """Build the ``(nc, nc, 3)`` cap k=0 seed face via gnomonic projection.
 
@@ -92,6 +93,15 @@ def build_cap_k0(
         distribution along the cap edges; inherited by the equator seam.
     j_beta :
         Clustering strength for ``'tanh2'`` (ignored for ``'uniform'``).
+    phi_offset :
+        Azimuthal rotation (radians) applied to the gnomonic diamond about
+        the polar axis.  Default ``0.0`` places cap corners at world azimuths
+        ``{0, pi/2, pi, 3*pi/2}`` (the CubedSphereTopology convention).
+        :class:`shore.mesh.OHTopology` passes ``pi/4`` so the four sub-block
+        *centres* (rather than corners) face the world cardinal axes — which
+        is what makes a 1:1 sub-block-to-box-face mapping work for the
+        wrap-channel hybrid.  The cap array's parametric (a, b) layout is
+        unchanged; only the world-space orientation rotates.
 
     Returns
     -------
@@ -143,6 +153,15 @@ def build_cap_k0(
     # onto the unit sphere of directions).
     dirs = np.stack([x_world, y_world, z_world], axis=-1)
     dirs = dirs / np.linalg.norm(dirs, axis=-1, keepdims=True)
+
+    # Optional phi_offset: rotate the (x, y) tangent-plane components about
+    # the polar axis.  z stays fixed.  OHTopology uses phi_offset=pi/4 so
+    # sub-block centres face cardinal axes.
+    if phi_offset != 0.0:
+        c, s = float(np.cos(phi_offset)), float(np.sin(phi_offset))
+        x_rot = c * dirs[..., 0] - s * dirs[..., 1]
+        y_rot = s * dirs[..., 0] + c * dirs[..., 1]
+        dirs = np.stack([x_rot, y_rot, dirs[..., 2]], axis=-1)
 
     # Ray-cast through the cached Projector.
     result = projector.project(dirs.reshape(-1, 3), on_failure="raise")  # type: ignore[attr-defined]

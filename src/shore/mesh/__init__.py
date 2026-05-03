@@ -19,6 +19,7 @@ from shore.mesh.topology import (
     CGridTopology,
     CubedSphereTopology,
     OGridTopology,
+    OHTopology,
     Topology,
 )
 from shore.mesh.vertex import Vertex
@@ -35,6 +36,7 @@ __all__ = [
     "HexBlock",
     "Mesh",
     "OGridTopology",
+    "OHTopology",
     "Spacing1D",
     "Topology",
     "Vertex",

@@ -16,6 +16,7 @@ them.
 | [Cubed sphere (6-block)](cubed-sphere) | **production default** | 6 (4 sub-blocks + 2 caps) | `shore mesh` (default); clean polar coverage with no singular axis |
 | [C-grid (sharp / blunt TE)](c-grid) | first-class | 3 (sharp, default) / 4 (blunt) / 1 (legacy) | `shore mesh --topology cgrid`; airfoils, hydrofoils, wings — wraps a sharp- or blunt-TE body with downstream wake branches |
 | [H-grid (rect / tube)](h-grid) | first-class (analytic primitives) | 1 single block | `shore primitive h-grid-rect` / `h-grid-tube`; prismatic ducts, internal flow without an internal body — the analytic baseline for SRM-style cavities |
+| [OH hybrid (cubed-sphere wrap + H-channel)](oh-hybrid) | Python API | 12 (6 wrap + 6 channel) | `shore.mesh.OHTopology`; contiguous near-body-to-box mesh in one piece — wrap marched from the STL out to a structured channel that fills the gap to a Cartesian bounding box |
 
 Future topologies that fit naturally into this framework:
 

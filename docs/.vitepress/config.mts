@@ -91,6 +91,7 @@ export default defineConfig({
             { text: 'Cubed sphere (6-block)', link: '/topologies/cubed-sphere' },
             { text: 'C-grid (sharp / blunt TE)', link: '/topologies/c-grid' },
             { text: 'H-grid (duct, internal flow)', link: '/topologies/h-grid' },
+            { text: 'OH hybrid (cubed-sphere wrap + H-channel)', link: '/topologies/oh-hybrid' },
           ],
         },
         {

@@ -85,6 +85,22 @@ multi-component job.
 | `config_assembly_near_body.toml` | TOML config for the near-body cubed-sphere mesh. |
 | `config_assembly_background.toml` | TOML config for the flat-caps cylinder background. |
 
+### [`08-oh-hybrid/`](08-oh-hybrid/) — OH topology (cubed-sphere wrap + H-channel)
+
+Style-2 conforming hybrid: 6 cubed-sphere wrap blocks (marched
+outward from the STL) plus 6 channel-frustum blocks (ruled-surface
+from the wrap envelope to a user-supplied bounding box).  Wrap and
+channel are SHARED-by-view at the seam — one numpy buffer per
+pair, bit-exact with no copy.
+
+| File | What it does |
+|---|---|
+| `visualize_oh_hybrid.py` | Build a 12-block OH hybrid mesh on a unit icosphere; CLI knobs for box extents, channel depth, and channel k-spacing law.  Writes 12 `oh_<label>.geo` blocks plus an `oh.vtm` MultiBlock. |
+
+`OHTopology` is Python-only at the moment; `shore mesh` does not
+yet accept ``--topology oh-hybrid``.  Drive it from Python via
+:class:`shore.mesh.OHTopology`.
+
 ## Adding a new example
 
 Pick the subdirectory that matches the feature being demonstrated.

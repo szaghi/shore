@@ -14,7 +14,7 @@
 <table>
 <tr>
 <td><b>🏗️ Full Chimera assembly in one tool</b><br><sub>Generate every grid an overset assembly needs — body-fitted near-body meshes and parametric backgrounds — in the same world frame. Pack them into the Xall solver bundle (.grd + cc.par + marker boxes) without leaving the SHORE CLI. <a href="https://szaghi.github.io/shore/guide/cc-par-pipeline">Pipeline walkthrough</a></sub></td>
-<td><b>📐 Body-fitted near-body meshes</b><br><sub>Three topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, and a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches. One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
+<td><b>📐 Body-fitted near-body meshes</b><br><sub>Four topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, and a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box. One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
 </tr>
 <tr>
 <td><b>🧱 Parametric backgrounds</b><br><sub>Box, annular cylinder, and 5-block flat-caps cylinder primitives with per-axis spacing laws — fill the far field without an STL. Per-edge spacing on Box and Annulus, transfinite-interpolation blends; flat-caps cylinder is Chimera-fringe-free for GPU-friendly backgrounds. <a href="https://szaghi.github.io/shore/topologies/primitives">Primitives</a></sub></td>
@@ -231,7 +231,7 @@ For chimera assemblies, SHORE generates marker boxes from the body STL via voxel
 
 ## Roadmap
 
-- [x] Body-fitted topologies: 6-block cubed sphere (production default) + single-block O-grid
+- [x] Body-fitted topologies: 6-block cubed sphere (production default) + single-block O-grid + 3-/4-block C-grid + 12-block OH hybrid (Python API)
 - [x] Parametric primitives: box, annular cylinder, 5-block flat-caps cylinder
 - [x] Gnomonic flat-square cap k=0 projection with C1 seam-step pinning
 - [x] Seam-aware hyperbolic marching (centred-difference normals across block seams)

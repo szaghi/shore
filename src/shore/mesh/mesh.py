@@ -311,6 +311,7 @@ class Mesh:
             CGridTopology,
             CubedSphereTopology,
             OGridTopology,
+            OHTopology,
         )
 
         if isinstance(topology, CGridTopology):
@@ -331,7 +332,7 @@ class Mesh:
                 "    mesh = Mesh(body=body, blocks=blocks, topology=topo)\n"
             )
 
-        if isinstance(topology, (CubedSphereTopology, OGridTopology)):
+        if isinstance(topology, (CubedSphereTopology, OGridTopology, OHTopology)):
             # Both topologies project through the cached BVH inside
             # ``topology.build`` — single ray-cast pass.
             blocks = topology.build(
@@ -411,9 +412,25 @@ class Mesh:
             CGridTopology,
             CubedSphereTopology,
             OGridTopology,
+            OHTopology,
         )
 
-        if isinstance(self.topology, CubedSphereTopology):
+        if isinstance(self.topology, OHTopology):
+            # March the wrap (first 6 blocks) using the cubed-sphere marcher;
+            # then build channel-block interiors against the bounding box.
+            wrap_blocks = self.blocks[:6]
+            self._march_caps_blocks(
+                wrap_blocks,
+                ds=ds,
+                growth=growth,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                steps=steps,
+                layer_callback=layer_callback,
+                blend_normals_k=blend_normals_k,
+            )
+            self.topology.fill_channel_blocks(self.blocks)
+        elif isinstance(self.topology, CubedSphereTopology):
             self._march_caps(
                 ds=ds,
                 growth=growth,
@@ -459,14 +476,40 @@ class Mesh:
         blend_normals_k: int = 0,
     ) -> None:
         """Simultaneous marching for the 6-block CubedSphereTopology."""
-        sub_blocks = self.blocks[:4]
-        cap_north = self.blocks[4]
-        cap_south = self.blocks[5]
+        self._march_caps_blocks(
+            self.blocks,
+            ds=ds, growth=growth,
+            smooth_strength=smooth_strength, smooth_iters=smooth_iters,
+            steps=steps, layer_callback=layer_callback,
+            blend_normals_k=blend_normals_k,
+        )
+
+    def _march_caps_blocks(
+        self,
+        wrap_blocks: list[HexBlock],
+        ds: float,
+        growth: float,
+        smooth_strength: float,
+        smooth_iters: int,
+        steps: np.ndarray | None,
+        layer_callback: Callable[[int, float], None] | None,
+        blend_normals_k: int = 0,
+    ) -> None:
+        """Simultaneous marching for a 6-block cubed-sphere wrap.
+
+        Operates on the supplied block list rather than ``self.blocks``,
+        so it can drive the wrap portion of a hybrid topology like
+        :class:`shore.mesh.OHTopology` (which has 12 blocks total — only
+        the first 6 get marched).
+        """
+        sub_blocks = wrap_blocks[:4]
+        cap_north = wrap_blocks[4]
+        cap_south = wrap_blocks[5]
 
         nk = sub_blocks[0].nodes.shape[2]
         ni = sub_blocks[0].nodes.shape[0]
 
-        _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
+        _steps = _resolve_k_steps(wrap_blocks, nk, ds, growth, steps)
 
         do_blend = blend_normals_k > 0
         if do_blend:
@@ -971,7 +1014,12 @@ class Mesh:
         from shore.io.vtk import write_caps_vtm
 
         path = Path(stem).with_suffix(".vtm")
-        write_caps_vtm(path, [blk.nodes for blk in self.blocks], with_jacobian=with_jacobian)
+        write_caps_vtm(
+            path,
+            [blk.nodes for blk in self.blocks],
+            with_jacobian=with_jacobian,
+            labels=[blk.label for blk in self.blocks],
+        )
 
     # ------------------------------------------------------------------
     # Inspection (in-memory)

@@ -31,13 +31,13 @@ Body-fitted meshing assumes the input surface is **star-shaped** from a chosen a
 
 **Failures are loud.** Every layer is checked for cell inversion before the grid advances; a negative Jacobian aborts marching immediately with a precise error message. Adjacency, BCs, and seam orientation are validated at wiring time, not at solver runtime. There are no silent bad meshes.
 
-**No topology guessing.** SHORE does not attempt to decompose arbitrary surfaces into structured patches automatically. Both body-fitted topologies (single-block O-grid, 6-block cubed sphere) assume the body is star-shaped with respect to its anchor. Arbitrary multi-block surface decomposition is on the roadmap.
+**No topology guessing.** SHORE does not attempt to decompose arbitrary surfaces into structured patches automatically. The body-fitted topologies (O-grid, cubed sphere, OH hybrid) assume the body is star-shaped with respect to its anchor; the C-grid expects a sharp- or blunt-TE wing-like body. Arbitrary multi-block surface decomposition is on the roadmap.
 
 ## Scope
 
 | In scope | Out of scope (roadmap) |
 |---|---|
-| Body-fitted: O-grid (1 block) and cubed sphere (6 blocks) | Multi-block arbitrary-surface decomposition |
+| Body-fitted: O-grid (1 block), cubed sphere (6 blocks), C-grid (3 / 4 / 1 blocks), OH hybrid (12 blocks) | Multi-block arbitrary-surface decomposition |
 | Backgrounds: box, annular cylinder, flat-caps cylinder | Elliptic volume smoothing |
 | Triangulated STL surface input | CAD surface input (STEP / IGES / BREP) |
 | Hyperbolic normal extrusion with seam-aware kernel | Advanced surface remeshing |

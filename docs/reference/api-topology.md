@@ -3,7 +3,7 @@
 Block-layout builders. A `Topology` takes a body surface and produces
 the wired list of [`HexBlock`](#hexblock) instances that
 [`Mesh.from_stl`](./api-mesh) hands to `Mesh.march()`. SHORE ships
-two topologies; new ones plug into the same interface.
+several topologies; new ones plug into the same interface.
 
 ## Public exports
 
@@ -12,6 +12,8 @@ two topologies; new ones plug into the same interface.
 | `Topology` | ABC; subclass to add a new topology. |
 | `CubedSphereTopology` | 6-block cubed-sphere topology — production default. |
 | `OGridTopology` | Single-block lat-lon O-grid. |
+| `CGridTopology` | C-grid for sharp- / blunt-TE airfoils (3-block / 4-block / legacy 1-block). |
+| `OHTopology` | 12-block hybrid: cubed-sphere wrap + H-channel out to an axis-aligned bounding box. |
 | `HexBlock` | Structured hexahedral block (`(ni, nj, nk, 3)` nodes + 6 faces + 12 edges + 8 vertices). |
 | `Face`, `FaceBC`, `AxisMap`, `FACE_ALONG_AXES` | Face metadata used for multi-block wiring (re-exported from `shore.mesh.face`). |
 
@@ -103,6 +105,70 @@ need a single-block periodic-j sphere covering, typically as a
 Chimera background.
 
 See [O-grid topology](/topologies/o-grid).
+
+## `OHTopology`
+
+```python
+class OHTopology(Topology):
+    def __init__(
+        self,
+        box_vmin: tuple[float, float, float],
+        box_vmax: tuple[float, float, float],
+        nk_channel: int,
+        k_law_channel: str = "uniform",
+        k_beta_channel: float = 3.0,
+        c1_seam: bool = True,
+    ): ...
+
+    def build(
+        self,
+        surface: np.ndarray | None,    # ignored; kept for ABC compat
+        nk: int,
+        ni: int | None = None,
+        nj: int | None = None,
+        spacing_k: Spacing1D | None = None,
+        projector: object | None = None,
+        i_spacing: str = "uniform",
+        i_beta: float = 3.0,
+        j_spacing: str = "uniform",
+        j_beta: float = 3.0,
+        **kwargs,
+    ) -> list[HexBlock]
+```
+
+12-block conforming hybrid: a 6-block cubed-sphere wrap (marched
+outward from the STL) plus a 6-block H-channel (frustum blocks
+bridging the wrap envelope to the user-supplied axis-aligned
+bounding box). Wrap and channel are SHARED-by-view at the seam —
+one contiguous numpy buffer per pair, bit-exact with no copy.
+
+Block list returned: `[sub0, sub1, sub2, sub3, cap_north, cap_south,
+chan_sub0, chan_sub1, chan_sub2, chan_sub3, chan_north, chan_south]`.
+
+Each wrap sub-block faces exactly one box face. OH pins
+`theta_cap = pi/4` and `phi_offset = pi/4` internally regardless of
+the user's `theta_cap` argument; this is what makes the 1:1
+wrap-to-channel mapping geometrically possible (cap-equator seams
+fall on cube edges, not inside cube faces).
+
+Channel block interiors are filled **after marching**, by
+`OHTopology.fill_channel_blocks(blocks)`. `Mesh.march()` calls this
+automatically when the topology is `OHTopology`; users who drive
+marching manually must call it themselves before using the channel
+geometry.
+
+When `c1_seam=True` (default), the channel's first cell at every
+`(i, j)` is pinned to the wrap's last marching step at the same
+`(i, j)`, and the remaining channel cells grow geometrically out to
+the box face — bit-exact C1 spacing across the seam, no second-cell
+jump. The `k_law_channel` / `k_beta_channel` arguments apply only
+when `c1_seam=False`.
+
+See [OH hybrid topology](/topologies/oh-hybrid) for the geometry,
+[`shore.topology.oh_channel`](https://github.com/szaghi/shore/blob/main/src/shore/topology/oh_channel.py)
+for the channel-block builder, and
+[`examples/08-oh-hybrid/`](https://github.com/szaghi/shore/tree/main/examples/08-oh-hybrid)
+for a runnable demo.
 
 ## `HexBlock`
 
@@ -219,4 +285,5 @@ constructing their seam mappings.
 - [`shore.mesh.spacing`](./api-spacing) — `Edge`, `Spacing1D`.
 - [Cubed-sphere topology](/topologies/cubed-sphere) — block layout.
 - [O-grid topology](/topologies/o-grid) — single-block alternative.
+- [OH hybrid topology](/topologies/oh-hybrid) — wrap + channel hybrid.
 - [Topology overview](/topologies/) — taxonomy and how to choose.

@@ -1,4 +1,4 @@
-"""Topology ABC and concrete topologies (cubed-sphere, O-grid, C-grid)."""
+"""Topology ABC and concrete topologies (cubed-sphere, O-grid, C-grid, OH-hybrid)."""
 
 from __future__ import annotations
 
@@ -6,12 +6,14 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from shore.exceptions import ParameterError
 from shore.mesh.block import HexBlock
 from shore.mesh.face import AxisMap, FaceBC, FaceName
 from shore.mesh.spacing import Spacing1D
 from shore.surface.cap import build_cap_k0
 from shore.surface.cgrid import build_cgrid_k0
 from shore.surface.equator import build_equator
+from shore.topology.oh_channel import build_channel_block
 from shore.topology.sphere_cap import _adjust_nj
 
 
@@ -75,6 +77,137 @@ _CAP_EQUATOR_SOUTH: tuple[tuple[FaceName, AxisMap], ...] = (
 )
 
 
+def _build_cubed_sphere_blocks(
+    *,
+    ni: int,
+    nj: int,
+    nk: int,
+    total_k: int,
+    cap_proj: object,
+    spacing_k: Spacing1D | None,
+    theta_cap: float,
+    i_spacing: str,
+    i_beta: float,
+    j_spacing: str,
+    j_beta: float,
+    phi_offset: float,
+) -> list[HexBlock]:
+    """Allocate + wire the 6 cubed-sphere blocks.
+
+    ``total_k`` controls the depth of the underlying numpy buffers.  When
+    ``total_k > nk`` the extra slots at the end can be carved out as
+    *channel* views by callers (e.g. :class:`OHTopology`) so that the
+    wrap-channel seam is view-aliased rather than copied.  ``CubedSphereTopology``
+    passes ``total_k == nk`` and gets the original behaviour.
+    """
+    nc = nj // 4 + 1
+    _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
+
+    # Cap k=0 seeds — gnomonic flat-square projection.
+    cap_south_k0 = build_cap_k0(
+        theta_cap=theta_cap, nc=nc, pole="south", projector=cap_proj,
+        j_spacing=j_spacing, j_beta=j_beta, phi_offset=phi_offset,
+    )
+    cap_north_k0 = build_cap_k0(
+        theta_cap=theta_cap, nc=nc, pole="north", projector=cap_proj,
+        j_spacing=j_spacing, j_beta=j_beta, phi_offset=phi_offset,
+    )
+
+    # Equator k=0 — great-circle slerp + ray-cast.
+    equator_k0 = build_equator(
+        cap_south=cap_south_k0, cap_north=cap_north_k0, ni=ni,
+        theta_cap=theta_cap, projector=cap_proj,
+        i_spacing=i_spacing, i_beta=i_beta,
+    )
+
+    # Equatorial ring buffer of depth total_k.  Sub-block sees [..., :nk, :].
+    ring_nj = 4 * (nc - 1) + 1
+    ring = np.empty((ni, ring_nj, total_k, 3), dtype=np.float64)
+    sector = nc - 1
+    sub_nodes_full: list[np.ndarray] = []
+    for q in range(4):
+        j0 = q * sector
+        sub_nodes_full.append(ring[:, j0 : j0 + nc, :, :])
+
+    # k=0 fill from equator surface (only writes layer 0 of the deeper buffer).
+    for q in range(4):
+        j0 = q * sector
+        j_indices = [*range(j0, j0 + sector), (j0 + sector) % nj]
+        sub_nodes_full[q][:, :, 0, :] = equator_k0[:, j_indices, :]
+    ring[:, -1, 0, :] = ring[:, 0, 0, :]
+
+    # Cap blocks of depth total_k.
+    cap_north_full = np.empty((nc, nc, total_k, 3), dtype=np.float64)
+    cap_south_full = np.empty((nc, nc, total_k, 3), dtype=np.float64)
+    cap_north_full[:, :, 0, :] = cap_north_k0
+    cap_south_full[:, :, 0, :] = cap_south_k0
+
+    # The wrap-block views: depth nk, addressing only the first nk slots.
+    sub_wrap_views = [arr[:, :, :nk, :] for arr in sub_nodes_full]
+    cap_north_wrap = cap_north_full[:, :, :nk, :]
+    cap_south_wrap = cap_south_full[:, :, :nk, :]
+
+    sub_blocks: list[HexBlock] = []
+    for q in range(4):
+        sub_blocks.append(
+            HexBlock(
+                label=f"sub{q}", nodes=sub_wrap_views[q],
+                periodic_i=False, periodic_j=False, spacing_k=_sp_k,
+            )
+        )
+    cap_north_blk = HexBlock(
+        label="cap_north", nodes=cap_north_wrap,
+        periodic_i=False, periodic_j=False, spacing_k=_sp_k,
+    )
+    cap_south_blk = HexBlock(
+        label="cap_south", nodes=cap_south_wrap,
+        periodic_i=False, periodic_j=False, spacing_k=_sp_k,
+    )
+
+    # Sub-block adjacency: sub_q.j_hi ↔ sub_{q+1 mod 4}.j_lo (SHARED).
+    for q in range(4):
+        q_next = (q + 1) % 4
+        sub_blocks[q]._set_face_bc(
+            "j_hi", FaceBC.SHARED, partner=sub_blocks[q_next].face("j_lo"),
+            axis_map=AxisMap.identity("j_hi"),
+        )
+        sub_blocks[q_next]._set_face_bc(
+            "j_lo", FaceBC.SHARED, partner=sub_blocks[q].face("j_hi"),
+            axis_map=AxisMap.identity("j_lo"),
+        )
+
+    # Cap-equator seams: 8 DIRICHLET pairings.
+    sub_face: FaceName
+    for sub_face, cap_blk, table in (
+        ("i_hi", cap_north_blk, _CAP_EQUATOR_NORTH),
+        ("i_lo", cap_south_blk, _CAP_EQUATOR_SOUTH),
+    ):
+        for q, (cap_face, sub_axis_map) in enumerate(table):
+            sub_blk = sub_blocks[q]
+            cap_blk._set_face_bc(
+                cap_face, FaceBC.DIRICHLET,
+                partner=sub_blk.face(sub_face),
+                axis_map=sub_axis_map.inverse(sub_face, cap_face),
+            )
+            sub_blk._set_face_bc(
+                sub_face, FaceBC.DIRICHLET,
+                partner=cap_blk.face(cap_face),
+                axis_map=sub_axis_map,
+            )
+
+    blocks = [*sub_blocks, cap_north_blk, cap_south_blk]
+
+    # Stash the underlying buffers on the blocks so OHTopology can reach
+    # them to carve channel views.  Only used when total_k > nk.
+    if total_k > nk:
+        for q in range(4):
+            blocks[q]._oh_full_nodes = sub_nodes_full[q]  # type: ignore[attr-defined]
+        cap_north_blk._oh_full_nodes = cap_north_full  # type: ignore[attr-defined]
+        cap_south_blk._oh_full_nodes = cap_south_full  # type: ignore[attr-defined]
+
+    return blocks
+
+
 class CubedSphereTopology(Topology):
     """6-block cubed-sphere topology (Sadourny 1972 / Ronchi-Iacono-Paolucci 1996).
 
@@ -112,6 +245,7 @@ class CubedSphereTopology(Topology):
         i_beta: float = 3.0,
         j_spacing: str = "uniform",
         j_beta: float = 3.0,
+        phi_offset: float = 0.0,
         **kwargs,
     ) -> list[HexBlock]:
         """Build 6 blocks from the body's STL via gnomonic cap projection.
@@ -188,152 +322,20 @@ class CubedSphereTopology(Topology):
                 "CubedSphereTopology.build requires a Projector (pass projector= or mesh=)."
             )
 
-        _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
-
-        # ------------------------------------------------------------------
-        # Cap k=0 seeds — gnomonic flat-square projection
-        # ------------------------------------------------------------------
-        cap_south_k0 = build_cap_k0(
-            theta_cap=theta_cap,
-            nc=nc,
-            pole="south",
-            projector=cap_proj,
-            j_spacing=j_spacing,
-            j_beta=j_beta,
-        )
-        cap_north_k0 = build_cap_k0(
-            theta_cap=theta_cap,
-            nc=nc,
-            pole="north",
-            projector=cap_proj,
-            j_spacing=j_spacing,
-            j_beta=j_beta,
-        )
-
-        # ------------------------------------------------------------------
-        # Equator k=0 — great-circle meridian slerp from south seam to north
-        # seam, ray-cast onto the STL.
-        # ------------------------------------------------------------------
-        equator_k0 = build_equator(
-            cap_south=cap_south_k0,
-            cap_north=cap_north_k0,
+        return _build_cubed_sphere_blocks(
             ni=ni,
+            nj=nj,
+            nk=nk,
+            total_k=nk,
+            cap_proj=cap_proj,
+            spacing_k=spacing_k,
             theta_cap=theta_cap,
-            projector=cap_proj,
             i_spacing=i_spacing,
             i_beta=i_beta,
-        )  # (ni, nj, 3)
-
-        # ------------------------------------------------------------------
-        # Equatorial ring: contiguous (ni, 4*(nc-1)+1, nk, 3) allocation
-        # with 4 sub-block views sharing memory at the j-boundaries.
-        # ------------------------------------------------------------------
-        ring_nj = 4 * (nc - 1) + 1
-        ring = np.empty((ni, ring_nj, nk, 3), dtype=np.float64)
-
-        sector = nc - 1
-        sub_nodes: list[np.ndarray] = []
-        for q in range(4):
-            j0 = q * sector
-            sub_nodes.append(ring[:, j0 : j0 + nc, :, :])
-
-        # Fill k=0 from the equator surface.  ``equator_k0[:, j_idx, :]`` for
-        # j_idx ∈ [q*sector, q*sector+sector] gives sub_q's nc longitude
-        # nodes; the last node is shared with sub_(q+1)'s first node, hence
-        # the ``+ 1`` in the slice end.
-        for q in range(4):
-            j0 = q * sector
-            j_indices = [*range(j0, j0 + sector), (j0 + sector) % nj]
-            sub_nodes[q][:, :, 0, :] = equator_k0[:, j_indices, :]
-        ring[:, -1, 0, :] = ring[:, 0, 0, :]
-
-        # ------------------------------------------------------------------
-        # Cap blocks
-        # ------------------------------------------------------------------
-        cap_north_nodes = np.empty((nc, nc, nk, 3), dtype=np.float64)
-        cap_south_nodes = np.empty((nc, nc, nk, 3), dtype=np.float64)
-        cap_north_nodes[:, :, 0, :] = cap_north_k0
-        cap_south_nodes[:, :, 0, :] = cap_south_k0
-
-        # ------------------------------------------------------------------
-        # Construct HexBlocks
-        # ------------------------------------------------------------------
-        sub_blocks: list[HexBlock] = []
-        for q in range(4):
-            sub_blocks.append(
-                HexBlock(
-                    label=f"sub{q}",
-                    nodes=sub_nodes[q],
-                    periodic_i=False,
-                    periodic_j=False,
-                    spacing_k=_sp_k,
-                )
-            )
-
-        cap_north_blk = HexBlock(
-            label="cap_north",
-            nodes=cap_north_nodes,
-            periodic_i=False,
-            periodic_j=False,
-            spacing_k=_sp_k,
+            j_spacing=j_spacing,
+            j_beta=j_beta,
+            phi_offset=phi_offset,
         )
-        cap_south_blk = HexBlock(
-            label="cap_south",
-            nodes=cap_south_nodes,
-            periodic_i=False,
-            periodic_j=False,
-            spacing_k=_sp_k,
-        )
-
-        # ------------------------------------------------------------------
-        # Wire face BCs
-        # ------------------------------------------------------------------
-        # Sub-block adjacency: sub_q.j_hi ↔ sub_{q+1 mod 4}.j_lo (SHARED views).
-        # Same-axis seam, no flips: identity AxisMap on each side.
-        for q in range(4):
-            q_next = (q + 1) % 4
-            f_hi = sub_blocks[q].face("j_hi")
-            f_lo = sub_blocks[q_next].face("j_lo")
-            sub_blocks[q]._set_face_bc(
-                "j_hi", FaceBC.SHARED, partner=f_lo, axis_map=AxisMap.identity("j_hi")
-            )
-            sub_blocks[q_next]._set_face_bc(
-                "j_lo", FaceBC.SHARED, partner=f_hi, axis_map=AxisMap.identity("j_lo")
-            )
-
-        # Cap-equator seams: 8 DIRICHLET face-to-face partnerships.
-        #
-        # Each sub-block's i_hi (north pole) and i_lo (south pole) is a 2D
-        # face that coincides node-by-node with one lateral face of the
-        # corresponding cap block, possibly with j-axis reversal (per
-        # ``shore.topology.sphere_cap._overwrite_cap_boundaries``).  The
-        # cap-side partner is therefore the cap's lateral face — *not*
-        # the cap's k_lo (which is the cap's own wall face).
-        #
-        # Each table entry pairs a sub-block index q with the cap-side
-        # face name and the AxisMap on the *sub side* of the seam.  The
-        # cap-side AxisMap is derived by ``axis_map.inverse(...)``.
-        sub_face: FaceName  # narrows the literal for mypy
-        for sub_face, cap_blk, table in (
-            ("i_hi", cap_north_blk, _CAP_EQUATOR_NORTH),
-            ("i_lo", cap_south_blk, _CAP_EQUATOR_SOUTH),
-        ):
-            for q, (cap_face, sub_axis_map) in enumerate(table):
-                sub_blk = sub_blocks[q]
-                cap_blk._set_face_bc(
-                    cap_face,
-                    FaceBC.DIRICHLET,
-                    partner=sub_blk.face(sub_face),
-                    axis_map=sub_axis_map.inverse(sub_face, cap_face),
-                )
-                sub_blk._set_face_bc(
-                    sub_face,
-                    FaceBC.DIRICHLET,
-                    partner=cap_blk.face(cap_face),
-                    axis_map=sub_axis_map,
-                )
-
-        return [*sub_blocks, cap_north_blk, cap_south_blk]
 
 
 class OGridTopology(Topology):
@@ -993,6 +995,332 @@ class CGridTopology(Topology):
         wake_base._set_face_bc("i_hi", FaceBC.WALL)
 
         return [upper, body, lower, wake_base]
+
+
+class OHTopology(Topology):
+    """Style-2 conforming hybrid: cubed-sphere wrap + 6-block H-channel.
+
+    A 12-block decomposition: 6 wrap blocks (cubed-sphere, marched outward
+    from the STL surface to ``nk_wrap - 1``) and 6 channel blocks (frustums
+    bridging the wrap's outer envelope to the user-supplied bounding box).
+    Wrap and channel are SHARED-by-view at the seam — they share one
+    contiguous numpy buffer per pair, so ``wrap.k_hi`` and ``chan.k_lo`` are
+    bit-identical.
+
+    The wrap is built with ``phi_offset = pi/4`` so the four equatorial
+    sub-block *centres* (rather than corners) face the world cardinal axes:
+    sub0→+y, sub1→-x, sub2→-y, sub3→+x.  Combined with the two cap blocks
+    (cap_south→+z, cap_north→-z), each of the 6 wrap blocks faces exactly
+    one of the box's 6 faces, allowing a 1:1 wrap-block-to-channel-block
+    mapping.
+
+    Block layout returned by :meth:`build`:
+
+        [sub0, sub1, sub2, sub3, cap_north, cap_south,
+         chan_sub0, chan_sub1, chan_sub2, chan_sub3, chan_north, chan_south]
+
+    Channel construction is deferred until after marching: the wrap's k_hi
+    envelope is unknown at build time, so the channel's k=0 row (which IS
+    the wrap's k_hi via view aliasing) gets filled when the wrap finishes
+    marching.  :meth:`shore.mesh.Mesh.march` calls
+    :meth:`fill_channel_blocks` after the wrap march completes; users who
+    drive marching manually must call :meth:`fill_channel_blocks` before
+    using the channel block geometry.
+
+    Default face BCs:
+
+    - Wrap k_lo = WALL (STL surface).
+    - Wrap k_hi = SHARED (with channel k_lo).
+    - Channel k_lo = SHARED (with wrap k_hi).
+    - Channel k_hi = FREE (far-field box face).
+    - Wrap and channel lateral seams (j_hi↔j_lo, i_hi↔cap, i_lo↔cap)
+      mirror the cubed-sphere topology on both sides.
+    """
+
+    def __init__(
+        self,
+        box_vmin: tuple[float, float, float],
+        box_vmax: tuple[float, float, float],
+        nk_channel: int,
+        k_law_channel: str = "uniform",
+        k_beta_channel: float = 3.0,
+        c1_seam: bool = True,
+    ) -> None:
+        if nk_channel < 2:
+            raise ParameterError(
+                f"OHTopology: nk_channel must be >= 2, got {nk_channel}"
+            )
+        if k_law_channel not in ("uniform", "tanh", "tanh2"):
+            raise ParameterError(
+                f"OHTopology: k_law_channel must be 'uniform' / 'tanh' / "
+                f"'tanh2', got {k_law_channel!r}"
+            )
+        vmin = np.asarray(box_vmin, dtype=np.float64)
+        vmax = np.asarray(box_vmax, dtype=np.float64)
+        if vmin.shape != (3,) or vmax.shape != (3,):
+            raise ParameterError(
+                f"OHTopology: box_vmin and box_vmax must be length-3, got "
+                f"{vmin.shape} and {vmax.shape}"
+            )
+        if not np.all(vmax > vmin):
+            raise ParameterError(
+                f"OHTopology: box_vmin must be strictly less than box_vmax "
+                f"on every axis; got box_vmin={tuple(vmin)} box_vmax={tuple(vmax)}"
+            )
+        self.box_vmin = vmin
+        self.box_vmax = vmax
+        self.nk_channel = int(nk_channel)
+        self.k_law_channel = k_law_channel
+        self.k_beta_channel = float(k_beta_channel)
+        self.c1_seam = bool(c1_seam)
+
+    def build(
+        self,
+        surface: np.ndarray | None,
+        nk: int,
+        ni: int | None = None,
+        nj: int | None = None,
+        spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
+        projector: object | None = None,
+        theta_cap: float = 0.05 * np.pi,
+        i_spacing: str = "uniform",
+        i_beta: float = 3.0,
+        j_spacing: str = "uniform",
+        j_beta: float = 3.0,
+        **kwargs,
+    ) -> list[HexBlock]:
+        """Build the 12-block OH topology.
+
+        ``nk`` is the wrap depth (number of layers including k=0).  The
+        channel depth comes from the OHTopology constructor.  Returns
+        ``[sub0..sub3, cap_north, cap_south, chan_sub0..chan_sub3,
+        chan_north, chan_south]``.
+        """
+        if ni is None or nj is None:
+            if surface is None:
+                raise ParameterError(
+                    "OHTopology.build needs ni and nj (or a surface array)."
+                )
+            ni = ni if ni is not None else int(surface.shape[0])
+            nj = nj if nj is not None else int(surface.shape[1])
+        nj = _adjust_nj(nj)
+
+        cap_proj = (
+            projector
+            if projector is not None
+            else (_projector_from_mesh(mesh) if mesh is not None else None)
+        )
+        if cap_proj is None:
+            raise ParameterError(
+                "OHTopology.build requires a Projector (pass projector= or mesh=)."
+            )
+
+        nk_wrap = nk
+        nk_chan = self.nk_channel
+        total_k = nk_wrap + nk_chan - 1  # shared seam slot at index nk_wrap-1
+
+        # OH pins theta_cap = pi/4 so each sub-block envelope maps cleanly
+        # onto exactly one lateral cube face under central projection.  At
+        # any other theta_cap the cap-equator seam falls inside a cube
+        # face, which would force the channel outer faces to be L-shaped
+        # across cube edges (giving up structured-block planarity).  The
+        # caller's theta_cap is ignored here — cube geometry dictates it.
+        theta_cap_oh = 0.25 * np.pi
+        wrap_blocks = _build_cubed_sphere_blocks(
+            ni=ni, nj=nj, nk=nk_wrap, total_k=total_k,
+            cap_proj=cap_proj, spacing_k=spacing_k,
+            theta_cap=theta_cap_oh,
+            i_spacing=i_spacing, i_beta=i_beta,
+            j_spacing=j_spacing, j_beta=j_beta,
+            phi_offset=0.25 * np.pi,
+        )
+
+        # Carve channel views out of the same buffers.
+        channel_blocks: list[HexBlock] = []
+        for q, wrap_blk in enumerate(wrap_blocks):
+            full_nodes = wrap_blk._oh_full_nodes  # type: ignore[attr-defined]
+            # Channel view covers [nk_wrap - 1 : total_k] on the k axis,
+            # which has length nk_chan and includes the shared seam at k=0.
+            chan_view = full_nodes[:, :, nk_wrap - 1 :, :]
+            assert chan_view.shape[2] == nk_chan
+            label = (
+                f"chan_sub{q}" if q < 4 else
+                "chan_north" if q == 4 else
+                "chan_south"
+            )
+            chan_blk = HexBlock(
+                label=label, nodes=chan_view,
+                periodic_i=False, periodic_j=False,
+                spacing_k=spacing_k or Spacing1D(law="geometric", ds=1e-3),
+            )
+            channel_blocks.append(chan_blk)
+
+        # Wire wrap.k_hi <-> channel.k_lo (SHARED, view-aliased, identity).
+        for w_blk, c_blk in zip(wrap_blocks, channel_blocks, strict=True):
+            w_blk._set_face_bc(
+                "k_hi", FaceBC.SHARED, partner=c_blk.face("k_lo"),
+                axis_map=AxisMap.identity("k_hi"),
+            )
+            c_blk._set_face_bc(
+                "k_lo", FaceBC.SHARED, partner=w_blk.face("k_hi"),
+                axis_map=AxisMap.identity("k_lo"),
+            )
+
+        # Wire channel-channel lateral seams to mirror the wrap topology.
+        # (sub_q.j_hi ↔ sub_(q+1).j_lo for q in 0..3 → same on chan side)
+        chan_subs = channel_blocks[:4]
+        for q in range(4):
+            q_next = (q + 1) % 4
+            chan_subs[q]._set_face_bc(
+                "j_hi", FaceBC.SHARED, partner=chan_subs[q_next].face("j_lo"),
+                axis_map=AxisMap.identity("j_hi"),
+            )
+            chan_subs[q_next]._set_face_bc(
+                "j_lo", FaceBC.SHARED, partner=chan_subs[q].face("j_hi"),
+                axis_map=AxisMap.identity("j_lo"),
+            )
+
+        # Wire chan_sub.i_lo/i_hi ↔ chan_cap.<face> (DIRICHLET, mirror wrap).
+        chan_north_blk = channel_blocks[4]
+        chan_south_blk = channel_blocks[5]
+        sub_face_lit: FaceName
+        for sub_face_lit, chan_cap_blk, table in (
+            ("i_hi", chan_north_blk, _CAP_EQUATOR_NORTH),
+            ("i_lo", chan_south_blk, _CAP_EQUATOR_SOUTH),
+        ):
+            for q, (cap_face, sub_axis_map) in enumerate(table):
+                csub = chan_subs[q]
+                chan_cap_blk._set_face_bc(
+                    cap_face, FaceBC.DIRICHLET,
+                    partner=csub.face(sub_face_lit),
+                    axis_map=sub_axis_map.inverse(sub_face_lit, cap_face),
+                )
+                csub._set_face_bc(
+                    sub_face_lit, FaceBC.DIRICHLET,
+                    partner=chan_cap_blk.face(cap_face),
+                    axis_map=sub_axis_map,
+                )
+
+        # k_hi on every channel block defaults to FREE (HexBlock constructor).
+        # No further wiring needed.
+
+        return [*wrap_blocks, *channel_blocks]
+
+    def fill_channel_blocks(self, blocks: list[HexBlock]) -> None:
+        """Build channel block interiors after the wrap has been marched.
+
+        Walks the 6 wrap–channel pairs, computes each channel's outer face
+        on the user-supplied bounding box, and fills the channel's
+        ``k=1..nk_channel-1`` interior by ruled-surface frustum interpolation.
+
+        The wrap–channel seam (channel k=0 = wrap k_hi) is already populated
+        because the two faces share memory.  Only k=1..nk_channel-1 needs
+        filling.
+
+        When ``self.c1_seam`` is true (default), the channel's first step
+        at every (i, j) is pinned to the wrap's last marching step at the
+        same (i, j) — bit-exact C1 spacing match across the seam.  Pass
+        ``c1_seam=False`` to the constructor to disable and use the raw
+        spacing law instead (cell-size jump at the seam).
+        """
+        wrap_blocks = blocks[:6]
+        channel_blocks = blocks[6:12]
+
+        for w_blk, c_blk in zip(wrap_blocks, channel_blocks, strict=True):
+            inner = w_blk.nodes[:, :, -1, :]  # (ni, nj, 3) — wrap envelope
+            outer_quad = self._outer_quad_for_block(inner)
+            if self.c1_seam:
+                # Per-(i, j) last marching step on the wrap.  Smoothing means
+                # this isn't perfectly uniform, so we pin per-node.
+                last_step = np.linalg.norm(
+                    w_blk.nodes[:, :, -1, :] - w_blk.nodes[:, :, -2, :],
+                    axis=-1,
+                )  # (ni, nj)
+                c1 = last_step
+            else:
+                c1 = None
+            frustum = build_channel_block(
+                inner_face=inner,
+                outer_quad=outer_quad,
+                nk_channel=self.nk_channel,
+                k_law=self.k_law_channel,
+                k_beta=self.k_beta_channel,
+                c1_first_step=c1,
+            )
+            # Write only the k>=1 interior; k=0 is the shared seam.
+            c_blk.nodes[:, :, 1:, :] = frustum[:, :, 1:, :]
+
+    def _outer_quad_for_block(self, inner_face: np.ndarray) -> np.ndarray:
+        """Find the box face this wrap block points at; return its 4 corners.
+
+        Algorithm: pick the cube face from the **full** envelope centroid
+        (mean of all i, j envelope nodes — robust because corners sit at
+        cap-equator junctions where the bulk is not).  Then snap each of
+        the 4 envelope corners onto the cube by:
+
+        1. Setting the face-normal component to the picked plane value.
+        2. For each in-plane component, taking the sign of the corner's
+           coordinate (around the box centre) and pushing it to the
+           corresponding ``vmin`` / ``vmax``.
+
+        The result: each corner lands at a cube **vertex**, the 4 corners
+        of a single cube face.  Adjacent wrap blocks pick adjacent faces
+        (sub0→+y, sub1→-x, ...); their shared envelope seams sit at the
+        same cube *edge* under the snap, so the channel-channel lateral
+        seams are bit-exact across the SHARED-by-view memory aliases.
+
+        The (a=0,b=0)..(a=0,b=1) corner ordering matches the wrap's (i, j)
+        winding so that the wrap-channel SHARED seam is identity-mapped
+        and the channel-channel lateral seams are identity-mapped too.
+        """
+        c00 = inner_face[0, 0, :]
+        c10 = inner_face[-1, 0, :]
+        c11 = inner_face[-1, -1, :]
+        c01 = inner_face[0, -1, :]
+
+        full_centroid = inner_face.reshape(-1, 3).mean(axis=0)
+        if not np.all(
+            (full_centroid >= self.box_vmin) & (full_centroid <= self.box_vmax)
+        ):
+            raise ParameterError(
+                f"OHTopology: wrap envelope centroid {full_centroid} is "
+                f"outside the bounding box [{self.box_vmin}, {self.box_vmax}].  "
+                f"The box must contain the marched wrap envelope; either "
+                f"enlarge the box or reduce nk / wrap step sizes."
+            )
+
+        dists = np.array([
+            self.box_vmax[0] - full_centroid[0],  # +x face
+            full_centroid[0] - self.box_vmin[0],  # -x face
+            self.box_vmax[1] - full_centroid[1],  # +y face
+            full_centroid[1] - self.box_vmin[1],  # -y face
+            self.box_vmax[2] - full_centroid[2],  # +z face
+            full_centroid[2] - self.box_vmin[2],  # -z face
+        ])
+        face_idx = int(np.argmin(dists))
+        axis_idx = face_idx // 2
+        plane_val = (self.box_vmax if face_idx % 2 == 0 else self.box_vmin)[axis_idx]
+
+        box_centre = 0.5 * (self.box_vmin + self.box_vmax)
+
+        out_corners = np.stack([c00, c10, c11, c01], axis=0).copy()
+        out_corners[:, axis_idx] = plane_val
+        for ax in range(3):
+            if ax == axis_idx:
+                continue
+            # Push each corner's in-plane component to vmin or vmax based on
+            # its sign relative to the box centre.  This snaps every corner
+            # to a cube vertex of the picked face.
+            sign = np.sign(out_corners[:, ax] - box_centre[ax])
+            # Treat exactly-on-axis corners (sign == 0) as positive; in
+            # practice they don't occur for cubed-sphere envelopes but the
+            # snap must be deterministic.
+            sign = np.where(sign == 0, 1.0, sign)
+            out_corners[:, ax] = np.where(
+                sign > 0, self.box_vmax[ax], self.box_vmin[ax]
+            )
+        return out_corners
 
 
 def _projector_from_mesh(mesh: object) -> object:
