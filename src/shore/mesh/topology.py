@@ -561,6 +561,16 @@ class CGridTopology(Topology):
         mesh: object | None = None,
         blocks: int = 3,
         nk_w: int = 3,
+        cap_tips: str = "none",
+        cap_te_thickness: float | None = None,
+        cap_te_thickness_frac: float = 0.002,
+        cap_le_frac: float = 0.05,
+        cap_te_frac: float = 0.95,
+        cap_tip_inset: float | None = None,
+        cap_n_cap_j: int = 12,
+        cap_j_spacing: str = "tanh",
+        cap_j_beta: float = 4.0,
+        cap_nk: int | None = None,
         **kwargs,
     ) -> list[HexBlock]:
         """Build a C-grid block list from a body STL.
@@ -616,6 +626,46 @@ class CGridTopology(Topology):
             gap.  Used only for ``blocks=4``.  Default ``3`` is
             adequate for the thin gaps (≤ 1% chord) typical of
             blunt-TE airfoils.
+        cap_tips :
+            ``"none"`` (default), ``"jlo"``, ``"jhi"``, or ``"both"``.
+            When set to anything other than ``"none"``, the C-grid
+            mesh is augmented with **conformal** wing-tip cap blocks
+            at the requested spanwise extreme(s).  The cap blocks
+            close the wing-tip airfoil cross-section as a wall, with
+            their airfoil-wall nodes coincident bit-exactly with the
+            body's k=0 wall at the spanwise tip.
+
+            For sharp-TE bodies the cap-tips path **auto-rounds the
+            body's TE over its full span** by ``cap_te_thickness``
+            (or ``cap_te_thickness_frac * chord`` if not given), so
+            the body wrap and the cap meshes match without any
+            chimera-fringe handover.  ``blocks=3`` is automatically
+            promoted to ``blocks=4`` in that case (a stderr note is
+            emitted).  ``blocks=1`` (legacy) + ``cap_tips != "none"``
+            is rejected.
+
+            For already-blunt bodies the existing TE thickness is used
+            and no rounding is applied.
+        cap_te_thickness :
+            Absolute TE thickness for body-rounding when ``cap_tips !=
+            "none"`` and the body is sharp.  Mutually exclusive with
+            ``cap_te_thickness_frac``.
+        cap_te_thickness_frac :
+            Same, as a fraction of chord.  Default ``0.002`` (0.2%).
+        cap_le_frac, cap_te_frac :
+            Chord fractions for the cap's LE-cut and TE-cut.  Default
+            ``0.05`` and ``0.95``.
+        cap_tip_inset :
+            Cap spanwise wall thickness.  Default = ``1e-3 * chord``.
+        cap_n_cap_j :
+            Cap j-axis (airfoil-thickness) node count.  Default ``12``.
+        cap_j_spacing, cap_j_beta :
+            Cap j-axis spacing law (``"uniform"`` / ``"tanh"`` /
+            ``"tanh2"``) and clustering strength.  Default ``"tanh"``,
+            beta ``4.0``.
+        cap_nk :
+            Cap k-axis (spanwise) node count.  Default = ``nk`` (the
+            body's wall-normal layer count).
 
         Returns
         -------
@@ -623,6 +673,13 @@ class CGridTopology(Topology):
             For ``blocks=3``: ``[upper, body, lower]``.
             For ``blocks=4``: ``[upper, body, lower, wake_base]``.
             For ``blocks=1``: ``[cgrid]``.
+
+            When ``cap_tips != "none"``: the C-grid blocks are
+            followed by 5 cap blocks per requested tip
+            (``cap_jlo_le``, ``cap_jlo_upper``, ``cap_jlo_lower``,
+            ``cap_jlo_te_upper``, ``cap_jlo_te_lower`` for jlo;
+            mirror for jhi), plus 1 extra ``cap_jX_wake_base`` block
+            per tip when the body wrap is blunt (``blocks=4``).
         """
         if blocks not in (1, 3, 4):
             raise ValueError(
@@ -683,7 +740,41 @@ class CGridTopology(Topology):
         _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
 
         # ------------------------------------------------------------
-        # Dispatch by block count.
+        # Conformal-cap path.  When cap_tips != "none" we may need to
+        # auto-promote sharp 3-block to blunt 4-block + round the body
+        # TE so the cap blocks share the airfoil-wall nodes bit-exactly
+        # with the body wrap.
+        # ------------------------------------------------------------
+        if cap_tips not in ("none", "jlo", "jhi", "both"):
+            raise ValueError(
+                f"CGridTopology.build: cap_tips must be 'none' / 'jlo' / "
+                f"'jhi' / 'both', got {cap_tips!r}"
+            )
+        if cap_tips != "none":
+            return self._build_with_caps(
+                surface=surface,
+                nk=nk,
+                spacing_k=_sp_k,
+                ni_body=_ni_body,
+                ni_wake=_ni_wake,
+                blocks=blocks,
+                nk_w=int(nk_w),
+                is_blunt=_is_blunt,
+                span_axis=span_axis,
+                cap_tips=cap_tips,
+                cap_te_thickness=cap_te_thickness,
+                cap_te_thickness_frac=cap_te_thickness_frac,
+                cap_le_frac=cap_le_frac,
+                cap_te_frac=cap_te_frac,
+                cap_tip_inset=cap_tip_inset,
+                cap_n_cap_j=cap_n_cap_j,
+                cap_j_spacing=cap_j_spacing,
+                cap_j_beta=cap_j_beta,
+                cap_nk=cap_nk,
+            )
+
+        # ------------------------------------------------------------
+        # No-caps dispatch by block count.
         # ------------------------------------------------------------
         if blocks == 1:
             return self._build_single_block(surface, nk, _sp_k)
@@ -705,6 +796,287 @@ class CGridTopology(Topology):
                 "use blocks=3 (default) for sharp-TE bodies."
             )
         return self._build_four_blocks(surface, nk, _sp_k, _ni_body, _ni_wake, nk_w=int(nk_w))
+
+    def _build_with_caps(
+        self,
+        *,
+        surface: np.ndarray,
+        nk: int,
+        spacing_k: Spacing1D,
+        ni_body: int,
+        ni_wake: int,
+        blocks: int,
+        nk_w: int,
+        is_blunt: bool,
+        span_axis: str,
+        cap_tips: str,
+        cap_te_thickness: float | None,
+        cap_te_thickness_frac: float,
+        cap_le_frac: float,
+        cap_te_frac: float,
+        cap_tip_inset: float | None,
+        cap_n_cap_j: int,
+        cap_j_spacing: str,
+        cap_j_beta: float,
+        cap_nk: int | None,
+    ) -> list[HexBlock]:
+        """Build the conformal-cap C-grid: 4-block C-grid + cap blocks per tip.
+
+        See :meth:`build` for the user-facing semantics of every parameter.
+        """
+        import sys
+
+        from shore.surface.cgrid import round_body_te_in_surface
+        from shore.topology.cgrid_cap import (
+            build_cap_blocks,
+            find_symmetric_le_cuts,
+        )
+
+        # ----- Reject 1-block + caps -----
+        if blocks == 1:
+            raise ValueError(
+                "CGridTopology.build: cap_tips != 'none' is incompatible with "
+                "blocks=1 (the legacy single-block layout cannot represent the "
+                "conformal cap-body interface).  Use blocks=3 (auto-promoted "
+                "to 4) or blocks=4 directly."
+            )
+
+        # ----- Resolve effective TE thickness -----
+        # Derive a chord length from the body region of the surface.
+        i_te_upper = ni_wake - 1
+        i_te_lower = i_te_upper + ni_body - 1
+        body_xs_mid = surface[i_te_upper : i_te_lower + 1, surface.shape[1] // 2, :]
+        span_axis_world = "xyz".index(span_axis)
+        extents = body_xs_mid.max(axis=0) - body_xs_mid.min(axis=0)
+        extents[span_axis_world] = -np.inf
+        chord_len = float(extents.max())
+        if cap_te_thickness is not None:
+            te = float(cap_te_thickness)
+        else:
+            te = float(cap_te_thickness_frac) * chord_len
+        if te <= 0:
+            raise ParameterError(
+                f"CGridTopology.build: cap-tips TE thickness resolved to "
+                f"non-positive value ({te:.6g})"
+            )
+
+        # ----- Body rounding (sharp body only) -----
+        if not is_blunt:
+            # Auto-promote 3-block → 4-block for sharp + caps.
+            if blocks == 3:
+                sys.stderr.write(
+                    f"CGridTopology: cap_tips={cap_tips!r} on a sharp-TE body — "
+                    f"auto-promoting blocks=3 to blocks=4 and rounding the "
+                    f"body's TE by te_thickness={te:.6g} so the cap and body "
+                    f"meshes match conformally.\n"
+                )
+                blocks = 4
+            round_body_te_in_surface(
+                surface=surface,
+                ni_wake=ni_wake,
+                ni_body=ni_body,
+                te_thickness=te,
+                span_axis=span_axis,
+            )
+
+        # ----- Build the 4-block C-grid (always 4-block under cap_tips) -----
+        cgrid_blocks = self._build_four_blocks(
+            surface=surface,
+            nk=nk,
+            spacing_k=spacing_k,
+            ni_body=ni_body,
+            ni_wake=ni_wake,
+            nk_w=nk_w,
+        )
+        upper, body, lower, wake_base = cgrid_blocks
+
+        # ----- Build cap blocks per requested tip -----
+        tips_to_build = (
+            ("jlo", "jhi") if cap_tips == "both" else (cap_tips,)
+        )
+        cap_blocks: list[HexBlock] = []
+
+        n_stations = body.nodes.shape[1]
+        nk_cap = int(cap_nk) if cap_nk is not None else int(nk)
+
+        if cap_tip_inset is None:
+            tip_inset = 1e-3 * chord_len
+        else:
+            tip_inset = float(cap_tip_inset)
+
+        for tip in tips_to_build:
+            j_extreme = 0 if tip == "jlo" else n_stations - 1
+            j_inboard = 1 if tip == "jlo" else n_stations - 2
+
+            # Cap input: body cross-section at the spanwise tip, on the
+            # airfoil wall (k=0).  Body has been rounded already, so this
+            # cross-section has a non-zero TE thickness — no auto-rounding
+            # needed inside the cap.
+            cross_section = body.nodes[:, j_extreme, 0, :].copy()
+            inboard_centroid = body.nodes[:, j_inboard, 0, :].mean(axis=0)
+            extreme_centroid = cross_section.mean(axis=0)
+            inboard_dir = inboard_centroid - extreme_centroid
+            inboard_norm = float(np.linalg.norm(inboard_dir))
+            if inboard_norm < 1e-12:
+                raise ParameterError(
+                    f"CGridTopology.build: at tip {tip!r}, the body's "
+                    f"adjacent spanwise stations have coincident centroids — "
+                    f"cannot infer outward span direction."
+                )
+            span_dir = -inboard_dir / inboard_norm
+
+            # LE-cut and TE-cut indices on the (now-blunt) body cross-section.
+            le_up, le_lo = find_symmetric_le_cuts(
+                cross_section, le_frac=cap_le_frac, span_axis_world=span_axis_world
+            )
+            te_up, te_lo = find_symmetric_le_cuts(
+                cross_section, le_frac=cap_te_frac, span_axis_world=span_axis_world
+            )
+
+            # Wake-base cross-section: spanwise-extreme face of the wake_base
+            # block at this tip.  Shape (ni_wake, nk_w, 3) — exactly what
+            # build_cap_blocks expects.
+            wake_base_xs = wake_base.nodes[:, j_extreme, :, :].copy()
+
+            cap_arrays = build_cap_blocks(
+                cross_section=cross_section,
+                le_cut_upper_idx=le_up,
+                le_cut_lower_idx=le_lo,
+                te_cut_upper_idx=te_up,
+                te_cut_lower_idx=te_lo,
+                span_dir=span_dir,
+                tip_inset=tip_inset,
+                n_cap_j=cap_n_cap_j,
+                nk_cap=nk_cap,
+                j_spacing=cap_j_spacing,
+                j_beta=cap_j_beta,
+                is_blunt=True,
+                wake_base_cross_section=wake_base_xs,
+            )
+
+            # Restitch the airfoil-wall nodes (cap.j_hi at k=nk_cap-1) to be
+            # bit-exact copies of the body's k=0 wall nodes at j_extreme.
+            # build_cap_blocks already produces matching values from the
+            # passed cross_section, but we re-copy here to guarantee bit-
+            # exact agreement against the body block's actual storage even
+            # if floating-point arithmetic in the builder introduced any
+            # drift along i.
+            cap_arrays["le"][:, -1, -1, :] = cross_section[
+                np.arange(le_up, le_lo + 1, dtype=np.int64), :
+            ]
+            # cap_upper sweeps body i = le_up → te_up (reversed).
+            cap_arrays["upper"][:, -1, -1, :] = cross_section[
+                np.arange(le_up, te_up - 1, -1, dtype=np.int64), :
+            ]
+            # cap_lower sweeps body i = le_lo → te_lo (forward).
+            cap_arrays["lower"][:, -1, -1, :] = cross_section[
+                np.arange(le_lo, te_lo + 1, dtype=np.int64), :
+            ]
+            # cap_te_upper sweeps body i = te_up → 0 (reversed).
+            cap_arrays["te_upper"][:, -1, -1, :] = cross_section[
+                np.arange(te_up, -1, -1, dtype=np.int64), :
+            ]
+            # cap_te_lower sweeps body i = te_lo → ni-1 (forward).
+            cap_arrays["te_lower"][:, -1, -1, :] = cross_section[
+                np.arange(te_lo, cross_section.shape[0], dtype=np.int64), :
+            ]
+
+            for label_key, label in (
+                ("le", "le"),
+                ("upper", "upper"),
+                ("lower", "lower"),
+                ("te_upper", "te_upper"),
+                ("te_lower", "te_lower"),
+                ("wake_base", "wake_base"),
+            ):
+                blk = HexBlock(
+                    label=f"cap_{tip}_{label}",
+                    nodes=cap_arrays[label_key],
+                    periodic_i=False,
+                    periodic_j=False,
+                    spacing_k=spacing_k,
+                )
+                blk._set_face_bc("k_lo", FaceBC.WALL)
+                blk._set_face_bc("j_hi", FaceBC.WALL)
+                cap_blocks.append(blk)
+
+            # Wire the cap's internal SHARED seams.  Block layout in the
+            # last 6 entries of cap_blocks (per tip): le, upper, lower,
+            # te_upper, te_lower, wake_base.
+            cap_le_blk = cap_blocks[-6]
+            cap_upper_blk = cap_blocks[-5]
+            cap_lower_blk = cap_blocks[-4]
+            cap_te_upper_blk = cap_blocks[-3]
+            cap_te_lower_blk = cap_blocks[-2]
+
+            # cap_le.i_lo ↔ cap_upper.i_lo  (LE-cut, suction side)
+            cap_le_blk._set_face_bc(
+                "i_lo", FaceBC.SHARED,
+                partner=cap_upper_blk.face("i_lo"),
+                axis_map=AxisMap.identity("i_lo"),
+            )
+            cap_upper_blk._set_face_bc(
+                "i_lo", FaceBC.SHARED,
+                partner=cap_le_blk.face("i_lo"),
+                axis_map=AxisMap.identity("i_lo"),
+            )
+            # cap_le.i_hi ↔ cap_lower.i_lo  (LE-cut, pressure side)
+            cap_le_blk._set_face_bc(
+                "i_hi", FaceBC.SHARED,
+                partner=cap_lower_blk.face("i_lo"),
+                axis_map=AxisMap.identity("i_hi"),
+            )
+            cap_lower_blk._set_face_bc(
+                "i_lo", FaceBC.SHARED,
+                partner=cap_le_blk.face("i_hi"),
+                axis_map=AxisMap.identity("i_lo"),
+            )
+            # cap_upper.j_lo ↔ cap_lower.j_lo  (chord cut)
+            cap_upper_blk._set_face_bc(
+                "j_lo", FaceBC.SHARED,
+                partner=cap_lower_blk.face("j_lo"),
+                axis_map=AxisMap.identity("j_lo"),
+            )
+            cap_lower_blk._set_face_bc(
+                "j_lo", FaceBC.SHARED,
+                partner=cap_upper_blk.face("j_lo"),
+                axis_map=AxisMap.identity("j_lo"),
+            )
+            # cap_upper.i_hi ↔ cap_te_upper.i_lo  (TE-cut, suction side)
+            cap_upper_blk._set_face_bc(
+                "i_hi", FaceBC.SHARED,
+                partner=cap_te_upper_blk.face("i_lo"),
+                axis_map=AxisMap.identity("i_hi"),
+            )
+            cap_te_upper_blk._set_face_bc(
+                "i_lo", FaceBC.SHARED,
+                partner=cap_upper_blk.face("i_hi"),
+                axis_map=AxisMap.identity("i_lo"),
+            )
+            # cap_lower.i_hi ↔ cap_te_lower.i_lo  (TE-cut, pressure side)
+            cap_lower_blk._set_face_bc(
+                "i_hi", FaceBC.SHARED,
+                partner=cap_te_lower_blk.face("i_lo"),
+                axis_map=AxisMap.identity("i_hi"),
+            )
+            cap_te_lower_blk._set_face_bc(
+                "i_lo", FaceBC.SHARED,
+                partner=cap_lower_blk.face("i_hi"),
+                axis_map=AxisMap.identity("i_lo"),
+            )
+            # cap_te_upper.j_lo ↔ cap_te_lower.j_lo  (chord-cut continuation)
+            cap_te_upper_blk._set_face_bc(
+                "j_lo", FaceBC.SHARED,
+                partner=cap_te_lower_blk.face("j_lo"),
+                axis_map=AxisMap.identity("j_lo"),
+            )
+            cap_te_lower_blk._set_face_bc(
+                "j_lo", FaceBC.SHARED,
+                partner=cap_te_upper_blk.face("j_lo"),
+                axis_map=AxisMap.identity("j_lo"),
+            )
+
+        return cgrid_blocks + cap_blocks
 
     # ------------------------------------------------------------------
     # Internal block builders
@@ -995,6 +1367,420 @@ class CGridTopology(Topology):
         wake_base._set_face_bc("i_hi", FaceBC.WALL)
 
         return [upper, body, lower, wake_base]
+
+
+class CGridTipCap(Topology):
+    """C-grid wing-tip cap topology — 3 (sharp) or 4 (blunt) overset blocks.
+
+    Builds the H-style tip closure for one tip of a C-grid wing as an
+    independent chimera component.  The cap is composed of 3 (sharp TE)
+    or 4 (blunt TE) hexahedral sub-blocks that fill the airfoil-interior
+    cross-section at the wing-tip plane in an "H3 T-fill":
+
+    - ``cap_le``    — wraps the leading edge from the upper-LE-cut to the
+                       lower-LE-cut.
+    - ``cap_upper`` — chord-band on the suction side, between LE-cut and
+                       upper-TE-cut, above the chord cut.
+    - ``cap_lower`` — mirror of ``cap_upper`` on the pressure side.
+    - ``cap_wake_base`` (blunt only) — closes the wake_base block's
+                       spanwise face downstream of the TE base segment.
+
+    All sub-blocks share the same axis convention: i = chordwise along
+    the airfoil profile (or LE wrap), j = airfoil-thickness direction
+    (chord cut → wall), k = spanwise.  k=0 is the outboard wing-tip
+    wall (offset from the cross-section by ``tip_inset * span_dir``);
+    k=nk-1 is the inboard chimera-overlap plane (coincident with the
+    body wrap's spanwise-extreme cross-section).
+
+    Default face BCs:
+
+    - **k_lo**: WALL (the actual wing-tip wall closure).
+    - **k_hi**: FREE (chimera fringe receiving from the body wrap).
+    - **j_hi**: WALL (the airfoil suction / pressure / LE / TE-base
+      surface, mirrored into the cap).
+    - **j_lo**: SHARED between cap_upper and cap_lower (chord cut),
+      otherwise FREE.
+    - **i_lo / i_hi**: SHARED at the LE-cuts between cap_le and
+      cap_upper / cap_lower; FREE otherwise (TE-cut chord-perp
+      sliver).
+
+    The cap is **fully volumetric at build time** — calling
+    :meth:`shore.mesh.Mesh.march` on a CGridTipCap mesh is a no-op.
+    The cap is meant to be assembled against a C-grid body wrap as a
+    chimera component via ``shore cc-par``.
+
+    Parameters
+    ----------
+    le_cut_upper_idx, le_cut_lower_idx :
+        i-indices in the ``surface`` cross-section polyline at the
+        LE-cut on the suction and pressure sides.  Must satisfy
+        ``0 < le_cut_upper_idx < le_cut_lower_idx < ni - 1``.
+    span_dir :
+        Length-3 unit vector pointing **outward** along the span axis
+        at this tip.
+    tip_inset :
+        Spanwise thickness of the cap slab.  > 0.
+    n_cap_j :
+        Node count along the cap's j-axis (airfoil-thickness).  >= 2.
+    cap_j_spacing :
+        ``"uniform"`` / ``"tanh"`` / ``"tanh2"``.  ``"tanh"`` (default)
+        clusters near the airfoil wall.
+    cap_j_beta :
+        Clustering strength.
+    is_blunt :
+        Toggles the 4th sub-block ``cap_wake_base``.
+    wake_base_cross_section :
+        Required when ``is_blunt=True``.  ``(ni_wake, nk_w, 3)`` —
+        the wake_base block's spanwise-extreme face from the C-grid.
+
+    Future input modes (not implemented yet)
+    ----------------------------------------
+    The current ``build()`` accepts a 1D cross-section polyline as
+    ``surface``.  In future, ``build()`` will additionally accept a 2D
+    sliced STL/STEP cross-section ``(ni, nj_thin, 3)`` so the cap can
+    be driven directly by a CAD/STL surface input — the same way the
+    body wrap is.  The signature remains the same.
+    """
+
+    def __init__(
+        self,
+        le_cut_upper_idx: int,
+        le_cut_lower_idx: int,
+        span_dir: tuple[float, float, float],
+        tip_inset: float,
+        n_cap_j: int = 12,
+        cap_j_spacing: str = "tanh",
+        cap_j_beta: float = 4.0,
+        is_blunt: bool = False,
+        wake_base_cross_section: np.ndarray | None = None,
+        te_cut_upper_idx: int | None = None,
+        te_cut_lower_idx: int | None = None,
+        auto_round_te: bool = True,
+        te_thickness: float | None = None,
+        te_thickness_frac: float | None = 0.002,
+    ) -> None:
+        # Validate span_dir up front.
+        span_arr = np.asarray(span_dir, dtype=np.float64)
+        if span_arr.shape != (3,):
+            raise ParameterError(
+                f"CGridTipCap: span_dir must have shape (3,); got {span_arr.shape}"
+            )
+        span_norm = float(np.linalg.norm(span_arr))
+        if not np.isclose(span_norm, 1.0, atol=1e-9):
+            raise ParameterError(
+                f"CGridTipCap: span_dir must be a unit vector; got "
+                f"|span_dir|={span_norm:.6g}.  Normalise before passing."
+            )
+        if tip_inset <= 0:
+            raise ParameterError(
+                f"CGridTipCap: tip_inset must be > 0, got {tip_inset}"
+            )
+        if n_cap_j < 2:
+            raise ParameterError(
+                f"CGridTipCap: n_cap_j must be >= 2, got {n_cap_j}"
+            )
+        if cap_j_spacing not in ("uniform", "tanh", "tanh2"):
+            raise ParameterError(
+                f"CGridTipCap: cap_j_spacing must be 'uniform' / 'tanh' / "
+                f"'tanh2', got {cap_j_spacing!r}"
+            )
+        if is_blunt and wake_base_cross_section is None:
+            raise ParameterError(
+                "CGridTipCap: is_blunt=True requires wake_base_cross_section."
+            )
+        if te_thickness is not None and te_thickness_frac is not None:
+            raise ParameterError(
+                "CGridTipCap: pass either te_thickness (absolute) or "
+                "te_thickness_frac (fraction of chord), not both."
+            )
+        if te_thickness is not None and te_thickness <= 0:
+            raise ParameterError(
+                f"CGridTipCap: te_thickness must be > 0, got {te_thickness}"
+            )
+        if te_thickness_frac is not None and te_thickness_frac <= 0:
+            raise ParameterError(
+                f"CGridTipCap: te_thickness_frac must be > 0, "
+                f"got {te_thickness_frac}"
+            )
+        self.le_cut_upper_idx = int(le_cut_upper_idx)
+        self.le_cut_lower_idx = int(le_cut_lower_idx)
+        self.te_cut_upper_idx = (
+            None if te_cut_upper_idx is None else int(te_cut_upper_idx)
+        )
+        self.te_cut_lower_idx = (
+            None if te_cut_lower_idx is None else int(te_cut_lower_idx)
+        )
+        self.span_dir = span_arr
+        self.tip_inset = float(tip_inset)
+        self.n_cap_j = int(n_cap_j)
+        self.cap_j_spacing = cap_j_spacing
+        self.cap_j_beta = float(cap_j_beta)
+        self.is_blunt = bool(is_blunt)
+        self.wake_base_cross_section = (
+            np.asarray(wake_base_cross_section, dtype=np.float64)
+            if wake_base_cross_section is not None
+            else None
+        )
+        self.auto_round_te = bool(auto_round_te)
+        self.te_thickness = (
+            None if te_thickness is None else float(te_thickness)
+        )
+        self.te_thickness_frac = (
+            None if te_thickness_frac is None else float(te_thickness_frac)
+        )
+
+    def build(
+        self,
+        surface: np.ndarray,
+        nk: int,
+        spacing_k: Spacing1D | None = None,
+        **kwargs,
+    ) -> list[HexBlock]:
+        """Build the tip cap blocks from a cross-section polyline.
+
+        Parameters
+        ----------
+        surface :
+            ``(ni_body, 3)`` cross-section polyline at the wing tip.
+            Sweeps upper-TE-cut → suction → LE → pressure →
+            lower-TE-cut.
+        nk :
+            Spanwise node count for the cap (``nk_cap``).  Must be >= 2.
+        spacing_k :
+            Reserved for future per-block k-spacing overrides.
+            Currently the cap's k-axis is uniformly spaced from the
+            outboard wall to the cross-section plane.
+
+        Returns
+        -------
+        list[HexBlock]
+            ``[cap_le, cap_upper, cap_lower]`` for sharp TE, or
+            ``[cap_le, cap_upper, cap_lower, cap_wake_base]`` for blunt.
+        """
+        import sys
+
+        from shore.topology.cgrid_cap import (
+            auto_round_sharp_te,
+            build_cap_blocks,
+            detect_te_thickness,
+        )
+
+        if nk < 2:
+            raise ParameterError(
+                f"CGridTipCap.build: nk must be >= 2, got {nk}"
+            )
+
+        # ------------------------------------------------------------------
+        # Sharp/blunt detection + auto-round.
+        # ------------------------------------------------------------------
+        # Identify the spanwise world axis from the *outward* span_dir
+        # (largest absolute component).
+        span_axis_world = int(np.argmax(np.abs(self.span_dir)))
+
+        existing_te = detect_te_thickness(surface, span_axis_world)
+        cs_for_cap = surface
+        if existing_te < 1e-9:
+            # Sharp input.  Auto-round (default) or refuse.
+            if not self.auto_round_te:
+                raise ParameterError(
+                    "CGridTipCap.build: cross-section has a sharp TE "
+                    "(i=0 and i=ni-1 coincide) but auto_round_te=False; "
+                    "the H-fill cap topology has a singular axis on a "
+                    "sharp TE.  Either enable auto_round_te (default) "
+                    "or pre-round the TE in the source body."
+                )
+            # Resolve the synthetic TE thickness.
+            if self.te_thickness is not None:
+                te = self.te_thickness
+            else:
+                # te_thickness_frac of the airfoil's chord extent.
+                extents = surface.max(axis=0) - surface.min(axis=0)
+                extents[span_axis_world] = -np.inf
+                chord_len = float(extents.max())
+                frac = self.te_thickness_frac if self.te_thickness_frac is not None else 0.002
+                te = frac * chord_len
+            cs_for_cap = auto_round_sharp_te(
+                surface, te_thickness=te, span_axis_world=span_axis_world,
+            )
+            sys.stderr.write(
+                f"CGridTipCap: sharp TE detected; auto-rounding cap with "
+                f"te_thickness={te:.6g} (the body wrap is unchanged).\n"
+            )
+        # Otherwise: input is already blunt → use surface as-is.
+
+        cap_arrays = build_cap_blocks(
+            cross_section=cs_for_cap,
+            le_cut_upper_idx=self.le_cut_upper_idx,
+            le_cut_lower_idx=self.le_cut_lower_idx,
+            te_cut_upper_idx=self.te_cut_upper_idx,
+            te_cut_lower_idx=self.te_cut_lower_idx,
+            span_dir=self.span_dir,
+            tip_inset=self.tip_inset,
+            n_cap_j=self.n_cap_j,
+            nk_cap=int(nk),
+            j_spacing=self.cap_j_spacing,
+            j_beta=self.cap_j_beta,
+            is_blunt=self.is_blunt,
+            wake_base_cross_section=self.wake_base_cross_section,
+        )
+        _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
+
+        cap_le = HexBlock(
+            label="cap_le",
+            nodes=cap_arrays["le"],
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        cap_upper = HexBlock(
+            label="cap_upper",
+            nodes=cap_arrays["upper"],
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        cap_lower = HexBlock(
+            label="cap_lower",
+            nodes=cap_arrays["lower"],
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        cap_te_upper = HexBlock(
+            label="cap_te_upper",
+            nodes=cap_arrays["te_upper"],
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        cap_te_lower = HexBlock(
+            label="cap_te_lower",
+            nodes=cap_arrays["te_lower"],
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        blocks: list[HexBlock] = [
+            cap_le, cap_upper, cap_lower, cap_te_upper, cap_te_lower,
+        ]
+
+        if self.is_blunt:
+            cap_wake_base = HexBlock(
+                label="cap_wake_base",
+                nodes=cap_arrays["wake_base"],
+                periodic_i=False,
+                periodic_j=False,
+                spacing_k=_sp_k,
+            )
+            blocks.append(cap_wake_base)
+
+        # ------------------------------------------------------------
+        # Set face BCs.  Defaults (FREE / WALL) per the class docstring;
+        # then wire SHARED seams between sub-blocks.
+        # ------------------------------------------------------------
+        # k_lo: outboard wing-tip wall (WALL) on every cap block.
+        # k_hi: inboard chimera-overlap plane (FREE) on every cap block).
+        # j_hi: airfoil wall (WALL) on every chord-band cap block.
+        for blk in (cap_le, cap_upper, cap_lower, cap_te_upper, cap_te_lower):
+            blk._set_face_bc("k_lo", FaceBC.WALL)
+            blk._set_face_bc("j_hi", FaceBC.WALL)
+            # k_hi remains FREE (default).
+
+        if self.is_blunt:
+            cap_wake_base._set_face_bc("k_lo", FaceBC.WALL)
+            # cap_wake_base.j_hi: the airfoil's TE-base wall (a flat
+            # rectangular strip).  WALL.
+            cap_wake_base._set_face_bc("j_hi", FaceBC.WALL)
+
+        # ------------------------------------------------------------
+        # SHARED seams between cap sub-blocks.
+        # ------------------------------------------------------------
+        # 1. cap_le.i_lo ↔ cap_upper.i_lo (LE-cut, suction side).
+        #    Both columns are at the upper-LE-cut chord position with j
+        #    running from chord-perp / chord-cut (j=0) to airfoil wall
+        #    (j=nj-1) and k spanning the cap thickness.  Identity AxisMap.
+        cap_le._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=cap_upper.face("i_lo"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        cap_upper._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=cap_le.face("i_lo"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # 2. cap_le.i_hi ↔ cap_lower.i_lo (LE-cut, pressure side).
+        cap_le._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=cap_lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        cap_lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=cap_le.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # 3. cap_upper.j_lo ↔ cap_lower.j_lo (chord cut at y=0,
+        #    chord-band region).  Both blocks have j=0 = chord cut,
+        #    j=nj-1 = wall (suction for upper, pressure for lower).
+        #    i-axes both run LE-cut → TE-cut.  Identity AxisMap on (i, k).
+        cap_upper._set_face_bc(
+            "j_lo",
+            FaceBC.SHARED,
+            partner=cap_lower.face("j_lo"),
+            axis_map=AxisMap.identity("j_lo"),
+        )
+        cap_lower._set_face_bc(
+            "j_lo",
+            FaceBC.SHARED,
+            partner=cap_upper.face("j_lo"),
+            axis_map=AxisMap.identity("j_lo"),
+        )
+        # 4. cap_upper.i_hi ↔ cap_te_upper.i_lo (TE-cut, suction side).
+        cap_upper._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=cap_te_upper.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        cap_te_upper._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=cap_upper.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # 5. cap_lower.i_hi ↔ cap_te_lower.i_lo (TE-cut, pressure side).
+        cap_lower._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=cap_te_lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        cap_te_lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=cap_lower.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # 6. cap_te_upper.j_lo ↔ cap_te_lower.j_lo (chord-cut continuation
+        #    in the TE region).  Both have j=0 = chord cut, j=nj-1 = wall.
+        cap_te_upper._set_face_bc(
+            "j_lo",
+            FaceBC.SHARED,
+            partner=cap_te_lower.face("j_lo"),
+            axis_map=AxisMap.identity("j_lo"),
+        )
+        cap_te_lower._set_face_bc(
+            "j_lo",
+            FaceBC.SHARED,
+            partner=cap_te_upper.face("j_lo"),
+            axis_map=AxisMap.identity("j_lo"),
+        )
+        return blocks
 
 
 class OHTopology(Topology):

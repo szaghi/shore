@@ -1033,3 +1033,237 @@ class TestFourBlockCGrid:
                     wake_length=15.0,
                     blocks=4,
                 )
+
+
+# ---------------------------------------------------------------------------
+# Body-TE rounding (full-span)
+# ---------------------------------------------------------------------------
+
+
+from shore.surface.cgrid import round_body_te_in_surface
+
+
+class TestRoundBodyTEInSurface:
+    def _build(self, naca0012_stl):
+        mesh = trimesh.load(str(naca0012_stl), force="mesh")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return build_cgrid_k0(
+                mesh,
+                ni_body=80,
+                ni_wake=20,
+                n_stations=5,
+                wake_length=20.0,
+                span_axis="z",
+            )
+
+    def test_rounds_in_place(self, naca0012_stl):
+        r = self._build(naca0012_stl)
+        # Verify input is sharp.
+        i_te_upper = r.ni_wake - 1
+        i_te_lower = i_te_upper + r.ni_body - 1
+        for j in range(r.n_stations):
+            np.testing.assert_allclose(
+                r.nodes[i_te_upper, j, :], r.nodes[i_te_lower, j, :], atol=1e-9
+            )
+        # Round, with a known thickness.
+        round_body_te_in_surface(
+            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
+            te_thickness=0.005, span_axis="z",
+        )
+        # After rounding, the i=0/i=ni-1 columns are separated by 0.005 in y.
+        for j in range(r.n_stations):
+            sep = float(np.linalg.norm(r.nodes[i_te_upper, j, :] - r.nodes[i_te_lower, j, :]))
+            np.testing.assert_allclose(sep, 0.005, atol=1e-12)
+            # Antisymmetric split around the original sharp-TE location.
+            midpoint = 0.5 * (r.nodes[i_te_upper, j, :] + r.nodes[i_te_lower, j, :])
+            # The midpoint y should still be 0 (NACA 0012 sharp TE at y=0).
+            assert abs(midpoint[1]) < 1e-9
+
+    def test_wake_te_columns_follow_body(self, naca0012_stl):
+        """Wake blocks' k=0 strips share memory with body's TE columns; rounding propagates."""
+        r = self._build(naca0012_stl)
+        upper, body, lower = r.per_block_layers()  # views
+        # All three views share memory with r.nodes.
+        round_body_te_in_surface(
+            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
+            te_thickness=0.005, span_axis="z",
+        )
+        # Upper wake's i=ni_wake-1 column == body's i=0 column (upper-TE node).
+        np.testing.assert_array_equal(upper[-1, :, :], body[0, :, :])
+        # Lower wake's i=0 column == body's i=ni-1 column (lower-TE node).
+        np.testing.assert_array_equal(lower[0, :, :], body[-1, :, :])
+        # And both moved by ±te/2 in y.
+        for j in range(r.n_stations):
+            assert abs(upper[-1, j, 1] - 0.0025) < 1e-12  # +te/2
+            assert abs(lower[0, j, 1] + 0.0025) < 1e-12   # -te/2
+
+    def test_wake_strips_at_full_te_offset(self, naca0012_stl):
+        """Whole upper / lower wake k=0 strips sit at y = ±te/2, not just at the TE.
+
+        Regression for the singular-cells-after-TE bug: if only the
+        TE-side endpoints get shifted, the wake strips converge to y=0
+        downstream of the TE and produce a degenerate near-zero-thickness
+        wake_base block.
+        """
+        r = self._build(naca0012_stl)
+        upper, body, lower = r.per_block_layers()
+        round_body_te_in_surface(
+            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
+            te_thickness=0.005, span_axis="z",
+        )
+        half = 0.0025
+        # Every node of the upper wake at every station should have y = +half.
+        for j in range(r.n_stations):
+            np.testing.assert_allclose(upper[:, j, 1], +half, atol=1e-12)
+            np.testing.assert_allclose(lower[:, j, 1], -half, atol=1e-12)
+
+    def test_invalid_te_thickness_rejected(self, naca0012_stl):
+        r = self._build(naca0012_stl)
+        with pytest.raises(ParameterError, match="te_thickness"):
+            round_body_te_in_surface(
+                r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
+                te_thickness=-0.01, span_axis="z",
+            )
+
+    def test_invalid_span_axis_rejected(self, naca0012_stl):
+        r = self._build(naca0012_stl)
+        with pytest.raises(ParameterError, match="span_axis"):
+            round_body_te_in_surface(
+                r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
+                te_thickness=0.001, span_axis="bogus",
+            )
+
+    def test_already_blunt_body_rejected(self, naca0012_stl):
+        """Calling on an already-rounded surface raises (avoids double-rounding)."""
+        r = self._build(naca0012_stl)
+        round_body_te_in_surface(
+            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
+            te_thickness=0.001, span_axis="z",
+        )
+        with pytest.raises(ParameterError, match="non-sharp"):
+            round_body_te_in_surface(
+                r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
+                te_thickness=0.001, span_axis="z",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Conformal caps (CGridTopology cap_tips path)
+# ---------------------------------------------------------------------------
+
+
+class TestCGridConformalCaps:
+    """When cap_tips is set on CGridTopology.build, the C-grid is rounded
+    over its full span and the cap blocks are emitted with airfoil-wall
+    nodes bit-coincident with the body wrap.
+    """
+
+    def _build(self, naca0012_stl, *, cap_tips="both", **overrides):
+        mesh = trimesh.load(str(naca0012_stl), force="mesh")
+        topo = CGridTopology()
+        kwargs: dict = {
+            "surface": None,
+            "nk": 8,
+            "ni_body": 60,
+            "ni_wake": 15,
+            "n_stations": 5,
+            "wake_length": 5.0,
+            "span_axis": "z",
+            "spacing_k": None,
+            "mesh": mesh,
+            "blocks": 3,           # auto-promote to 4 when caps are on
+            "cap_tips": cap_tips,
+            "cap_te_thickness_frac": 0.005,
+            "cap_le_frac": 0.05,
+            "cap_te_frac": 0.95,
+            "cap_n_cap_j": 8,
+        }
+        kwargs.update(overrides)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return topo.build(**kwargs)
+
+    def test_returns_4_cgrid_plus_12_cap_blocks_for_both(self, naca0012_stl):
+        """4 C-grid + 6 cap_jlo + 6 cap_jhi = 16 blocks total."""
+        blocks = self._build(naca0012_stl, cap_tips="both")
+        assert len(blocks) == 16
+        labels = [b.label for b in blocks]
+        assert labels[:4] == ["upper", "body", "lower", "wake_base"]
+        # 6 jlo cap blocks: le, upper, lower, te_upper, te_lower, wake_base.
+        jlo_labels = sorted(b.label for b in blocks if b.label.startswith("cap_jlo_"))
+        assert jlo_labels == [
+            "cap_jlo_le", "cap_jlo_lower", "cap_jlo_te_lower",
+            "cap_jlo_te_upper", "cap_jlo_upper", "cap_jlo_wake_base",
+        ]
+
+    def test_returns_4_plus_6_blocks_for_jlo_only(self, naca0012_stl):
+        blocks = self._build(naca0012_stl, cap_tips="jlo")
+        assert len(blocks) == 10
+        labels = [b.label for b in blocks]
+        assert labels[:4] == ["upper", "body", "lower", "wake_base"]
+        for lbl in labels[4:]:
+            assert lbl.startswith("cap_jlo_")
+
+    def test_body_te_is_rounded(self, naca0012_stl):
+        """After build, the body's TE is split apart by the requested thickness."""
+        # Use an absolute thickness so we know exactly what to compare to.
+        blocks = self._build(
+            naca0012_stl, cap_tips="both",
+            cap_te_thickness=0.005,
+        )
+        body = blocks[1]
+        # body[0] = upper-TE column (i=0); body[-1] = lower-TE column (i=ni-1).
+        for j in range(body.nodes.shape[1]):
+            sep = float(np.linalg.norm(body.nodes[0, j, 0, :] - body.nodes[-1, j, 0, :]))
+            np.testing.assert_allclose(sep, 0.005, atol=1e-12)
+
+    def test_cap_airfoil_wall_matches_body_bit_exact(self, naca0012_stl):
+        """Cap airfoil-wall nodes coincide bit-exactly with body wall nodes at the tip."""
+        blocks = self._build(naca0012_stl, cap_tips="jlo")
+        body = blocks[1]
+        # cap_jlo_le: the LE-wrap.  Its (j_hi, k_hi) airfoil-wall edge
+        # should equal body.nodes[le_up : le_lo + 1, 0, 0, :].
+        labels = {b.label: b for b in blocks}
+        cap_le = labels["cap_jlo_le"]
+        cap_upper = labels["cap_jlo_upper"]
+        cap_lower = labels["cap_jlo_lower"]
+        cap_te_upper = labels["cap_jlo_te_upper"]
+        cap_te_lower = labels["cap_jlo_te_lower"]
+
+        # The tip is jlo (j=0).
+        body_wall_at_tip = body.nodes[:, 0, 0, :]  # (ni_body, 3)
+
+        # cap_upper: i sweeps body i = le_up → te_up (reversed); the wall
+        # edge equals body_wall_at_tip[le_up, ..., te_up].  We verify that
+        # cap_upper[0, -1, -1, :] sits on the body wall and cap_upper[-1, -1, -1, :]
+        # also does — but to do that we need to know the LE/TE cut indices
+        # which the topology computed internally.  We invert the geometry:
+        # for each i, cap_upper[i, -1, -1, :] should coincide with some
+        # body wall point.  Easier: assert that every cap airfoil-wall node
+        # is bit-exactly equal to *some* body wall node by membership.
+        body_set = {tuple(p) for p in body_wall_at_tip}
+        for cap_blk in (cap_le, cap_upper, cap_lower, cap_te_upper, cap_te_lower):
+            wall_edge = cap_blk.nodes[:, -1, -1, :]
+            for p in wall_edge:
+                assert tuple(p) in body_set, (
+                    f"Cap airfoil-wall node {p} on {cap_blk.label} is not "
+                    f"bit-coincident with any body wall node at the tip."
+                )
+
+    def test_blocks_1_plus_caps_rejected(self, naca0012_stl):
+        with pytest.raises(ValueError, match="blocks=1"):
+            self._build(naca0012_stl, cap_tips="both", blocks=1)
+
+    def test_invalid_cap_tips_rejected(self, naca0012_stl):
+        with pytest.raises(ValueError, match="cap_tips"):
+            self._build(naca0012_stl, cap_tips="bogus")
+
+    # Note: a blunt-body conformal-cap test would go here
+    # (`naca0012_blunt_stl` fixture + ``blocks=4`` + ``cap_tips="both"``,
+    # asserting that the cap uses the body's existing TE thickness
+    # without re-rounding).  The blunt-body C-grid build pipeline isn't
+    # exercised in the test suite today (the `build_cgrid_k0` orchestrator
+    # is only tested against the sharp NACA fixture), so this test would
+    # depend on an untested upstream path; deferred until the blunt
+    # `build_cgrid_k0` path is itself covered.

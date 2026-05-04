@@ -19,9 +19,9 @@ guide.
 
 ## Layout
 
-The 5 subdirectories are ordered from "first SHORE script to read"
-to "complete end-to-end Xall pipeline". Read top-to-bottom on a
-fresh checkout.
+The numbered subdirectories are ordered from "first SHORE script to
+read" to "complete end-to-end Xall pipeline". Read top-to-bottom on
+a fresh checkout.
 
 ### [`01-body-fitted/`](01-body-fitted/) — body-fitted meshing of an STL
 
@@ -84,6 +84,28 @@ multi-component job.
 | `chimera_assembly.py` | Continuation of the above: emit per-component `.grd`, `.adjacency.json`, marker boxes from the body STL, and `cc.par`; merge into `assembly.grd` + `assembly.cc.par`. The reference for the [cc.par + boxes pipeline](https://szaghi.github.io/shore/guide/cc-par-pipeline). |
 | `config_assembly_near_body.toml` | TOML config for the near-body cubed-sphere mesh. |
 | `config_assembly_background.toml` | TOML config for the flat-caps cylinder background. |
+
+### [`06-c-grid/`](06-c-grid/) — C-grid topology (sharp / blunt TE) and tip caps
+
+Three-block C-grid mesh around a NACA 0012 wing, plus an optional
+H-style cap component closing the wing tips for finite-wing CFD.
+
+| File | What it does |
+|---|---|
+| `visualize_naca0012.py` / `.sh` | Build the wing STL, run ``shore mesh --topology cgrid`` (3-block default; `--cgrid-blocks 1` for legacy / `4` for blunt-TE), export to `.vtm`. |
+| `visualize_naca0012_cap_tip.py` / `.sh` | Continuation: takes the body block from the C-grid run and emits 3 cap blocks per tip (`cap_le`, `cap_upper`, `cap_lower`) via ``shore cap-tip``, with adjacency sidecars for chimera assembly. Writes a 9-block ParaView ``.vtm``. |
+
+The cap is a chimera component, not SHARED-faced with the body
+wrap — see [C-grid topology](https://szaghi.github.io/shore/topologies/c-grid)
+for the reasoning.
+
+### [`07-h-grid/`](07-h-grid/) — H-grid primitives (rectangular duct, circular tube)
+
+Body-less internal-flow primitives.
+
+| File | What it does |
+|---|---|
+| `visualize_h_grid.py` / `.sh` | Build the rectangular and circular H-grid primitives via `shore primitive h-grid-rect` / `h-grid-tube`, write `.geo` + `.vtm`. |
 
 ### [`08-oh-hybrid/`](08-oh-hybrid/) — OH topology (cubed-sphere wrap + H-channel)
 

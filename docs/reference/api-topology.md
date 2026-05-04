@@ -13,6 +13,7 @@ several topologies; new ones plug into the same interface.
 | `CubedSphereTopology` | 6-block cubed-sphere topology — production default. |
 | `OGridTopology` | Single-block lat-lon O-grid. |
 | `CGridTopology` | C-grid for sharp- / blunt-TE airfoils (3-block / 4-block / legacy 1-block). |
+| `CGridTipCap` | Wing-tip cap for the C-grid: 5-block H-fill (or 6-block when the body wrap is blunt) chimera component, with auto-rounding for sharp-TE inputs. |
 | `OHTopology` | 12-block hybrid: cubed-sphere wrap + H-channel out to an axis-aligned bounding box. |
 | `HexBlock` | Structured hexahedral block (`(ni, nj, nk, 3)` nodes + 6 faces + 12 edges + 8 vertices). |
 | `Face`, `FaceBC`, `AxisMap`, `FACE_ALONG_AXES` | Face metadata used for multi-block wiring (re-exported from `shore.mesh.face`). |
@@ -105,6 +106,89 @@ need a single-block periodic-j sphere covering, typically as a
 Chimera background.
 
 See [O-grid topology](/topologies/o-grid).
+
+## `CGridTipCap`
+
+```python
+class CGridTipCap(Topology):
+    def __init__(
+        self,
+        le_cut_upper_idx: int,
+        le_cut_lower_idx: int,
+        span_dir: tuple[float, float, float],
+        tip_inset: float,
+        n_cap_j: int = 12,
+        cap_j_spacing: str = "tanh",
+        cap_j_beta: float = 4.0,
+        is_blunt: bool = False,
+        wake_base_cross_section: np.ndarray | None = None,
+        te_cut_upper_idx: int | None = None,
+        te_cut_lower_idx: int | None = None,
+        auto_round_te: bool = True,
+        te_thickness: float | None = None,
+        te_thickness_frac: float | None = 0.002,
+    ): ...
+
+    def build(
+        self,
+        surface: np.ndarray,         # (ni_body, 3) cross-section polyline
+        nk: int,
+        spacing_k: Spacing1D | None = None,
+        **kwargs,
+    ) -> list[HexBlock]
+```
+
+Builds the wing-tip cap as an independent overset component for a
+C-grid wing — **5 blocks** in the H-fill: ``cap_le``, ``cap_upper``,
+``cap_lower``, ``cap_te_upper``, ``cap_te_lower``.  A 6th block
+``cap_wake_base`` is added when ``is_blunt=True`` and a real
+``wake_base_cross_section`` is passed in (the user's body wrap is
+itself blunt and has a wake_base block).
+
+The cap closes the wing's airfoil cross-section at one spanwise
+extreme and composes against the C-grid body wrap as a chimera
+component (not SHARED-faced with it).  See [C-grid tip caps](/topologies/c-grid#tip-caps-closed-finite-wing)
+for the rationale.
+
+Cap-block axis convention:
+
+- **i**: along the airfoil profile chordwise.
+- **j**: airfoil-thickness direction (chord cut → wall).
+- **k**: spanwise — k=0 is the outboard wing-tip wall (offset by
+  `tip_inset * span_dir` from the cross-section), k=nk-1 is the
+  inboard chimera-overlap plane (coincident with the body wrap's
+  spanwise-extreme cross-section).
+
+Default face BCs:
+
+- **k_lo**: `WALL` (wing-tip closure).
+- **k_hi**: `FREE` (chimera fringe).
+- **j_hi**: `WALL` (airfoil walls — suction / pressure / LE / TE-base).
+- Internal SHARED seams: LE-cuts (cap_le ↔ cap_upper / cap_lower),
+  TE-cuts (cap_upper / cap_lower ↔ cap_te_upper / cap_te_lower), and
+  chord cut (cap_upper.j_lo ↔ cap_lower.j_lo, plus the continuation
+  cap_te_upper.j_lo ↔ cap_te_lower.j_lo).
+
+Sharp-TE inputs are **auto-rounded by default**: the cap-side cross-
+section's TE node is split into two points spaced ``te_thickness``
+apart so the cap's H-fill has no singular axis.  Defaults to
+``te_thickness_frac = 0.002`` (0.2% of chord).  Pass
+``auto_round_te=False`` to refuse sharp inputs instead.  Blunt-TE
+inputs are used as-is (no rounding).  See [C-grid tip caps —
+Auto-round on sharp TE](/topologies/c-grid#auto-round-on-sharp-te).
+
+The cap is **fully volumetric at build time** —
+`Mesh.march(...)` is a silent no-op for `CGridTipCap` meshes.  Use
+[`Mesh.from_array`](./api-mesh#meshfrom_array) (a non-STL constructor)
+to wrap the cap-builder output.
+
+Cross-section input today is a 1D `(ni_body, 3)` polyline (typically
+the C-grid body block's spanwise-extreme nodes at the wall).  A
+future extension will accept a 2D STL/STEP slice directly.
+
+See [C-grid topology — Tip caps](/topologies/c-grid#tip-caps-closed-finite-wing)
+for the geometric layout and the
+[`shore cap-tip` CLI reference](./cap-tip).
 
 ## `OHTopology`
 

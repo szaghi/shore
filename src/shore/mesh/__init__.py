@@ -16,6 +16,7 @@ from shore.mesh.inspect import (
 from shore.mesh.mesh import Mesh
 from shore.mesh.spacing import Spacing1D
 from shore.mesh.topology import (
+    CGridTipCap,
     CGridTopology,
     CubedSphereTopology,
     OGridTopology,
@@ -28,6 +29,7 @@ __all__ = [
     "AxisMap",
     "Block",
     "Body",
+    "CGridTipCap",
     "CGridTopology",
     "CubedSphereTopology",
     "Edge",

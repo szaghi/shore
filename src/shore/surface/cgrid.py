@@ -976,6 +976,11 @@ class CGridK0Result:
         """Total i-direction node count of the concatenated layer."""
         return 2 * (self.ni_wake - 1) + self.ni_body
 
+    @property
+    def n_stations(self) -> int:
+        """Span-direction station count."""
+        return int(self.nodes.shape[1])
+
     def per_block_layers(
         self,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1201,3 +1206,104 @@ def _resample_by_arclength(polyline: np.ndarray, n: int) -> np.ndarray:
         seg_t = (t - cum[idx]) / max(seg_lens[idx], 1e-15)
         out[i] = (1.0 - seg_t) * polyline[idx] + seg_t * polyline[idx + 1]
     return out
+
+
+def round_body_te_in_surface(
+    surface: np.ndarray,
+    ni_wake: int,
+    ni_body: int,
+    te_thickness: float,
+    span_axis: str,
+) -> None:
+    """Round the body's TE in-place over the full span of a C-grid k=0 surface.
+
+    Splits the body's i=0 (upper-TE) and i=ni_body-1 (lower-TE) columns
+    apart by ``te_thickness`` along the airfoil-thickness direction at
+    every spanwise station.  Also shifts each wake block's k=0 strip
+    in bulk so the upper wake sits at ``+te_thickness/2`` and the lower
+    wake at ``-te_thickness/2`` along their full chord-axis extent —
+    not just at the TE-side endpoints.
+
+    Without the wake-strip shift the wake blocks' k=0 strips converge
+    back to ``y=0`` immediately downstream of the TE (the wake builder
+    in :func:`build_cgrid_k0` runs each branch from a sharp anchor at
+    y=0), producing a degenerate near-zero-thickness ``wake_base``
+    block in the 4-block C-grid layout — a spurious singular line just
+    downstream of the TE.
+
+    The body sub-region of the concatenated k=0 array is
+    ``surface[ni_wake-1 : ni_wake-1 + ni_body, :, :]``.  The upper-wake
+    region is ``surface[: ni_wake, :, :]`` (i=0 far-tip → i=ni_wake-1
+    upper-TE; the latter aliases the body's i=0 column).  The lower-
+    wake region is ``surface[ni_wake-1 + ni_body - 1 :, :, :]``
+    (i=0 lower-TE → i=ni_wake-1 far-tip; the former aliases the body's
+    i=ni_body-1 column).
+
+    Parameters
+    ----------
+    surface :
+        ``(ni_total, n_stations, 3)`` k=0 surface array as produced by
+        :func:`build_cgrid_k0`.  Must have a sharp TE at every station.
+    ni_wake, ni_body :
+        Block-count integers from the C-grid construction.
+    te_thickness :
+        World-frame TE thickness to apply.  Must be > 0.
+    span_axis :
+        ``'x'`` / ``'y'`` / ``'z'``.
+
+    Raises
+    ------
+    ParameterError
+        On invalid arguments or non-sharp input.
+    """
+    if te_thickness <= 0:
+        raise ParameterError(
+            f"round_body_te_in_surface: te_thickness must be > 0, got {te_thickness}"
+        )
+    if span_axis not in ("x", "y", "z"):
+        raise ParameterError(
+            f"round_body_te_in_surface: span_axis must be 'x'/'y'/'z', got {span_axis!r}"
+        )
+    span_axis_world = "xyz".index(span_axis)
+    n_stations = surface.shape[1]
+    i_te_upper = ni_wake - 1
+    i_te_lower = i_te_upper + ni_body - 1
+
+    # Sanity: the body must be sharp at every station before rounding.
+    for j in range(n_stations):
+        delta = surface[i_te_upper, j, :] - surface[i_te_lower, j, :]
+        if float(np.linalg.norm(delta)) > 1e-9:
+            raise ParameterError(
+                f"round_body_te_in_surface: station j={j} already has a "
+                f"non-sharp TE (separation {float(np.linalg.norm(delta)):.6g}); "
+                f"this helper only rounds bodies with a sharp TE."
+            )
+
+    # Per-station: identify the chord-axis (largest in-plane extent of the
+    # body's i-axis) and the thickness-axis (the remaining in-plane axis).
+    # Apply the anti-symmetric split to the body's TE columns AND to the
+    # full wake blocks' k=0 strips so the wake stays at y = ±te/2 over
+    # its full length (otherwise the wake blocks' k=0 strips collapse
+    # back to y=0 just downstream of the TE — see docstring).
+    half = 0.5 * te_thickness
+    for j in range(n_stations):
+        body_xs = surface[i_te_upper : i_te_lower + 1, j, :]
+        extents = body_xs.max(axis=0) - body_xs.min(axis=0)
+        extents[span_axis_world] = -np.inf
+        chord_axis = int(np.argmax(extents))
+        thickness_axis = next(
+            a for a in (0, 1, 2) if a != span_axis_world and a != chord_axis
+        )
+        # 1. Body TE columns: anti-symmetric split.  These columns are
+        #    aliased to the wake blocks' TE-side endpoints, so shifting
+        #    them moves those endpoints too.
+        surface[i_te_upper, j, thickness_axis] += +half
+        surface[i_te_lower, j, thickness_axis] += -half
+        # 2. Upper wake's k=0 strip (i = 0 .. ni_wake - 2): shift
+        #    +half along thickness_axis so the whole strip sits at
+        #    y = +te/2.  Index ni_wake - 1 was already shifted in step 1.
+        surface[0 : ni_wake - 1, j, thickness_axis] += +half
+        # 3. Lower wake's k=0 strip (i = i_te_lower + 1 .. ni_total - 1):
+        #    shift -half so the whole strip sits at y = -te/2.  Index
+        #    i_te_lower was already shifted in step 1.
+        surface[i_te_lower + 1 :, j, thickness_axis] += -half

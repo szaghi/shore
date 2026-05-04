@@ -109,6 +109,7 @@ export default defineConfig({
             { text: 'shore mesh',      link: '/reference/mesh' },
             { text: 'shore primitive', link: '/reference/primitive' },
             { text: 'shore project',   link: '/reference/project' },
+            { text: 'shore cap-tip',   link: '/reference/cap-tip' },
           ],
         },
         {

@@ -246,13 +246,59 @@ class Mesh:
 
     def __init__(
         self,
-        body: Body,
+        body: Body | None,
         blocks: list[HexBlock],
         topology: Topology,
     ) -> None:
         self.body = body
         self.blocks = blocks
         self.topology = topology
+
+    @classmethod
+    def from_array(
+        cls,
+        surface: np.ndarray,
+        topology: Topology,
+        nk: int,
+        spacing_k: Spacing1D | None = None,
+        **kwargs,
+    ) -> Mesh:
+        """Build a Mesh from a pre-built surface array (no STL).
+
+        Used by topologies whose input is a numeric array (e.g. a
+        cross-section polyline) rather than a triangulated body.  The
+        resulting :class:`Mesh` has ``body = None``; methods that
+        depend on ``self.body`` (e.g. STL-normal blending in
+        :meth:`march`) will fail loudly if called.
+
+        Parameters
+        ----------
+        surface :
+            Topology-specific surface array.  For
+            :class:`CGridTipCap`: a ``(ni, 3)`` cross-section polyline.
+        topology :
+            The topology builder.
+        nk :
+            Topology-specific node count.  For :class:`CGridTipCap`,
+            the cap's spanwise (k-axis) node count.
+        spacing_k :
+            Optional wall-normal / spanwise spacing law forwarded to
+            ``topology.build``.
+        **kwargs :
+            Forwarded verbatim to ``topology.build``.
+
+        Returns
+        -------
+        Mesh
+            With ``body=None`` and the topology-built blocks.
+        """
+        blocks = topology.build(
+            surface=surface,
+            nk=nk,
+            spacing_k=spacing_k,
+            **kwargs,
+        )
+        return cls(body=None, blocks=blocks, topology=topology)
 
     @classmethod
     def from_stl(
@@ -409,11 +455,16 @@ class Mesh:
             If the topology has no registered marcher.
         """
         from shore.mesh.topology import (
+            CGridTipCap,
             CGridTopology,
             CubedSphereTopology,
             OGridTopology,
             OHTopology,
         )
+
+        if isinstance(self.topology, CGridTipCap):
+            # The tip cap is fully volumetric at build time — nothing to march.
+            return
 
         if isinstance(self.topology, OHTopology):
             # March the wrap (first 6 blocks) using the cubed-sphere marcher;
@@ -861,8 +912,19 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
     ) -> None:
-        """Hyperbolic march for ``CGridTopology`` (1, 3, or 4 blocks)."""
-        if len(self.blocks) in (3, 4):
+        """Hyperbolic march for ``CGridTopology`` (1, 3, or 4 blocks; or
+        4 + N cap blocks under the conformal-cap path).
+
+        With cap_tips != 'none', the first 4 blocks are the C-grid
+        (upper, body, lower, wake_base) and any further blocks are
+        cap blocks built fully volumetric at construction time —
+        they do not march.  ``_march_cgrid_three`` already restricts
+        itself to the first 3 blocks so only the C-grid gets marched.
+        """
+        # The 1-block legacy path has a single block labelled 'cgrid'.
+        # Anything else (3, 4, or 4 + N cap blocks) goes through the
+        # 3/4-block marcher which only touches the first 3 entries.
+        if len(self.blocks) > 1:
             self._march_cgrid_three(
                 ds=ds,
                 growth=growth,

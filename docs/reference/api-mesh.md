@@ -30,7 +30,7 @@ class Mesh:
 
 | Attribute | Description |
 |---|---|
-| `body` | The triangulated body surface and its cached BVH (only set when built via `from_stl`). |
+| `body` | The triangulated body surface and its cached BVH (only set when built via `from_stl`; `None` when built via [`from_array`](#meshfrom_array)). |
 | `blocks` | The list of [`HexBlock`](#hexblock-attribute) instances produced by the topology. Order matches the topology's canonical block list (sub0..sub3, cap_north, cap_south for `CubedSphereTopology`). |
 | `topology` | The [`Topology`](./api-topology) instance that produced `blocks`. Determines which marcher `march()` dispatches to (cubed-sphere, O-grid, C-grid, or OH hybrid). |
 
@@ -88,6 +88,48 @@ layers.
 
 ---
 
+## `Mesh.from_array`
+
+```python
+@classmethod
+def from_array(
+    cls,
+    surface: np.ndarray,
+    topology: Topology,
+    nk: int,
+    spacing_k: Spacing1D | None = None,
+    **kwargs,
+) -> Mesh
+```
+
+Build a `Mesh` from a pre-built surface array (no STL).  Used by
+topologies whose input is a numeric array — typically a cross-section
+polyline from another mesh — rather than a triangulated body.
+
+The resulting `Mesh` has `body = None`; methods that depend on
+`self.body` (e.g. `blend_normals_k > 0` STL-normal blending in
+[`Mesh.march`](#meshmarch)) will fail loudly if called.
+
+For [`CGridTipCap`](./api-topology#cgridtipcap), `surface` is a
+`(ni_body, 3)` cross-section polyline and `nk` is the cap's
+spanwise (k-axis) node count.
+
+```python
+from shore.io.geo import read_geo
+from shore.mesh import CGridTipCap, Mesh
+
+body = read_geo("naca0012_body.geo")
+cross = body[:, 0, 0, :]                       # jlo tip, k=0 (the wall)
+topo = CGridTipCap(
+    le_cut_upper_idx=39, le_cut_lower_idx=80,
+    span_dir=(0.0, 0.0, -1.0), tip_inset=0.02, n_cap_j=12,
+)
+cap = Mesh.from_array(surface=cross, topology=topo, nk=20)
+cap.write_geo("cap_jlo")
+```
+
+---
+
 ## `Mesh.march`
 
 ```python
@@ -109,7 +151,8 @@ place. Dispatches to the per-topology marcher
 `_march_ogrid`, `CGridTopology` → `_march_cgrid_*` per block count,
 `OHTopology` → `_march_caps_blocks` for the wrap then
 `OHTopology.fill_channel_blocks` for the deferred channel
-interior).
+interior).  For [`CGridTipCap`](./api-topology#cgridtipcap), the cap
+is fully volumetric at build time and `march()` is a **silent no-op**.
 
 **Parameters**
 

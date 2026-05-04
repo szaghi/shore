@@ -30,6 +30,7 @@ from shore.config import (
 )
 from shore.mesh import (
     Body,
+    CGridTipCap,
     CGridTopology,
     CubedSphereTopology,
     Mesh,
@@ -262,6 +263,95 @@ _CGRID_BLOCKS = Annotated[
         ),
     ),
 ]
+_CAP_TIPS = Annotated[
+    str,
+    typer.Option(
+        "--cap-tips",
+        help=(
+            "[cgrid] Conformal wing-tip caps.  'none' (default), "
+            "'jlo' (j=0 station only), 'jhi' (j=n_stations-1 only), "
+            "or 'both'.  When set, the C-grid mesh is augmented with "
+            "5 cap blocks per requested tip + 1 cap_wake_base per tip "
+            "(total +6 blocks per tip, since the C-grid auto-promotes "
+            "to 4-block).  Sharp-TE bodies are auto-rounded over their "
+            "full span by --cap-te-thickness-frac (default 0.2% chord) "
+            "so the cap-body interface is bit-conformal."
+        ),
+    ),
+]
+_CAP_TE_THICKNESS = Annotated[
+    float | None,
+    typer.Option(
+        "--cap-te-thickness",
+        help=(
+            "[cgrid + caps] Absolute TE thickness for body-rounding "
+            "(world units).  Mutually exclusive with "
+            "--cap-te-thickness-frac."
+        ),
+    ),
+]
+_CAP_TE_THICKNESS_FRAC = Annotated[
+    float,
+    typer.Option(
+        "--cap-te-thickness-frac",
+        help=(
+            "[cgrid + caps] TE thickness as a fraction of chord "
+            "(default 0.002 = 0.2%).  Used only on sharp-TE bodies."
+        ),
+    ),
+]
+_CAP_LE_FRAC = Annotated[
+    float,
+    typer.Option("--cap-le-frac", help="[cgrid + caps] LE-cut chord fraction (default 0.05)."),
+]
+_CAP_TE_FRAC = Annotated[
+    float,
+    typer.Option("--cap-te-frac", help="[cgrid + caps] TE-cut chord fraction (default 0.95)."),
+]
+_CAP_TIP_INSET = Annotated[
+    float | None,
+    typer.Option(
+        "--cap-tip-inset",
+        help=(
+            "[cgrid + caps] Spanwise wall thickness of the cap.  "
+            "Default = 1e-3 * chord."
+        ),
+    ),
+]
+_CAP_N_CAP_J = Annotated[
+    int,
+    typer.Option(
+        "--cap-n-cap-j",
+        help="[cgrid + caps] Cap j-axis (airfoil-thickness) node count (default 12).",
+    ),
+]
+_CAP_J_SPACING = Annotated[
+    str,
+    typer.Option(
+        "--cap-j-spacing-cgrid",
+        help=(
+            "[cgrid + caps] Cap j-axis spacing law: uniform / tanh / "
+            "tanh2 (default tanh)."
+        ),
+    ),
+]
+_CAP_J_BETA = Annotated[
+    float,
+    typer.Option(
+        "--cap-j-beta-cgrid",
+        help="[cgrid + caps] Clustering strength for tanh / tanh2 (default 4.0).",
+    ),
+]
+_CAP_NK = Annotated[
+    int | None,
+    typer.Option(
+        "--cap-nk",
+        help=(
+            "[cgrid + caps] Cap k-axis (spanwise) node count.  Default = "
+            "matches --nk."
+        ),
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +500,16 @@ def mesh(
     span_axis: _SPAN_AXIS = "z",
     te_dihedral_deg: _TE_DIHEDRAL_DEG = 30.0,
     cgrid_blocks: _CGRID_BLOCKS = 3,
+    cap_tips: _CAP_TIPS = "none",
+    cap_te_thickness: _CAP_TE_THICKNESS = None,
+    cap_te_thickness_frac: _CAP_TE_THICKNESS_FRAC = 0.002,
+    cap_le_frac: _CAP_LE_FRAC = 0.05,
+    cap_te_frac: _CAP_TE_FRAC = 0.95,
+    cap_tip_inset: _CAP_TIP_INSET = None,
+    cap_n_cap_j: _CAP_N_CAP_J = 12,
+    cap_j_spacing_cgrid: _CAP_J_SPACING = "tanh",
+    cap_j_beta_cgrid: _CAP_J_BETA = 4.0,
+    cap_nk: _CAP_NK = None,
     adjacency_json: Annotated[
         Path | None,
         typer.Option(
@@ -585,6 +685,12 @@ def mesh(
         topo = CGridTopology()
     try:
         if topology == "cgrid":
+            if cap_tips not in ("none", "jlo", "jhi", "both"):
+                _err.print(
+                    f"[red]Error:[/red] --cap-tips must be 'none' / 'jlo' / "
+                    f"'jhi' / 'both', got {cap_tips!r}."
+                )
+                raise typer.Exit(1) from None
             blocks = topo.build(
                 surface=None,
                 nk=nk,
@@ -598,6 +704,16 @@ def mesh(
                 span_axis=span_axis,
                 te_dihedral_deg=te_dihedral_deg,
                 blocks=cgrid_blocks,
+                cap_tips=cap_tips,
+                cap_te_thickness=cap_te_thickness,
+                cap_te_thickness_frac=cap_te_thickness_frac,
+                cap_le_frac=cap_le_frac,
+                cap_te_frac=cap_te_frac,
+                cap_tip_inset=cap_tip_inset,
+                cap_n_cap_j=cap_n_cap_j,
+                cap_j_spacing=cap_j_spacing_cgrid,
+                cap_j_beta=cap_j_beta_cgrid,
+                cap_nk=cap_nk,
             )
         else:
             blocks = topo.build(
@@ -1626,6 +1742,302 @@ def primitive_h_grid_tube(
     _emit_primitive_writeback(
         prim, output, default_name="h_grid_tube", adjacency_json=adjacency_json
     )
+
+
+# ---------------------------------------------------------------------------
+# shore cap-tip
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="cap-tip")
+def cap_tip(
+    body_geo: Annotated[
+        Path,
+        typer.Argument(
+            help=(
+                "Path to the C-grid body block's .geo file (typically "
+                "'<stem>_body.geo' from `shore mesh --topology cgrid`)."
+            ),
+        ),
+    ],
+    tip: Annotated[
+        str,
+        typer.Option(
+            "--tip",
+            help="Which spanwise tip to cap: 'jlo' (j=0 station) or 'jhi' (j=n_stations-1).",
+        ),
+    ] = "jlo",
+    le_frac: Annotated[
+        float,
+        typer.Option(
+            "--le-frac",
+            help="Chord fraction for the LE-cut (0 < le_frac < te_frac; default 0.05).",
+        ),
+    ] = 0.05,
+    te_frac: Annotated[
+        float,
+        typer.Option(
+            "--te-frac",
+            help=(
+                "Chord fraction for the TE-cut (le_frac < te_frac < 1; default 0.95).  "
+                "Splits the chord band into a 'mid' region (cap_upper / cap_lower) "
+                "and a 'TE' region (cap_te_upper / cap_te_lower).  Lower te_frac "
+                "values give the TE region more chordwise resolution."
+            ),
+        ),
+    ] = 0.95,
+    te_thickness: Annotated[
+        float | None,
+        typer.Option(
+            "--te-thickness",
+            help=(
+                "Auto-round synthetic TE thickness (absolute, in body units).  "
+                "Mutually exclusive with --te-thickness-frac.  Only used when "
+                "the input cross-section has a sharp TE."
+            ),
+        ),
+    ] = None,
+    te_thickness_frac: Annotated[
+        float,
+        typer.Option(
+            "--te-thickness-frac",
+            help=(
+                "Auto-round synthetic TE thickness, as a fraction of chord "
+                "(default 0.002 = 0.2%).  Only used when the input cross-section "
+                "has a sharp TE.  The body wrap is left untouched; only the cap "
+                "is rounded for its own structural soundness."
+            ),
+        ),
+    ] = 0.002,
+    no_auto_round_te: Annotated[
+        bool,
+        typer.Option(
+            "--no-auto-round-te",
+            help=(
+                "Disable auto-rounding.  Sharp-TE inputs are then rejected with "
+                "an error rather than rounded.  The default (auto-round on) is "
+                "almost always what you want."
+            ),
+        ),
+    ] = False,
+    tip_inset: Annotated[
+        float | None,
+        typer.Option(
+            "--tip-inset",
+            help=(
+                "Spanwise wall thickness of the cap.  Default = "
+                "1e-3 * chord (auto-detected from the cross-section)."
+            ),
+        ),
+    ] = None,
+    n_cap_j: Annotated[
+        int,
+        typer.Option("--n-cap-j", help="Cap j-axis (airfoil-thickness) node count."),
+    ] = 12,
+    nk: Annotated[
+        int | None,
+        typer.Option(
+            "--nk",
+            help=(
+                "Cap k-axis (spanwise) node count.  Default: match the "
+                "body block's k-axis node count."
+            ),
+        ),
+    ] = None,
+    cap_j_spacing: Annotated[
+        str,
+        typer.Option(
+            "--cap-j-spacing",
+            help="Cap j-axis spacing law: uniform | tanh | tanh2.  Default 'tanh'.",
+        ),
+    ] = "tanh",
+    cap_j_beta: Annotated[
+        float, typer.Option("--cap-j-beta", help="Clustering strength for tanh / tanh2.")
+    ] = 4.0,
+    span_axis: Annotated[
+        str,
+        typer.Option(
+            "--span-axis",
+            help="World axis the wing spans: 'x', 'y', or 'z' (default 'z').",
+        ),
+    ] = "z",
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Output stem (default: 'cap_<tip>')."),
+    ] = None,
+    adjacency_json: Annotated[
+        Path | None,
+        typer.Option(
+            "--adjacency-json",
+            help="Also write the .adjacency.json sidecar (for shore cc-par).",
+        ),
+    ] = None,
+) -> None:
+    """Build a wing-tip cap from a C-grid body block's .geo file.
+
+    The cap is an independent 3-block (sharp TE) or 4-block (blunt TE)
+    H-style structured component that closes the wing's airfoil cross-
+    section at one spanwise extreme.  It composes against the C-grid
+    body wrap as a chimera component via ``shore cc-par`` — the cap's
+    k_lo face is WALL (the actual wing-tip closure), k_hi is FREE
+    (chimera fringe receiving from the body wrap).
+
+    Sharp / blunt is **inferred** from the body block's TE shape: if
+    the body's i=0 and i=ni-1 nodes coincide at every spanwise station,
+    sharp.  Otherwise blunt — which currently requires the full
+    wake_base block; emit a clear error pointing the user at the
+    Python API in that case (CLI blunt support pending).
+    """
+    if tip not in ("jlo", "jhi"):
+        _err.print(f"[red]Error:[/red] --tip must be 'jlo' or 'jhi', got {tip!r}.")
+        raise typer.Exit(1) from None
+    if cap_j_spacing not in ("uniform", "tanh", "tanh2"):
+        _err.print(
+            f"[red]Error:[/red] --cap-j-spacing must be 'uniform' / 'tanh' / 'tanh2', "
+            f"got {cap_j_spacing!r}."
+        )
+        raise typer.Exit(1) from None
+    if span_axis not in ("x", "y", "z"):
+        _err.print(f"[red]Error:[/red] --span-axis must be 'x', 'y', or 'z'.")
+        raise typer.Exit(1) from None
+    if not (0.0 < le_frac < 1.0):
+        _err.print(f"[red]Error:[/red] --le-frac must be in (0, 1), got {le_frac}.")
+        raise typer.Exit(1) from None
+    if not (0.0 < te_frac < 1.0):
+        _err.print(f"[red]Error:[/red] --te-frac must be in (0, 1), got {te_frac}.")
+        raise typer.Exit(1) from None
+    if not (le_frac < te_frac):
+        _err.print(
+            f"[red]Error:[/red] --le-frac ({le_frac}) must be < --te-frac ({te_frac})."
+        )
+        raise typer.Exit(1) from None
+    if te_thickness is not None and te_thickness <= 0:
+        _err.print(
+            f"[red]Error:[/red] --te-thickness must be > 0, got {te_thickness}."
+        )
+        raise typer.Exit(1) from None
+    if not body_geo.exists():
+        _err.print(f"[red]Error:[/red] body geo file not found: {body_geo}")
+        raise typer.Exit(1) from None
+
+    # ------------------------------------------------------------
+    # Load the body block, extract the spanwise-extreme cross-section
+    # at the wall (k=0).
+    # ------------------------------------------------------------
+    from shore.io.geo import read_geo
+    from shore.topology.cgrid_cap import find_symmetric_le_cuts
+
+    try:
+        body = read_geo(body_geo)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] could not read body geo: {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    if body.ndim != 4 or body.shape[3] != 3:
+        _err.print(
+            f"[red]Error:[/red] body geo has shape {body.shape}; expected "
+            f"(ni, n_stations, nk, 3)."
+        )
+        raise typer.Exit(1) from None
+    if body.shape[1] < 2:
+        _err.print(
+            f"[red]Error:[/red] body has {body.shape[1]} spanwise stations; "
+            f"need >= 2 to infer the outward span direction."
+        )
+        raise typer.Exit(1) from None
+
+    j_extreme = 0 if tip == "jlo" else body.shape[1] - 1
+    j_inboard = 1 if tip == "jlo" else body.shape[1] - 2
+    cross_section = body[:, j_extreme, 0, :].copy()  # (ni, 3) at the wall (k=0)
+    cross_section_inboard = body[:, j_inboard, 0, :]
+
+    inboard_dir = cross_section_inboard.mean(axis=0) - cross_section.mean(axis=0)
+    inboard_norm = float(np.linalg.norm(inboard_dir))
+    if inboard_norm < 1e-12:
+        _err.print(
+            f"[red]Error:[/red] adjacent spanwise stations have coincident "
+            f"centroids — cannot infer span direction."
+        )
+        raise typer.Exit(1) from None
+    span_dir = -inboard_dir / inboard_norm
+    span_axis_idx = "xyz".index(span_axis)
+
+    # Sharp/blunt detection here is informational only — CGridTipCap
+    # auto-rounds sharp inputs (default) or rejects them under
+    # --no-auto-round-te.  The body's wake_base block (separate from
+    # the airfoil cross-section blunt-or-not) is not currently passed
+    # through the CLI; the cap is always built without a cap_wake_base
+    # sub-block when driven from the CLI.
+
+    # ------------------------------------------------------------
+    # Resolve LE-cut indices, default tip_inset, default nk.
+    # ------------------------------------------------------------
+    try:
+        le_up, le_lo = find_symmetric_le_cuts(
+            cross_section, le_frac=le_frac, span_axis_world=span_axis_idx
+        )
+        te_up, te_lo = find_symmetric_le_cuts(
+            cross_section, le_frac=te_frac, span_axis_world=span_axis_idx
+        )
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    if tip_inset is None:
+        # Default: 1e-3 * chord (chord = max in-plane extent).
+        extents = cross_section.max(axis=0) - cross_section.min(axis=0)
+        extents[span_axis_idx] = -np.inf
+        chord_len = float(extents.max())
+        tip_inset = 1e-3 * chord_len
+        _console.print(f"[dim]auto tip_inset = {tip_inset:.6g}[/dim]")
+    if nk is None:
+        nk = int(body.shape[2])
+        _console.print(f"[dim]auto nk = {nk} (matches body)[/dim]")
+
+    # ------------------------------------------------------------
+    # Build the cap mesh.
+    # ------------------------------------------------------------
+    try:
+        # If the user passed --te-thickness explicitly, that overrides
+        # --te-thickness-frac.  Otherwise the chord-fraction default applies.
+        if te_thickness is not None:
+            _te_frac = None  # absolute thickness wins
+        else:
+            _te_frac = te_thickness_frac
+        topo = CGridTipCap(
+            le_cut_upper_idx=le_up,
+            le_cut_lower_idx=le_lo,
+            te_cut_upper_idx=te_up,
+            te_cut_lower_idx=te_lo,
+            span_dir=tuple(span_dir.tolist()),
+            tip_inset=tip_inset,
+            n_cap_j=n_cap_j,
+            cap_j_spacing=cap_j_spacing,
+            cap_j_beta=cap_j_beta,
+            is_blunt=False,
+            auto_round_te=not no_auto_round_te,
+            te_thickness=te_thickness,
+            te_thickness_frac=_te_frac,
+        )
+        cap_mesh = Mesh.from_array(surface=cross_section, topology=topo, nk=nk)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+    # ------------------------------------------------------------
+    # Write outputs.
+    # ------------------------------------------------------------
+    out_stem = output if output is not None else Path(f"cap_{tip}")
+    cap_mesh.write_geo(out_stem)
+    for blk in cap_mesh.blocks:
+        _console.print(f"[green]wrote[/green] {out_stem.parent / out_stem.name}_{blk.label}.geo")
+
+    if adjacency_json is not None:
+        from shore.io.adjacency import write_adjacency_json
+
+        adjacency_json.parent.mkdir(parents=True, exist_ok=True)
+        write_adjacency_json(cap_mesh.blocks, adjacency_json)
+        _console.print(f"[green]wrote[/green] {adjacency_json}")
 
 
 # ---------------------------------------------------------------------------
