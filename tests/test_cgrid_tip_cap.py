@@ -22,7 +22,6 @@ import pytest
 from shore.exceptions import ParameterError
 from shore.mesh.face import FaceBC
 from shore.mesh.mesh import Mesh
-from shore.mesh.spacing import Spacing1D
 from shore.mesh.topology import CGridTipCap
 
 
@@ -48,12 +47,8 @@ def _naca0012_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     pts2d = np.vstack([upper, lower])
     pts3d = np.column_stack([pts2d, np.zeros(len(pts2d))])
     le_idx = int(np.argmin(pts3d[:, 0]))
-    le_cut_upper = next(
-        i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05
-    )
-    le_cut_lower = next(
-        i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05
-    )
+    le_cut_upper = next(i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05)
+    le_cut_lower = next(i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05)
     return pts3d, le_cut_upper, le_cut_lower
 
 
@@ -78,7 +73,11 @@ class TestCGridTipCapConstruction:
         assert len(m.blocks) == 5
         labels = sorted(b.label for b in m.blocks)
         assert labels == [
-            "cap_le", "cap_lower", "cap_te_lower", "cap_te_upper", "cap_upper",
+            "cap_le",
+            "cap_lower",
+            "cap_te_lower",
+            "cap_te_upper",
+            "cap_upper",
         ]
 
     def test_returns_six_blocks_with_body_wake_base(self):
@@ -103,8 +102,12 @@ class TestCGridTipCapConstruction:
         assert len(m.blocks) == 6
         labels = sorted(b.label for b in m.blocks)
         assert labels == [
-            "cap_le", "cap_lower", "cap_te_lower", "cap_te_upper",
-            "cap_upper", "cap_wake_base",
+            "cap_le",
+            "cap_lower",
+            "cap_te_lower",
+            "cap_te_upper",
+            "cap_upper",
+            "cap_wake_base",
         ]
 
     def test_block_shapes_sharp(self):
@@ -120,8 +123,8 @@ class TestCGridTipCapConstruction:
         m = Mesh.from_array(surface=cs, topology=topo, nk=8)
         for blk in m.blocks:
             assert blk.nodes.ndim == 4
-            assert blk.nodes.shape[2] == 8     # nk_cap = nk
-            assert blk.nodes.shape[1] == 12    # nj_cap = n_cap_j
+            assert blk.nodes.shape[2] == 8  # nk_cap = nk
+            assert blk.nodes.shape[1] == 12  # nj_cap = n_cap_j
             assert blk.nodes.shape[3] == 3
 
     def test_nk_cap_equals_nk(self):
@@ -341,7 +344,7 @@ class TestCGridTipCapValidation:
             Mesh.from_array(surface=cs, topology=topo, nk=1)
 
     def test_blunt_requires_wake_base(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
+        _cs, le_up, le_lo = _naca0012_cross_section(41)
         with pytest.raises(ParameterError, match="wake_base"):
             CGridTipCap(
                 le_cut_upper_idx=le_up,
@@ -354,7 +357,7 @@ class TestCGridTipCapValidation:
             )
 
     def test_invalid_span_dir(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
+        _cs, le_up, le_lo = _naca0012_cross_section(41)
         with pytest.raises(ParameterError, match="span_dir"):
             CGridTipCap(
                 le_cut_upper_idx=le_up,
@@ -392,12 +395,8 @@ def _sharp_te_naca_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     pts2d = np.vstack([upper, lower])
     pts3d = np.column_stack([pts2d, np.zeros(len(pts2d))])
     le_idx = int(np.argmin(pts3d[:, 0]))
-    le_cut_upper = next(
-        i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05
-    )
-    le_cut_lower = next(
-        i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05
-    )
+    le_cut_upper = next(i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05)
+    le_cut_lower = next(i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05)
     return pts3d, le_cut_upper, le_cut_lower
 
 
@@ -477,7 +476,7 @@ class TestCGridTipCapAutoRound:
         assert "auto-rounding" not in capsys.readouterr().err
 
     def test_te_thickness_and_frac_mutually_exclusive(self):
-        cs, le_up, le_lo = _sharp_te_naca_cross_section(41)
+        _cs, le_up, le_lo = _sharp_te_naca_cross_section(41)
         with pytest.raises(ParameterError, match="not both"):
             CGridTipCap(
                 le_cut_upper_idx=le_up,

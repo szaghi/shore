@@ -182,21 +182,14 @@ def build_cap_blocks(
             f"got |span_dir|={span_norm:.6g}.  Normalise before calling."
         )
     if tip_inset <= 0:
-        raise ParameterError(
-            f"build_cap_blocks: tip_inset must be > 0, got {tip_inset}"
-        )
+        raise ParameterError(f"build_cap_blocks: tip_inset must be > 0, got {tip_inset}")
     if n_cap_j < 2:
-        raise ParameterError(
-            f"build_cap_blocks: n_cap_j must be >= 2, got {n_cap_j}"
-        )
+        raise ParameterError(f"build_cap_blocks: n_cap_j must be >= 2, got {n_cap_j}")
     if nk_cap < 2:
-        raise ParameterError(
-            f"build_cap_blocks: nk_cap must be >= 2, got {nk_cap}"
-        )
+        raise ParameterError(f"build_cap_blocks: nk_cap must be >= 2, got {nk_cap}")
     if j_spacing not in ("uniform", "tanh", "tanh2"):
         raise ParameterError(
-            f"build_cap_blocks: j_spacing must be 'uniform' / 'tanh' / "
-            f"'tanh2', got {j_spacing!r}"
+            f"build_cap_blocks: j_spacing must be 'uniform' / 'tanh' / 'tanh2', got {j_spacing!r}"
         )
     if is_blunt and wake_base_cross_section is None:
         raise ParameterError(
@@ -212,8 +205,12 @@ def build_cap_blocks(
     if te_cut_lower_idx is None:
         te_cut_lower_idx = ni_body - 1
     if not (
-        0 <= te_cut_upper_idx < le_cut_upper_idx
-        < le_cut_lower_idx < te_cut_lower_idx <= ni_body - 1
+        0
+        <= te_cut_upper_idx
+        < le_cut_upper_idx
+        < le_cut_lower_idx
+        < te_cut_lower_idx
+        <= ni_body - 1
     ):
         raise ParameterError(
             f"build_cap_blocks: TE-cut and LE-cut indices must satisfy "
@@ -251,9 +248,7 @@ def build_cap_blocks(
     # j: 0 (chord cut at y=0 in airfoil-thickness frame) → nj-1 (wall).
     blocks["upper"] = _build_chordwise_cap(
         cross_section=cross_section,
-        i_indices=np.arange(
-            le_cut_upper_idx, te_cut_upper_idx - 1, -1, dtype=np.int64
-        ),
+        i_indices=np.arange(le_cut_upper_idx, te_cut_upper_idx - 1, -1, dtype=np.int64),
         cut_to_wall_t=t_j,
         k_offset=k_offset,
         nk_cap=nk_cap,
@@ -274,9 +269,7 @@ def build_cap_blocks(
         )
     blocks["lower"] = _build_chordwise_cap(
         cross_section=cross_section,
-        i_indices=np.arange(
-            le_cut_lower_idx, te_cut_lower_idx + 1, dtype=np.int64
-        ),
+        i_indices=np.arange(le_cut_lower_idx, te_cut_lower_idx + 1, dtype=np.int64),
         cut_to_wall_t=t_j,
         k_offset=k_offset,
         nk_cap=nk_cap,
@@ -528,9 +521,7 @@ def find_symmetric_le_cuts(
         resolve the requested cut.
     """
     if not (0.0 < le_frac < 1.0):
-        raise ParameterError(
-            f"find_symmetric_le_cuts: le_frac must be in (0, 1), got {le_frac}"
-        )
+        raise ParameterError(f"find_symmetric_le_cuts: le_frac must be in (0, 1), got {le_frac}")
     if span_axis_world not in (0, 1, 2):
         raise ParameterError(
             f"find_symmetric_le_cuts: span_axis_world must be 0/1/2, got {span_axis_world}"
@@ -628,9 +619,7 @@ def auto_round_sharp_te(
         sharp.
     """
     if te_thickness <= 0:
-        raise ParameterError(
-            f"auto_round_sharp_te: te_thickness must be > 0, got {te_thickness}"
-        )
+        raise ParameterError(f"auto_round_sharp_te: te_thickness must be > 0, got {te_thickness}")
     if span_axis_world not in (0, 1, 2):
         raise ParameterError(
             f"auto_round_sharp_te: span_axis_world must be 0/1/2, got {span_axis_world}"

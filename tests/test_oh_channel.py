@@ -81,9 +81,7 @@ class TestChannelInnerFaceBitExact:
         """C1 pin only affects interior spacing; k=0 stays bit-exact."""
         inner = _fake_inner_face(6, 8)
         outer = _box_face_quad_zp()
-        block = build_channel_block(
-            inner, outer, nk_channel=5, c1_first_step=0.05
-        )
+        block = build_channel_block(inner, outer, nk_channel=5, c1_first_step=0.05)
         np.testing.assert_array_equal(block[:, :, 0, :], inner)
 
 
@@ -161,9 +159,7 @@ class TestChannelSpacingLaws:
     def test_tanh_clusters_near_inner(self):
         inner = _fake_inner_face(4, 4)
         outer = _box_face_quad_zp(half=2.0)
-        block = build_channel_block(
-            inner, outer, nk_channel=20, k_law="tanh", k_beta=4.0
-        )
+        block = build_channel_block(inner, outer, nk_channel=20, k_law="tanh", k_beta=4.0)
         # Distance-from-inner along k at the centre of the (i, j) patch.
         ic, jc = 2, 2
         dist = np.linalg.norm(block[ic, jc, :, :] - block[ic, jc, 0, :], axis=-1)
@@ -176,9 +172,7 @@ class TestChannelSpacingLaws:
         inner = _fake_inner_face(4, 4)
         outer = _box_face_quad_zp(half=2.0)
         first_step = 0.07
-        block = build_channel_block(
-            inner, outer, nk_channel=10, c1_first_step=first_step
-        )
+        block = build_channel_block(inner, outer, nk_channel=10, c1_first_step=first_step)
         # Distance from k=0 to k=1 should equal first_step (within FP noise).
         ds_0 = np.linalg.norm(block[:, :, 1, :] - block[:, :, 0, :], axis=-1)
         np.testing.assert_allclose(ds_0, first_step, atol=1e-10)
@@ -211,6 +205,4 @@ class TestChannelErrors:
         inner = _fake_inner_face(4, 4)
         outer = _box_face_quad_zp()
         with pytest.raises(ParameterError, match="c1_first_step"):
-            build_channel_block(
-                inner, outer, nk_channel=4, c1_first_step=-0.01
-            )
+            build_channel_block(inner, outer, nk_channel=4, c1_first_step=-0.01)

@@ -23,7 +23,12 @@ import numpy as np
 import pytest
 
 from shore.exceptions import ParameterError
-from shore.topology.cgrid_cap import build_cap_blocks, find_symmetric_le_cuts
+from shore.topology.cgrid_cap import (
+    auto_round_sharp_te,
+    build_cap_blocks,
+    detect_te_thickness,
+    find_symmetric_le_cuts,
+)
 
 
 def _naca0012_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
@@ -65,14 +70,8 @@ def _naca0012_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     # The LE point is where x is minimum.
     le_idx = int(np.argmin(pts3d[:, 0]))
     # Search backward (toward i=0) for the first node with x >= le_cut_frac.
-    le_cut_upper = next(
-        i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= le_cut_frac
-    )
-    le_cut_lower = next(
-        i
-        for i in range(le_idx, len(pts3d))
-        if pts3d[i, 0] >= le_cut_frac
-    )
+    le_cut_upper = next(i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= le_cut_frac)
+    le_cut_lower = next(i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= le_cut_frac)
     return pts3d, le_cut_upper, le_cut_lower
 
 
@@ -95,12 +94,8 @@ def _box_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     # The "LE-cut" for this rectangle: pick a chord-position cut at, say,
     # x = 0.2 (= 5% from x=0.05 along chord-of-0.9).
     le_cut_x = 0.20
-    le_cut_upper = next(
-        i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= le_cut_x
-    )
-    le_cut_lower = next(
-        i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= le_cut_x
-    )
+    le_cut_upper = next(i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= le_cut_x)
+    le_cut_lower = next(i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= le_cut_x)
     return pts3d, le_cut_upper, le_cut_lower
 
 
@@ -143,9 +138,7 @@ class TestCapShapes:
             is_blunt=True,
             wake_base_cross_section=wake_base_cs,
         )
-        assert set(caps.keys()) == {
-            "le", "upper", "lower", "te_upper", "te_lower", "wake_base"
-        }
+        assert set(caps.keys()) == {"le", "upper", "lower", "te_upper", "te_lower", "wake_base"}
 
     def test_block_rank_4_with_k_eq_2(self):
         """Cap blocks have shape (ni, nj, 2, 3) — 1 cell thick in k."""
@@ -223,9 +216,7 @@ class TestCapShapes:
         for k in range(nk_cap - 1):
             step = u[:, :, k + 1, :] - u[:, :, k, :]
             expected = -(inset / (nk_cap - 1)) * span
-            np.testing.assert_allclose(
-                step, np.broadcast_to(expected, step.shape), atol=1e-12
-            )
+            np.testing.assert_allclose(step, np.broadcast_to(expected, step.shape), atol=1e-12)
 
     def test_le_block_wraps_around_le(self):
         """cap_le's i-axis spans from upper-LE-cut to lower-LE-cut."""
@@ -274,7 +265,9 @@ class TestCapKAxis:
         # u[0, -1, 0,  :] is the same node offset outward by +inset * span.
         offset = u[0, -1, 0, :] - u[0, -1, -1, :]
         np.testing.assert_allclose(
-            offset, inset * span, atol=1e-12,
+            offset,
+            inset * span,
+            atol=1e-12,
             err_msg="k_lo - k_hi should equal +tip_inset * span_dir",
         )
 
@@ -297,7 +290,9 @@ class TestCapKAxis:
             offset = blk[..., 0, :] - blk[..., -1, :]
             expected = np.broadcast_to(inset * span, offset.shape)
             np.testing.assert_allclose(
-                offset, expected, atol=1e-12,
+                offset,
+                expected,
+                atol=1e-12,
                 err_msg="k_lo - k_hi isn't +inset * span_dir",
             )
 
@@ -328,9 +323,7 @@ class TestKHiOnCrossSection:
         # (body i goes upper-TE-cut to lower-TE-cut; u i is reversed).
         for i in range(u.shape[0]):
             body_i = le_up - i
-            np.testing.assert_allclose(
-                u[i, -1, 1, :], cs[body_i, :], atol=1e-12
-            )
+            np.testing.assert_allclose(u[i, -1, 1, :], cs[body_i, :], atol=1e-12)
 
     def test_lower_khi_jhi_traces_pressure_side(self):
         """cap_lower.k_hi[i, -1, :] == cross_section[le_lo → ni-1] forward."""
@@ -348,9 +341,7 @@ class TestKHiOnCrossSection:
         # lo's i goes from lower-LE-cut (i=0) to lower-TE-cut (i=ni-1).
         for i in range(lo.shape[0]):
             body_i = le_lo + i
-            np.testing.assert_allclose(
-                lo[i, -1, 1, :], cs[body_i, :], atol=1e-12
-            )
+            np.testing.assert_allclose(lo[i, -1, 1, :], cs[body_i, :], atol=1e-12)
 
     def test_le_khi_jhi_wraps_le(self):
         """cap_le.k_hi[i, -1, :] == cross_section[le_up + i] for i = 0..ni_le-1."""
@@ -367,9 +358,7 @@ class TestKHiOnCrossSection:
         le = caps["le"]
         for i in range(le.shape[0]):
             body_i = le_up + i
-            np.testing.assert_allclose(
-                le[i, -1, 1, :], cs[body_i, :], atol=1e-12
-            )
+            np.testing.assert_allclose(le[i, -1, 1, :], cs[body_i, :], atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -581,11 +570,9 @@ class TestCapValidation:
 
 class TestFindSymmetricLeCuts:
     def test_finds_indices_symmetric_around_le(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
+        cs, _le_up, _le_lo = _naca0012_cross_section(41)
         # Reference: the helper used by the test fixture itself.
-        le_up_helper, le_lo_helper = find_symmetric_le_cuts(
-            cs, le_frac=0.05, span_axis_world=2
-        )
+        le_up_helper, le_lo_helper = find_symmetric_le_cuts(cs, le_frac=0.05, span_axis_world=2)
         # Helper must be symmetric (LE point at midpoint).
         le_idx = int(np.argmin(cs[:, 0]))
         assert le_up_helper + le_lo_helper == 2 * le_idx
@@ -635,12 +622,8 @@ def _sharp_te_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     pts2d = np.vstack([upper, lower])
     pts3d = np.column_stack([pts2d, np.zeros(len(pts2d))])
     le_idx = int(np.argmin(pts3d[:, 0]))
-    le_cut_upper = next(
-        i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05
-    )
-    le_cut_lower = next(
-        i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05
-    )
+    le_cut_upper = next(i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05)
+    le_cut_lower = next(i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05)
     return pts3d, le_cut_upper, le_cut_lower
 
 
@@ -686,7 +669,7 @@ class TestCapTECut:
         assert span > 1e-3
 
     def test_te_cut_inboard_avoids_degeneracy(self):
-        """With TE-cut indices set inboard of the body endpoints, te_upper.i_lo is non-degenerate."""
+        """TE-cut indices inboard of the body endpoints → te_upper.i_lo non-degenerate."""
         cs, le_up, le_lo = _naca0012_cross_section(41)
         te_up = 3
         te_lo = cs.shape[0] - 1 - te_up
@@ -728,9 +711,6 @@ class TestCapTECut:
 # ---------------------------------------------------------------------------
 
 
-from shore.topology.cgrid_cap import auto_round_sharp_te, detect_te_thickness
-
-
 class TestDetectTEThickness:
     def test_sharp_returns_zero(self):
         cs, _, _ = _sharp_te_cross_section(41)
@@ -751,9 +731,9 @@ class TestAutoRoundSharpTE:
         rounded = auto_round_sharp_te(cs, te_thickness=0.002, span_axis_world=2)
         # i=0 and i=ni-1 should now differ by exactly 0.002 in y.
         delta = rounded[-1, :] - rounded[0, :]
-        assert abs(delta[1] + 0.002) < 1e-12   # i=ni-1 moved -te/2 = -0.001
-        assert abs(delta[0]) < 1e-12            # x unchanged
-        assert abs(delta[2]) < 1e-12            # z unchanged
+        assert abs(delta[1] + 0.002) < 1e-12  # i=ni-1 moved -te/2 = -0.001
+        assert abs(delta[0]) < 1e-12  # x unchanged
+        assert abs(delta[2]) < 1e-12  # z unchanged
 
     def test_round_preserves_midpoint(self):
         cs, _, _ = _sharp_te_cross_section(41)

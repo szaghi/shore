@@ -13,7 +13,7 @@ face so that the channel-channel lateral seams (j_hi ↔ j_lo on adjacent
 sub-blocks, and i-seams to the cap channels) inherit the wrap's seam
 topology with identity AxisMaps.
 
-C1 continuity at the wrap–channel seam is optional via ``c1_first_step``:
+C1 continuity at the wrap-channel seam is optional via ``c1_first_step``:
 when set, the first interior layer is placed at distance ``c1_first_step``
 from k=0 along the local k-direction, matching the wrap's last marching
 step exactly so that the spacing has no jump across the seam.
@@ -78,7 +78,9 @@ def build_channel_block(
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
-    if not (isinstance(inner_face, np.ndarray) and inner_face.ndim == 3 and inner_face.shape[-1] == 3):
+    if not (
+        isinstance(inner_face, np.ndarray) and inner_face.ndim == 3 and inner_face.shape[-1] == 3
+    ):
         raise ParameterError(
             f"build_channel_block: inner_face must have shape (ni, nj, 3); "
             f"got {None if not isinstance(inner_face, np.ndarray) else inner_face.shape}"
@@ -92,8 +94,7 @@ def build_channel_block(
         raise ParameterError(f"build_channel_block: nk_channel must be >= 2, got {nk_channel}")
     if k_law not in ("uniform", "tanh", "tanh2"):
         raise ParameterError(
-            f"build_channel_block: k_law must be one of 'uniform' / 'tanh' / "
-            f"'tanh2', got {k_law!r}"
+            f"build_channel_block: k_law must be one of 'uniform' / 'tanh' / 'tanh2', got {k_law!r}"
         )
     if c1_first_step is not None:
         c1_arr = np.asarray(c1_first_step, dtype=np.float64)
@@ -127,10 +128,7 @@ def build_channel_block(
 
     c00, c10, c11, c01 = outer_quad[0], outer_quad[1], outer_quad[2], outer_quad[3]
     outer_face = (
-        (1.0 - a) * (1.0 - b) * c00
-        + a * (1.0 - b) * c10
-        + a * b * c11
-        + (1.0 - a) * b * c01
+        (1.0 - a) * (1.0 - b) * c00 + a * (1.0 - b) * c10 + a * b * c11 + (1.0 - a) * b * c01
     )  # (ni, nj, 3)
 
     # ------------------------------------------------------------------
@@ -207,7 +205,7 @@ def build_channel_block(
             geom = np.where(
                 np.abs(r3 - 1.0) < 1e-12,
                 k_idx[None, None, :] / n_tail,
-                (1.0 - r3 ** k_idx[None, None, :]) / (1.0 - r3 ** n_tail),
+                (1.0 - r3 ** k_idx[None, None, :]) / (1.0 - r3**n_tail),
             )  # (ni, nj, nk) in [0, 1]
         # Scale by gap / |outer - inner| (which is 1 since we are in the
         # parametric t-space already; geom is already on [0, 1]).  geom[..., 0] = 0,
@@ -255,7 +253,7 @@ def _solve_geometric_ratio(
         if not np.any(active):
             break
         ra = r[active]
-        rn = ra ** n
+        rn = ra**n
         # g(r) = (1 - r^n) / (1 - r) - R   (well-defined for r != 1)
         g = (1.0 - rn) / (1.0 - ra) - R[active]
         # Quotient rule on u/v with u = 1 - r^n, v = 1 - r:

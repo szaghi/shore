@@ -4,7 +4,7 @@ The OH topology produces 12 blocks:
     - 6 wrap blocks (cubed-sphere, k=0 on STL, marched outward to nk_wrap-1)
     - 6 channel blocks (frustum, k=0 ≡ wrap.k_hi, k=nk_c-1 on the box)
 
-Wrap–channel SHARED-by-view: the wrap and its mirror channel share one
+Wrap-channel SHARED-by-view: the wrap and its mirror channel share one
 underlying buffer of depth (nk_wrap + nk_channel - 1).  The channel's
 k=0 row IS the wrap's k=nk_wrap-1 row by numpy view aliasing.
 """
@@ -19,7 +19,6 @@ from shore.mesh.face import FaceBC
 from shore.mesh.mesh import Mesh
 from shore.mesh.spacing import Spacing1D
 from shore.mesh.topology import OHTopology
-
 
 # Common build parameters used across the test classes.
 NK_WRAP = 5
@@ -53,9 +52,7 @@ class TestOHConstruction:
     def test_block_labels(self, sphere_stl):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -80,9 +77,7 @@ class TestOHConstruction:
         """Each channel block has (ni, nj) of its paired wrap block."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -104,9 +99,7 @@ class TestSharedViewAliasing:
     def test_buffers_share_memory(self, sphere_stl):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -125,9 +118,7 @@ class TestSharedViewAliasing:
         """After marching, channel.k_lo == wrap.k_hi node-for-node."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -137,9 +128,7 @@ class TestSharedViewAliasing:
         for q in range(6):
             wrap = m.blocks[q]
             chan = m.blocks[6 + q]
-            np.testing.assert_array_equal(
-                wrap.nodes[:, :, -1, :], chan.nodes[:, :, 0, :]
-            )
+            np.testing.assert_array_equal(wrap.nodes[:, :, -1, :], chan.nodes[:, :, 0, :])
 
 
 # ---------------------------------------------------------------------------
@@ -151,9 +140,7 @@ class TestOHBCs:
     def test_wrap_k_hi_is_shared_with_channel(self, sphere_stl):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -172,9 +159,7 @@ class TestOHBCs:
         """Outer channel face = box → FREE (far-field)."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -186,9 +171,7 @@ class TestOHBCs:
         """Wrap k_lo (STL surface) BC is unchanged from CubedSphereTopology."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -200,9 +183,7 @@ class TestOHBCs:
         """Channel mirrors wrap's lateral seam structure: chan_sub_q.j_hi ↔ chan_sub_(q+1).j_lo."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -228,9 +209,7 @@ class TestChannelConstruction:
         """After build, channel.k_hi nodes lie on the corresponding box face."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -259,9 +238,7 @@ class TestChannelConstruction:
         """Each of the 6 box faces is covered by exactly one channel block."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -277,7 +254,7 @@ class TestChannelConstruction:
             cy = outer[..., 1].mean()
             cz = outer[..., 2].mean()
             # Find the dominant axis.
-            for axis, (ax_min, ax_max), c in (
+            for axis, (ax_min, ax_max), _c in (
                 ("x", (BOX_VMIN[0], BOX_VMAX[0]), cx),
                 ("y", (BOX_VMIN[1], BOX_VMAX[1]), cy),
                 ("z", (BOX_VMIN[2], BOX_VMAX[2]), cz),
@@ -294,9 +271,7 @@ class TestChannelConstruction:
         """cap_north (z<0 side per shore convention) → -z box face."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -310,9 +285,7 @@ class TestChannelConstruction:
     def test_south_cap_owns_zplus_face(self, sphere_stl):
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -334,9 +307,7 @@ class TestMarchingUnaffectsWrap:
         """Wrap blocks still expand outward like vanilla CubedSphereTopology."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -360,9 +331,7 @@ class TestC1Seam:
         """Default c1_seam=True: ||chan[k=1]-chan[k=0]|| ≈ ||wrap[-1]-wrap[-2]|| at every (i, j)."""
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=NK_CHANNEL),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -372,12 +341,8 @@ class TestC1Seam:
         for q in range(6):
             wrap = m.blocks[q]
             chan = m.blocks[6 + q]
-            wrap_last = np.linalg.norm(
-                wrap.nodes[:, :, -1, :] - wrap.nodes[:, :, -2, :], axis=-1
-            )
-            chan_first = np.linalg.norm(
-                chan.nodes[:, :, 1, :] - chan.nodes[:, :, 0, :], axis=-1
-            )
+            wrap_last = np.linalg.norm(wrap.nodes[:, :, -1, :] - wrap.nodes[:, :, -2, :], axis=-1)
+            chan_first = np.linalg.norm(chan.nodes[:, :, 1, :] - chan.nodes[:, :, 0, :], axis=-1)
             np.testing.assert_allclose(chan_first, wrap_last, rtol=1e-8)
 
     def test_channel_geometric_growth_smooth(self, sphere_stl):
@@ -386,9 +351,7 @@ class TestC1Seam:
         nk_channel = 8
         m = Mesh.from_stl(
             sphere_stl,
-            topology=OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=nk_channel
-            ),
+            topology=OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=nk_channel),
             ni=NI,
             nj=NJ,
             nk=NK_WRAP,
@@ -401,9 +364,7 @@ class TestC1Seam:
         for q in range(6):
             chan = m.blocks[6 + q]
             ic, jc = chan.nodes.shape[0] // 2, chan.nodes.shape[1] // 2
-            steps = np.linalg.norm(
-                np.diff(chan.nodes[ic, jc, :, :], axis=0), axis=-1
-            )
+            steps = np.linalg.norm(np.diff(chan.nodes[ic, jc, :, :], axis=0), axis=-1)
             ratios = steps[1:] / steps[:-1]
             # All ratios within 0.5% of each other — geometric growth.
             assert ratios.std() / ratios.mean() < 5e-3, (
@@ -436,9 +397,7 @@ class TestC1Seam:
         wrap_last = np.linalg.norm(
             wrap.nodes[:, :, -1, :] - wrap.nodes[:, :, -2, :], axis=-1
         ).mean()
-        chan_first = np.linalg.norm(
-            chan.nodes[:, :, 1, :] - chan.nodes[:, :, 0, :], axis=-1
-        ).mean()
+        chan_first = np.linalg.norm(chan.nodes[:, :, 1, :] - chan.nodes[:, :, 0, :], axis=-1).mean()
         assert chan_first > 2.0 * wrap_last
 
 
@@ -458,9 +417,7 @@ class TestOHParameterValidation:
 
     def test_nk_channel_too_small_rejected(self):
         with pytest.raises(ParameterError, match="nk_channel"):
-            OHTopology(
-                box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=1
-            )
+            OHTopology(box_vmin=BOX_VMIN, box_vmax=BOX_VMAX, nk_channel=1)
 
     def test_invalid_k_law_rejected(self):
         with pytest.raises(ParameterError, match="k_law"):

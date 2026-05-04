@@ -105,19 +105,33 @@ def _build_cubed_sphere_blocks(
 
     # Cap k=0 seeds — gnomonic flat-square projection.
     cap_south_k0 = build_cap_k0(
-        theta_cap=theta_cap, nc=nc, pole="south", projector=cap_proj,
-        j_spacing=j_spacing, j_beta=j_beta, phi_offset=phi_offset,
+        theta_cap=theta_cap,
+        nc=nc,
+        pole="south",
+        projector=cap_proj,
+        j_spacing=j_spacing,
+        j_beta=j_beta,
+        phi_offset=phi_offset,
     )
     cap_north_k0 = build_cap_k0(
-        theta_cap=theta_cap, nc=nc, pole="north", projector=cap_proj,
-        j_spacing=j_spacing, j_beta=j_beta, phi_offset=phi_offset,
+        theta_cap=theta_cap,
+        nc=nc,
+        pole="north",
+        projector=cap_proj,
+        j_spacing=j_spacing,
+        j_beta=j_beta,
+        phi_offset=phi_offset,
     )
 
     # Equator k=0 — great-circle slerp + ray-cast.
     equator_k0 = build_equator(
-        cap_south=cap_south_k0, cap_north=cap_north_k0, ni=ni,
-        theta_cap=theta_cap, projector=cap_proj,
-        i_spacing=i_spacing, i_beta=i_beta,
+        cap_south=cap_south_k0,
+        cap_north=cap_north_k0,
+        ni=ni,
+        theta_cap=theta_cap,
+        projector=cap_proj,
+        i_spacing=i_spacing,
+        i_beta=i_beta,
     )
 
     # Equatorial ring buffer of depth total_k.  Sub-block sees [..., :nk, :].
@@ -151,28 +165,41 @@ def _build_cubed_sphere_blocks(
     for q in range(4):
         sub_blocks.append(
             HexBlock(
-                label=f"sub{q}", nodes=sub_wrap_views[q],
-                periodic_i=False, periodic_j=False, spacing_k=_sp_k,
+                label=f"sub{q}",
+                nodes=sub_wrap_views[q],
+                periodic_i=False,
+                periodic_j=False,
+                spacing_k=_sp_k,
             )
         )
     cap_north_blk = HexBlock(
-        label="cap_north", nodes=cap_north_wrap,
-        periodic_i=False, periodic_j=False, spacing_k=_sp_k,
+        label="cap_north",
+        nodes=cap_north_wrap,
+        periodic_i=False,
+        periodic_j=False,
+        spacing_k=_sp_k,
     )
     cap_south_blk = HexBlock(
-        label="cap_south", nodes=cap_south_wrap,
-        periodic_i=False, periodic_j=False, spacing_k=_sp_k,
+        label="cap_south",
+        nodes=cap_south_wrap,
+        periodic_i=False,
+        periodic_j=False,
+        spacing_k=_sp_k,
     )
 
     # Sub-block adjacency: sub_q.j_hi ↔ sub_{q+1 mod 4}.j_lo (SHARED).
     for q in range(4):
         q_next = (q + 1) % 4
         sub_blocks[q]._set_face_bc(
-            "j_hi", FaceBC.SHARED, partner=sub_blocks[q_next].face("j_lo"),
+            "j_hi",
+            FaceBC.SHARED,
+            partner=sub_blocks[q_next].face("j_lo"),
             axis_map=AxisMap.identity("j_hi"),
         )
         sub_blocks[q_next]._set_face_bc(
-            "j_lo", FaceBC.SHARED, partner=sub_blocks[q].face("j_hi"),
+            "j_lo",
+            FaceBC.SHARED,
+            partner=sub_blocks[q].face("j_hi"),
             axis_map=AxisMap.identity("j_lo"),
         )
 
@@ -185,12 +212,14 @@ def _build_cubed_sphere_blocks(
         for q, (cap_face, sub_axis_map) in enumerate(table):
             sub_blk = sub_blocks[q]
             cap_blk._set_face_bc(
-                cap_face, FaceBC.DIRICHLET,
+                cap_face,
+                FaceBC.DIRICHLET,
                 partner=sub_blk.face(sub_face),
                 axis_map=sub_axis_map.inverse(sub_face, cap_face),
             )
             sub_blk._set_face_bc(
-                sub_face, FaceBC.DIRICHLET,
+                sub_face,
+                FaceBC.DIRICHLET,
                 partner=cap_blk.face(cap_face),
                 axis_map=sub_axis_map,
             )
@@ -307,7 +336,6 @@ class CubedSphereTopology(Topology):
             ni = ni if ni is not None else int(surface.shape[0])
             nj = nj if nj is not None else int(surface.shape[1])
         nj = _adjust_nj(nj)
-        nc = nj // 4 + 1
 
         # ------------------------------------------------------------------
         # Resolve projector
@@ -888,12 +916,10 @@ class CGridTopology(Topology):
             ni_wake=ni_wake,
             nk_w=nk_w,
         )
-        upper, body, lower, wake_base = cgrid_blocks
+        _upper, body, _lower, wake_base = cgrid_blocks
 
         # ----- Build cap blocks per requested tip -----
-        tips_to_build = (
-            ("jlo", "jhi") if cap_tips == "both" else (cap_tips,)
-        )
+        tips_to_build = ("jlo", "jhi") if cap_tips == "both" else (cap_tips,)
         cap_blocks: list[HexBlock] = []
 
         n_stations = body.nodes.shape[1]
@@ -1011,67 +1037,79 @@ class CGridTopology(Topology):
 
             # cap_le.i_lo ↔ cap_upper.i_lo  (LE-cut, suction side)
             cap_le_blk._set_face_bc(
-                "i_lo", FaceBC.SHARED,
+                "i_lo",
+                FaceBC.SHARED,
                 partner=cap_upper_blk.face("i_lo"),
                 axis_map=AxisMap.identity("i_lo"),
             )
             cap_upper_blk._set_face_bc(
-                "i_lo", FaceBC.SHARED,
+                "i_lo",
+                FaceBC.SHARED,
                 partner=cap_le_blk.face("i_lo"),
                 axis_map=AxisMap.identity("i_lo"),
             )
             # cap_le.i_hi ↔ cap_lower.i_lo  (LE-cut, pressure side)
             cap_le_blk._set_face_bc(
-                "i_hi", FaceBC.SHARED,
+                "i_hi",
+                FaceBC.SHARED,
                 partner=cap_lower_blk.face("i_lo"),
                 axis_map=AxisMap.identity("i_hi"),
             )
             cap_lower_blk._set_face_bc(
-                "i_lo", FaceBC.SHARED,
+                "i_lo",
+                FaceBC.SHARED,
                 partner=cap_le_blk.face("i_hi"),
                 axis_map=AxisMap.identity("i_lo"),
             )
             # cap_upper.j_lo ↔ cap_lower.j_lo  (chord cut)
             cap_upper_blk._set_face_bc(
-                "j_lo", FaceBC.SHARED,
+                "j_lo",
+                FaceBC.SHARED,
                 partner=cap_lower_blk.face("j_lo"),
                 axis_map=AxisMap.identity("j_lo"),
             )
             cap_lower_blk._set_face_bc(
-                "j_lo", FaceBC.SHARED,
+                "j_lo",
+                FaceBC.SHARED,
                 partner=cap_upper_blk.face("j_lo"),
                 axis_map=AxisMap.identity("j_lo"),
             )
             # cap_upper.i_hi ↔ cap_te_upper.i_lo  (TE-cut, suction side)
             cap_upper_blk._set_face_bc(
-                "i_hi", FaceBC.SHARED,
+                "i_hi",
+                FaceBC.SHARED,
                 partner=cap_te_upper_blk.face("i_lo"),
                 axis_map=AxisMap.identity("i_hi"),
             )
             cap_te_upper_blk._set_face_bc(
-                "i_lo", FaceBC.SHARED,
+                "i_lo",
+                FaceBC.SHARED,
                 partner=cap_upper_blk.face("i_hi"),
                 axis_map=AxisMap.identity("i_lo"),
             )
             # cap_lower.i_hi ↔ cap_te_lower.i_lo  (TE-cut, pressure side)
             cap_lower_blk._set_face_bc(
-                "i_hi", FaceBC.SHARED,
+                "i_hi",
+                FaceBC.SHARED,
                 partner=cap_te_lower_blk.face("i_lo"),
                 axis_map=AxisMap.identity("i_hi"),
             )
             cap_te_lower_blk._set_face_bc(
-                "i_lo", FaceBC.SHARED,
+                "i_lo",
+                FaceBC.SHARED,
                 partner=cap_lower_blk.face("i_hi"),
                 axis_map=AxisMap.identity("i_lo"),
             )
             # cap_te_upper.j_lo ↔ cap_te_lower.j_lo  (chord-cut continuation)
             cap_te_upper_blk._set_face_bc(
-                "j_lo", FaceBC.SHARED,
+                "j_lo",
+                FaceBC.SHARED,
                 partner=cap_te_lower_blk.face("j_lo"),
                 axis_map=AxisMap.identity("j_lo"),
             )
             cap_te_lower_blk._set_face_bc(
-                "j_lo", FaceBC.SHARED,
+                "j_lo",
+                FaceBC.SHARED,
                 partner=cap_te_upper_blk.face("j_lo"),
                 axis_map=AxisMap.identity("j_lo"),
             )
@@ -1472,44 +1510,31 @@ class CGridTipCap(Topology):
                 f"|span_dir|={span_norm:.6g}.  Normalise before passing."
             )
         if tip_inset <= 0:
-            raise ParameterError(
-                f"CGridTipCap: tip_inset must be > 0, got {tip_inset}"
-            )
+            raise ParameterError(f"CGridTipCap: tip_inset must be > 0, got {tip_inset}")
         if n_cap_j < 2:
-            raise ParameterError(
-                f"CGridTipCap: n_cap_j must be >= 2, got {n_cap_j}"
-            )
+            raise ParameterError(f"CGridTipCap: n_cap_j must be >= 2, got {n_cap_j}")
         if cap_j_spacing not in ("uniform", "tanh", "tanh2"):
             raise ParameterError(
                 f"CGridTipCap: cap_j_spacing must be 'uniform' / 'tanh' / "
                 f"'tanh2', got {cap_j_spacing!r}"
             )
         if is_blunt and wake_base_cross_section is None:
-            raise ParameterError(
-                "CGridTipCap: is_blunt=True requires wake_base_cross_section."
-            )
+            raise ParameterError("CGridTipCap: is_blunt=True requires wake_base_cross_section.")
         if te_thickness is not None and te_thickness_frac is not None:
             raise ParameterError(
                 "CGridTipCap: pass either te_thickness (absolute) or "
                 "te_thickness_frac (fraction of chord), not both."
             )
         if te_thickness is not None and te_thickness <= 0:
-            raise ParameterError(
-                f"CGridTipCap: te_thickness must be > 0, got {te_thickness}"
-            )
+            raise ParameterError(f"CGridTipCap: te_thickness must be > 0, got {te_thickness}")
         if te_thickness_frac is not None and te_thickness_frac <= 0:
             raise ParameterError(
-                f"CGridTipCap: te_thickness_frac must be > 0, "
-                f"got {te_thickness_frac}"
+                f"CGridTipCap: te_thickness_frac must be > 0, got {te_thickness_frac}"
             )
         self.le_cut_upper_idx = int(le_cut_upper_idx)
         self.le_cut_lower_idx = int(le_cut_lower_idx)
-        self.te_cut_upper_idx = (
-            None if te_cut_upper_idx is None else int(te_cut_upper_idx)
-        )
-        self.te_cut_lower_idx = (
-            None if te_cut_lower_idx is None else int(te_cut_lower_idx)
-        )
+        self.te_cut_upper_idx = None if te_cut_upper_idx is None else int(te_cut_upper_idx)
+        self.te_cut_lower_idx = None if te_cut_lower_idx is None else int(te_cut_lower_idx)
         self.span_dir = span_arr
         self.tip_inset = float(tip_inset)
         self.n_cap_j = int(n_cap_j)
@@ -1522,12 +1547,8 @@ class CGridTipCap(Topology):
             else None
         )
         self.auto_round_te = bool(auto_round_te)
-        self.te_thickness = (
-            None if te_thickness is None else float(te_thickness)
-        )
-        self.te_thickness_frac = (
-            None if te_thickness_frac is None else float(te_thickness_frac)
-        )
+        self.te_thickness = None if te_thickness is None else float(te_thickness)
+        self.te_thickness_frac = None if te_thickness_frac is None else float(te_thickness_frac)
 
     def build(
         self,
@@ -1566,9 +1587,7 @@ class CGridTipCap(Topology):
         )
 
         if nk < 2:
-            raise ParameterError(
-                f"CGridTipCap.build: nk must be >= 2, got {nk}"
-            )
+            raise ParameterError(f"CGridTipCap.build: nk must be >= 2, got {nk}")
 
         # ------------------------------------------------------------------
         # Sharp/blunt detection + auto-round.
@@ -1600,7 +1619,9 @@ class CGridTipCap(Topology):
                 frac = self.te_thickness_frac if self.te_thickness_frac is not None else 0.002
                 te = frac * chord_len
             cs_for_cap = auto_round_sharp_te(
-                surface, te_thickness=te, span_axis_world=span_axis_world,
+                surface,
+                te_thickness=te,
+                span_axis_world=span_axis_world,
             )
             sys.stderr.write(
                 f"CGridTipCap: sharp TE detected; auto-rounding cap with "
@@ -1661,7 +1682,11 @@ class CGridTipCap(Topology):
             spacing_k=_sp_k,
         )
         blocks: list[HexBlock] = [
-            cap_le, cap_upper, cap_lower, cap_te_upper, cap_te_lower,
+            cap_le,
+            cap_upper,
+            cap_lower,
+            cap_te_upper,
+            cap_te_lower,
         ]
 
         if self.is_blunt:
@@ -1833,9 +1858,7 @@ class OHTopology(Topology):
         c1_seam: bool = True,
     ) -> None:
         if nk_channel < 2:
-            raise ParameterError(
-                f"OHTopology: nk_channel must be >= 2, got {nk_channel}"
-            )
+            raise ParameterError(f"OHTopology: nk_channel must be >= 2, got {nk_channel}")
         if k_law_channel not in ("uniform", "tanh", "tanh2"):
             raise ParameterError(
                 f"OHTopology: k_law_channel must be 'uniform' / 'tanh' / "
@@ -1885,9 +1908,7 @@ class OHTopology(Topology):
         """
         if ni is None or nj is None:
             if surface is None:
-                raise ParameterError(
-                    "OHTopology.build needs ni and nj (or a surface array)."
-                )
+                raise ParameterError("OHTopology.build needs ni and nj (or a surface array).")
             ni = ni if ni is not None else int(surface.shape[0])
             nj = nj if nj is not None else int(surface.shape[1])
         nj = _adjust_nj(nj)
@@ -1914,11 +1935,17 @@ class OHTopology(Topology):
         # caller's theta_cap is ignored here — cube geometry dictates it.
         theta_cap_oh = 0.25 * np.pi
         wrap_blocks = _build_cubed_sphere_blocks(
-            ni=ni, nj=nj, nk=nk_wrap, total_k=total_k,
-            cap_proj=cap_proj, spacing_k=spacing_k,
+            ni=ni,
+            nj=nj,
+            nk=nk_wrap,
+            total_k=total_k,
+            cap_proj=cap_proj,
+            spacing_k=spacing_k,
             theta_cap=theta_cap_oh,
-            i_spacing=i_spacing, i_beta=i_beta,
-            j_spacing=j_spacing, j_beta=j_beta,
+            i_spacing=i_spacing,
+            i_beta=i_beta,
+            j_spacing=j_spacing,
+            j_beta=j_beta,
             phi_offset=0.25 * np.pi,
         )
 
@@ -1930,14 +1957,12 @@ class OHTopology(Topology):
             # which has length nk_chan and includes the shared seam at k=0.
             chan_view = full_nodes[:, :, nk_wrap - 1 :, :]
             assert chan_view.shape[2] == nk_chan
-            label = (
-                f"chan_sub{q}" if q < 4 else
-                "chan_north" if q == 4 else
-                "chan_south"
-            )
+            label = f"chan_sub{q}" if q < 4 else "chan_north" if q == 4 else "chan_south"
             chan_blk = HexBlock(
-                label=label, nodes=chan_view,
-                periodic_i=False, periodic_j=False,
+                label=label,
+                nodes=chan_view,
+                periodic_i=False,
+                periodic_j=False,
                 spacing_k=spacing_k or Spacing1D(law="geometric", ds=1e-3),
             )
             channel_blocks.append(chan_blk)
@@ -1945,11 +1970,15 @@ class OHTopology(Topology):
         # Wire wrap.k_hi <-> channel.k_lo (SHARED, view-aliased, identity).
         for w_blk, c_blk in zip(wrap_blocks, channel_blocks, strict=True):
             w_blk._set_face_bc(
-                "k_hi", FaceBC.SHARED, partner=c_blk.face("k_lo"),
+                "k_hi",
+                FaceBC.SHARED,
+                partner=c_blk.face("k_lo"),
                 axis_map=AxisMap.identity("k_hi"),
             )
             c_blk._set_face_bc(
-                "k_lo", FaceBC.SHARED, partner=w_blk.face("k_hi"),
+                "k_lo",
+                FaceBC.SHARED,
+                partner=w_blk.face("k_hi"),
                 axis_map=AxisMap.identity("k_lo"),
             )
 
@@ -1959,11 +1988,15 @@ class OHTopology(Topology):
         for q in range(4):
             q_next = (q + 1) % 4
             chan_subs[q]._set_face_bc(
-                "j_hi", FaceBC.SHARED, partner=chan_subs[q_next].face("j_lo"),
+                "j_hi",
+                FaceBC.SHARED,
+                partner=chan_subs[q_next].face("j_lo"),
                 axis_map=AxisMap.identity("j_hi"),
             )
             chan_subs[q_next]._set_face_bc(
-                "j_lo", FaceBC.SHARED, partner=chan_subs[q].face("j_hi"),
+                "j_lo",
+                FaceBC.SHARED,
+                partner=chan_subs[q].face("j_hi"),
                 axis_map=AxisMap.identity("j_lo"),
             )
 
@@ -1978,12 +2011,14 @@ class OHTopology(Topology):
             for q, (cap_face, sub_axis_map) in enumerate(table):
                 csub = chan_subs[q]
                 chan_cap_blk._set_face_bc(
-                    cap_face, FaceBC.DIRICHLET,
+                    cap_face,
+                    FaceBC.DIRICHLET,
                     partner=csub.face(sub_face_lit),
                     axis_map=sub_axis_map.inverse(sub_face_lit, cap_face),
                 )
                 csub._set_face_bc(
-                    sub_face_lit, FaceBC.DIRICHLET,
+                    sub_face_lit,
+                    FaceBC.DIRICHLET,
                     partner=chan_cap_blk.face(cap_face),
                     axis_map=sub_axis_map,
                 )
@@ -1996,11 +2031,11 @@ class OHTopology(Topology):
     def fill_channel_blocks(self, blocks: list[HexBlock]) -> None:
         """Build channel block interiors after the wrap has been marched.
 
-        Walks the 6 wrap–channel pairs, computes each channel's outer face
+        Walks the 6 wrap-channel pairs, computes each channel's outer face
         on the user-supplied bounding box, and fills the channel's
         ``k=1..nk_channel-1`` interior by ruled-surface frustum interpolation.
 
-        The wrap–channel seam (channel k=0 = wrap k_hi) is already populated
+        The wrap-channel seam (channel k=0 = wrap k_hi) is already populated
         because the two faces share memory.  Only k=1..nk_channel-1 needs
         filling.
 
@@ -2066,9 +2101,7 @@ class OHTopology(Topology):
         c01 = inner_face[0, -1, :]
 
         full_centroid = inner_face.reshape(-1, 3).mean(axis=0)
-        if not np.all(
-            (full_centroid >= self.box_vmin) & (full_centroid <= self.box_vmax)
-        ):
+        if not np.all((full_centroid >= self.box_vmin) & (full_centroid <= self.box_vmax)):
             raise ParameterError(
                 f"OHTopology: wrap envelope centroid {full_centroid} is "
                 f"outside the bounding box [{self.box_vmin}, {self.box_vmax}].  "
@@ -2076,14 +2109,16 @@ class OHTopology(Topology):
                 f"enlarge the box or reduce nk / wrap step sizes."
             )
 
-        dists = np.array([
-            self.box_vmax[0] - full_centroid[0],  # +x face
-            full_centroid[0] - self.box_vmin[0],  # -x face
-            self.box_vmax[1] - full_centroid[1],  # +y face
-            full_centroid[1] - self.box_vmin[1],  # -y face
-            self.box_vmax[2] - full_centroid[2],  # +z face
-            full_centroid[2] - self.box_vmin[2],  # -z face
-        ])
+        dists = np.array(
+            [
+                self.box_vmax[0] - full_centroid[0],  # +x face
+                full_centroid[0] - self.box_vmin[0],  # -x face
+                self.box_vmax[1] - full_centroid[1],  # +y face
+                full_centroid[1] - self.box_vmin[1],  # -y face
+                self.box_vmax[2] - full_centroid[2],  # +z face
+                full_centroid[2] - self.box_vmin[2],  # -z face
+            ]
+        )
         face_idx = int(np.argmin(dists))
         axis_idx = face_idx // 2
         plane_val = (self.box_vmax if face_idx % 2 == 0 else self.box_vmin)[axis_idx]
@@ -2103,9 +2138,7 @@ class OHTopology(Topology):
             # practice they don't occur for cubed-sphere envelopes but the
             # snap must be deterministic.
             sign = np.where(sign == 0, 1.0, sign)
-            out_corners[:, ax] = np.where(
-                sign > 0, self.box_vmax[ax], self.box_vmin[ax]
-            )
+            out_corners[:, ax] = np.where(sign > 0, self.box_vmax[ax], self.box_vmin[ax])
         return out_corners
 
 

@@ -312,10 +312,7 @@ _CAP_TIP_INSET = Annotated[
     float | None,
     typer.Option(
         "--cap-tip-inset",
-        help=(
-            "[cgrid + caps] Spanwise wall thickness of the cap.  "
-            "Default = 1e-3 * chord."
-        ),
+        help=("[cgrid + caps] Spanwise wall thickness of the cap.  Default = 1e-3 * chord."),
     ),
 ]
 _CAP_N_CAP_J = Annotated[
@@ -329,10 +326,7 @@ _CAP_J_SPACING = Annotated[
     str,
     typer.Option(
         "--cap-j-spacing-cgrid",
-        help=(
-            "[cgrid + caps] Cap j-axis spacing law: uniform / tanh / "
-            "tanh2 (default tanh)."
-        ),
+        help=("[cgrid + caps] Cap j-axis spacing law: uniform / tanh / tanh2 (default tanh)."),
     ),
 ]
 _CAP_J_BETA = Annotated[
@@ -346,10 +340,7 @@ _CAP_NK = Annotated[
     int | None,
     typer.Option(
         "--cap-nk",
-        help=(
-            "[cgrid + caps] Cap k-axis (spanwise) node count.  Default = "
-            "matches --nk."
-        ),
+        help=("[cgrid + caps] Cap k-axis (spanwise) node count.  Default = matches --nk."),
     ),
 ]
 
@@ -1898,7 +1889,7 @@ def cap_tip(
         )
         raise typer.Exit(1) from None
     if span_axis not in ("x", "y", "z"):
-        _err.print(f"[red]Error:[/red] --span-axis must be 'x', 'y', or 'z'.")
+        _err.print("[red]Error:[/red] --span-axis must be 'x', 'y', or 'z'.")
         raise typer.Exit(1) from None
     if not (0.0 < le_frac < 1.0):
         _err.print(f"[red]Error:[/red] --le-frac must be in (0, 1), got {le_frac}.")
@@ -1907,14 +1898,10 @@ def cap_tip(
         _err.print(f"[red]Error:[/red] --te-frac must be in (0, 1), got {te_frac}.")
         raise typer.Exit(1) from None
     if not (le_frac < te_frac):
-        _err.print(
-            f"[red]Error:[/red] --le-frac ({le_frac}) must be < --te-frac ({te_frac})."
-        )
+        _err.print(f"[red]Error:[/red] --le-frac ({le_frac}) must be < --te-frac ({te_frac}).")
         raise typer.Exit(1) from None
     if te_thickness is not None and te_thickness <= 0:
-        _err.print(
-            f"[red]Error:[/red] --te-thickness must be > 0, got {te_thickness}."
-        )
+        _err.print(f"[red]Error:[/red] --te-thickness must be > 0, got {te_thickness}.")
         raise typer.Exit(1) from None
     if not body_geo.exists():
         _err.print(f"[red]Error:[/red] body geo file not found: {body_geo}")
@@ -1935,8 +1922,7 @@ def cap_tip(
 
     if body.ndim != 4 or body.shape[3] != 3:
         _err.print(
-            f"[red]Error:[/red] body geo has shape {body.shape}; expected "
-            f"(ni, n_stations, nk, 3)."
+            f"[red]Error:[/red] body geo has shape {body.shape}; expected (ni, n_stations, nk, 3)."
         )
         raise typer.Exit(1) from None
     if body.shape[1] < 2:
@@ -1955,8 +1941,8 @@ def cap_tip(
     inboard_norm = float(np.linalg.norm(inboard_dir))
     if inboard_norm < 1e-12:
         _err.print(
-            f"[red]Error:[/red] adjacent spanwise stations have coincident "
-            f"centroids — cannot infer span direction."
+            "[red]Error:[/red] adjacent spanwise stations have coincident "
+            "centroids — cannot infer span direction."
         )
         raise typer.Exit(1) from None
     span_dir = -inboard_dir / inboard_norm

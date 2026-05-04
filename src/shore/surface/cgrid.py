@@ -1291,9 +1291,7 @@ def round_body_te_in_surface(
         extents = body_xs.max(axis=0) - body_xs.min(axis=0)
         extents[span_axis_world] = -np.inf
         chord_axis = int(np.argmax(extents))
-        thickness_axis = next(
-            a for a in (0, 1, 2) if a != span_axis_world and a != chord_axis
-        )
+        thickness_axis = next(a for a in (0, 1, 2) if a != span_axis_world and a != chord_axis)
         # 1. Body TE columns: anti-symmetric split.  These columns are
         #    aliased to the wake blocks' TE-side endpoints, so shifting
         #    them moves those endpoints too.

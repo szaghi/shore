@@ -529,9 +529,12 @@ class Mesh:
         """Simultaneous marching for the 6-block CubedSphereTopology."""
         self._march_caps_blocks(
             self.blocks,
-            ds=ds, growth=growth,
-            smooth_strength=smooth_strength, smooth_iters=smooth_iters,
-            steps=steps, layer_callback=layer_callback,
+            ds=ds,
+            growth=growth,
+            smooth_strength=smooth_strength,
+            smooth_iters=smooth_iters,
+            steps=steps,
+            layer_callback=layer_callback,
             blend_normals_k=blend_normals_k,
         )
 

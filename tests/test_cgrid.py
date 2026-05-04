@@ -14,6 +14,7 @@ from shore.surface.cgrid import (
     build_c_curve,
     build_cgrid_k0,
     detect_te_edges,
+    round_body_te_in_surface,
     slice_by_span,
 )
 
@@ -1040,9 +1041,6 @@ class TestFourBlockCGrid:
 # ---------------------------------------------------------------------------
 
 
-from shore.surface.cgrid import round_body_te_in_surface
-
-
 class TestRoundBodyTEInSurface:
     def _build(self, naca0012_stl):
         mesh = trimesh.load(str(naca0012_stl), force="mesh")
@@ -1068,8 +1066,11 @@ class TestRoundBodyTEInSurface:
             )
         # Round, with a known thickness.
         round_body_te_in_surface(
-            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
-            te_thickness=0.005, span_axis="z",
+            r.nodes,
+            ni_wake=r.ni_wake,
+            ni_body=r.ni_body,
+            te_thickness=0.005,
+            span_axis="z",
         )
         # After rounding, the i=0/i=ni-1 columns are separated by 0.005 in y.
         for j in range(r.n_stations):
@@ -1086,8 +1087,11 @@ class TestRoundBodyTEInSurface:
         upper, body, lower = r.per_block_layers()  # views
         # All three views share memory with r.nodes.
         round_body_te_in_surface(
-            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
-            te_thickness=0.005, span_axis="z",
+            r.nodes,
+            ni_wake=r.ni_wake,
+            ni_body=r.ni_body,
+            te_thickness=0.005,
+            span_axis="z",
         )
         # Upper wake's i=ni_wake-1 column == body's i=0 column (upper-TE node).
         np.testing.assert_array_equal(upper[-1, :, :], body[0, :, :])
@@ -1096,7 +1100,7 @@ class TestRoundBodyTEInSurface:
         # And both moved by ±te/2 in y.
         for j in range(r.n_stations):
             assert abs(upper[-1, j, 1] - 0.0025) < 1e-12  # +te/2
-            assert abs(lower[0, j, 1] + 0.0025) < 1e-12   # -te/2
+            assert abs(lower[0, j, 1] + 0.0025) < 1e-12  # -te/2
 
     def test_wake_strips_at_full_te_offset(self, naca0012_stl):
         """Whole upper / lower wake k=0 strips sit at y = ±te/2, not just at the TE.
@@ -1107,10 +1111,13 @@ class TestRoundBodyTEInSurface:
         wake_base block.
         """
         r = self._build(naca0012_stl)
-        upper, body, lower = r.per_block_layers()
+        upper, _body, lower = r.per_block_layers()
         round_body_te_in_surface(
-            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
-            te_thickness=0.005, span_axis="z",
+            r.nodes,
+            ni_wake=r.ni_wake,
+            ni_body=r.ni_body,
+            te_thickness=0.005,
+            span_axis="z",
         )
         half = 0.0025
         # Every node of the upper wake at every station should have y = +half.
@@ -1122,29 +1129,41 @@ class TestRoundBodyTEInSurface:
         r = self._build(naca0012_stl)
         with pytest.raises(ParameterError, match="te_thickness"):
             round_body_te_in_surface(
-                r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
-                te_thickness=-0.01, span_axis="z",
+                r.nodes,
+                ni_wake=r.ni_wake,
+                ni_body=r.ni_body,
+                te_thickness=-0.01,
+                span_axis="z",
             )
 
     def test_invalid_span_axis_rejected(self, naca0012_stl):
         r = self._build(naca0012_stl)
         with pytest.raises(ParameterError, match="span_axis"):
             round_body_te_in_surface(
-                r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
-                te_thickness=0.001, span_axis="bogus",
+                r.nodes,
+                ni_wake=r.ni_wake,
+                ni_body=r.ni_body,
+                te_thickness=0.001,
+                span_axis="bogus",
             )
 
     def test_already_blunt_body_rejected(self, naca0012_stl):
         """Calling on an already-rounded surface raises (avoids double-rounding)."""
         r = self._build(naca0012_stl)
         round_body_te_in_surface(
-            r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
-            te_thickness=0.001, span_axis="z",
+            r.nodes,
+            ni_wake=r.ni_wake,
+            ni_body=r.ni_body,
+            te_thickness=0.001,
+            span_axis="z",
         )
         with pytest.raises(ParameterError, match="non-sharp"):
             round_body_te_in_surface(
-                r.nodes, ni_wake=r.ni_wake, ni_body=r.ni_body,
-                te_thickness=0.001, span_axis="z",
+                r.nodes,
+                ni_wake=r.ni_wake,
+                ni_body=r.ni_body,
+                te_thickness=0.001,
+                span_axis="z",
             )
 
 
@@ -1172,7 +1191,7 @@ class TestCGridConformalCaps:
             "span_axis": "z",
             "spacing_k": None,
             "mesh": mesh,
-            "blocks": 3,           # auto-promote to 4 when caps are on
+            "blocks": 3,  # auto-promote to 4 when caps are on
             "cap_tips": cap_tips,
             "cap_te_thickness_frac": 0.005,
             "cap_le_frac": 0.05,
@@ -1193,8 +1212,12 @@ class TestCGridConformalCaps:
         # 6 jlo cap blocks: le, upper, lower, te_upper, te_lower, wake_base.
         jlo_labels = sorted(b.label for b in blocks if b.label.startswith("cap_jlo_"))
         assert jlo_labels == [
-            "cap_jlo_le", "cap_jlo_lower", "cap_jlo_te_lower",
-            "cap_jlo_te_upper", "cap_jlo_upper", "cap_jlo_wake_base",
+            "cap_jlo_le",
+            "cap_jlo_lower",
+            "cap_jlo_te_lower",
+            "cap_jlo_te_upper",
+            "cap_jlo_upper",
+            "cap_jlo_wake_base",
         ]
 
     def test_returns_4_plus_6_blocks_for_jlo_only(self, naca0012_stl):
@@ -1209,7 +1232,8 @@ class TestCGridConformalCaps:
         """After build, the body's TE is split apart by the requested thickness."""
         # Use an absolute thickness so we know exactly what to compare to.
         blocks = self._build(
-            naca0012_stl, cap_tips="both",
+            naca0012_stl,
+            cap_tips="both",
             cap_te_thickness=0.005,
         )
         body = blocks[1]
