@@ -26,8 +26,14 @@ SHORE converts triangulated STL surfaces into structured body-fitted O-grid volu
 
 ### Topology
 
-The `shore mesh` CLI supports two topologies, selected with
-`--topology cubed_sphere|ogrid` (default `cubed_sphere`):
+The `shore mesh` CLI supports four topologies, selected with
+`--topology cubed_sphere|ogrid|cgrid|ch` (default `cubed_sphere`).
+Two further topologies (`OHTopology`, `CGridTipCap`) are available
+from the Python API only.  Hybrid topologies (`OHTopology`,
+`CHTopology`) compose a marched wrap with non-marching far-field
+channel blocks; the channels are SHARED-by-view to the wrap envelope
+where geometry permits and filled by `topology.fill_channel_blocks`
+after marching:
 
 **`cubed_sphere`** (6-block, `mesh/topology.py:CubedSphereTopology`, `surface/cap.py`,
 `surface/equator.py`, `topology/sphere_cap.py`): 4 equatorial sub-blocks
@@ -40,6 +46,34 @@ topology name is the cubed-sphere; "cap" inside it is a part.
 block, j-periodic, with polar singular axis rows at i=0 and i=ni-1.
 Marched by `Mesh._march_ogrid` using `_compute_normals(periodic=(False, True))`
 and the j-periodic `jacobian_field`. Writes one `<stem>.geo`.
+
+**`cgrid`** (1- / 3- / 4-block C-grid, `mesh/topology.py:CGridTopology`,
+`surface/cgrid.py`): C-grid wrap for sharp- or blunt-TE bodies
+(airfoils, hydrofoils).  3-block (sharp): `upper`, `body`, `lower`
+with SHARED TE-column seams and a wake-cut SHARED at `upper.k_lo ↔
+lower.k_lo`.  4-block (blunt): adds `wake_base` bridging the TE-base
+gap.  Optional conformal wing-tip cap blocks via `--cap-tips`
+(per-tip 5 cap blocks + 1 wake-base cap; auto-rounds sharp TE).
+Marched by `Mesh._march_cgrid_three` (TE-aware ghost rows).
+
+**`ch`** (10- / 12-block hybrid, `mesh/topology.py:CHTopology`,
+`topology/ch_channel.py`): C-grid wrap (3 or 4 blocks, sharp or
+blunt) + 7 or 8 H-channel blocks bridging the wrap envelope to a
+chord/normal/span-aligned far-field box.  Channel blocks: `chan_upper`
+/ `chan_body_top` / `chan_body_front` / `chan_body_bot` / `chan_lower`
+SHARED-by-view with their wrap k_hi slices; `chan_outflow_upper` /
+`chan_outflow_lower` (and `chan_outflow_wake_base` for CH-4) bridge
+the wrap's i-direction far-tip faces to the rear frame edge with
+cross-axis SHARED face mapping (k=0 data copied — channel-i = wrap-k).
+Body wrap is split into 3 i-segments; the splits' outer-quad
+endpoints land at the frame's top-front and bottom-front corners so
+all channel outer quads are planar.  Frame is defined by
+`chord_min/max`, `normal_min/max` and `freestream_world` (chord_axis
+= largest non-span freestream component) + `span_axis`.  Channels
+do not march; `Mesh.march` runs `_march_cgrid_three` on the wrap and
+then `topology.fill_channel_blocks(blocks)`.  Optional C1 seam pin
+matches each channel's first step to the wrap's last marching step
+per (i, j).
 
 - **Cap k=0 seed**: gnomonic flat-square projection
   (`surface/cap.py:build_cap_k0`). A flat diamond is placed in the
@@ -107,8 +141,10 @@ and the j-periodic `jacobian_field`. Writes one `<stem>.geo`.
 | `volume/hyperbolic.py` | `_compute_normals(layer, periodic, ghost_rows=None)`: outward unit normals via cross of i- and j-tangents. When `ghost_rows` is supplied (dict with optional keys `'i_lo'` / `'i_hi'` / `'j_lo'` / `'j_hi'`), the corresponding boundary tangent uses a centred difference against the ghost row instead of one-sided. `_laplacian_smooth(layer, strength, periodic)`: per-iteration `strength * (laplacian - node)` blend; non-periodic boundary rows clamped, k=0 wall always clamped. `_stl_normals` for blending. |
 | `volume/jacobian.py` | `jacobian_field` (periodic-j, shape `(ni-1, nj, nk-1)`), `_jacobian_field_open` (non-periodic, shape `(ni-1, nj-1, nk-1)`), `min_jacobian_two_layers` (used during marching), `jacobian_per_layer` (used by `check`). |
 | `topology/sphere_cap.py` | Low-level march helpers for the 6-block cubed-sphere topology: `_adjust_nj` (rounds nj to a multiple of 4), `_overwrite_cap_boundaries` (Dirichlet pin from equator pole rows), `_march_one_layer` / `_march_cap_layer` (hyperbolic step + Laplacian, with optional `ghost_rows` forwarded to `_compute_normals`), `_check_jacobian`. Cap **seed** face lives in `surface/cap.py`; equator seed in `surface/equator.py`. |
-| `mesh/topology.py` | `Topology` ABC and `CubedSphereTopology.build(surface, nk, ni, nj, spacing_k, projector, theta_cap, i_spacing, i_beta, j_spacing, j_beta)` — calls `build_cap_k0` for both poles, `build_equator`, then wires the 6 `HexBlock`s with SHARED views (sub-sub j-seams) and DIRICHLET partners (cap-equator i-seams). The `surface` arg is ignored (kept for backwards-compat); the gnomonic algorithm projects through `projector` directly. |
-| `mesh/mesh.py` | `Mesh.from_stl(...)` orchestrates body load + topology build. `Mesh.march()` dispatches by topology: `_march_caps()` for `CubedSphereTopology` (per layer: snapshots all 6 blocks, builds ghost rows via `_sub_ghost_rows` / `_cap_ghost_rows`, advances each block with seam-aware normals + Laplacian + cap-block DIRICHLET pin, restitches sub-sub seams, runs Jacobian guards, commits) and `_march_ogrid()` for `OGridTopology` (single-block hyperbolic march with `periodic=(False, True)` and j-periodic Jacobian guard). |
+| `topology/oh_channel.py` | OH (and shared by CH) channel-block frustum builder: `build_channel_block(inner_face, outer_quad, nk_channel, k_law, k_beta, c1_first_step)` — bilinear sweep of `outer_quad` to produce the channel's k=nk-1 face, ruled-surface interior, optional per-(i, j) C1 first-step pin via geometric tail (`_solve_geometric_ratio` Newton solver). Pure numpy; no marching. |
+| `topology/ch_channel.py` | CH-specific frame and outer-quad helpers: `CHFrame` dataclass (chord/normal/span axis indices + box extents), `resolve_frame(...)` (validates inputs, picks chord_axis from freestream), `outer_quads_for_cgrid(...)` (returns 7 or 8 planar `(4, 3)` quads keyed by channel label — `upper`, `body_top`, `body_front`, `body_bot`, `lower`, `outflow_upper`, `outflow_lower`, +`outflow_wake_base` for CH-4). Body-side splits land at frame corners so all outer quads are planar and adjacent quads agree at shared columns. |
+| `mesh/topology.py` | `Topology` ABC and `CubedSphereTopology.build(surface, nk, ni, nj, spacing_k, projector, theta_cap, i_spacing, i_beta, j_spacing, j_beta)` — calls `build_cap_k0` for both poles, `build_equator`, then wires the 6 `HexBlock`s with SHARED views (sub-sub j-seams) and DIRICHLET partners (cap-equator i-seams). The `surface` arg is ignored (kept for backwards-compat); the gnomonic algorithm projects through `projector` directly.  Also defines `OGridTopology` (single-block, j-periodic), `CGridTopology` (sharp/blunt 1- / 3- / 4-block C-grid; conformal cap-tips path), `CGridTipCap` (C-grid wing-tip cap, fully volumetric — no marching), `OHTopology` (cubed-sphere wrap + 6-face H-channel; 12 blocks, channel views aliased to wrap.k_hi via deeper buffer allocation, `fill_channel_blocks(...)` after marching), and `CHTopology` (C-grid wrap + H-channel; 12 blocks for sharp TE, 14 for blunt — 5 k_hi-side channels SHARED-by-view via single `nodes_all` buffer of depth `nk_wrap+nk_chan-1`; 4 (or 5) outflow sub-blocks per side `top_upper / wake_upper / wake_lower / top_lower` (+ `wake_base` for blunt) with conformal SHARED to wrap.upper.i_lo / lower.i_hi (nk = nk_wrap) and to chan_upper.i_lo / chan_lower.i_hi (nk = nk_channel)).  All non-cubed-sphere topologies expose `is_blunt` and `fill_channel_blocks` where applicable. |
+| `mesh/mesh.py` | `Mesh.from_stl(...)` orchestrates body load + topology build. `Mesh.march()` dispatches by topology: `_march_caps()` for `CubedSphereTopology` (per layer: snapshots all 6 blocks, builds ghost rows via `_sub_ghost_rows` / `_cap_ghost_rows`, advances each block with seam-aware normals + Laplacian + cap-block DIRICHLET pin, restitches sub-sub seams, runs Jacobian guards, commits), `_march_ogrid()` for `OGridTopology` (single-block hyperbolic march with `periodic=(False, True)` and j-periodic Jacobian guard), `_march_cgrid()` (1/3/4-block C-grid, dispatches to `_march_cgrid_three` for the multi-block path), and the OH/CH hybrids (run the underlying wrap marcher, then call `topology.fill_channel_blocks(blocks)` to fill the channel interiors). `Mesh.from_stl` rejects `CGridTopology` and `CHTopology` because their build params (`ni_body`/`ni_wake`/`n_stations`/`wake_length`) don't fit the `(ni, nj, nk)` signature — build the block list explicitly. |
 | `io/geo.py` | ASCII geo format (Xall_GPU compatible): `read_geo`, `write_geo`. |
 | `io/vtk.py` | VTK XML StructuredGrid export: `write_vts`, `write_surface_vts`, `write_caps_vtm` (MultiBlock for the 6-block cubed-sphere topology), `geo_to_pyvista`, `surface_to_pyvista`. |
 | `io/adjacency.py` | JSON sidecar for split block lists: `write_adjacency_json` / `read_adjacency_json` serialise the per-face BC + partner graph (FaceBC name + `{label, face}` partner reference). Read by downstream solvers to learn which faces are SHARED between which split chunks. |

@@ -176,6 +176,8 @@ full list.
 - [Cubed-sphere topology](/topologies/cubed-sphere) — the wrap construction
   used by OH (also usable standalone, with `theta_cap` and `phi_offset`
   free instead of pinned to π/4).
+- [CH hybrid topology](/topologies/ch-hybrid) — the airfoil-/hydrofoil
+  analogue (C-grid wrap + chord/normal-aligned far-field frame).
 - [H-grid topology](/topologies/h-grid) — body-less channel meshes
   for internal flow (not the same as the OH channel block, which
   bridges a body wrap to a box).

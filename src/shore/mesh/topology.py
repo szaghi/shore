@@ -1,4 +1,4 @@
-"""Topology ABC and concrete topologies (cubed-sphere, O-grid, C-grid, OH-hybrid)."""
+"""Topology ABC and concrete topologies (cubed-sphere, O-grid, C-grid, OH-/CH-hybrid)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from shore.mesh.spacing import Spacing1D
 from shore.surface.cap import build_cap_k0
 from shore.surface.cgrid import build_cgrid_k0
 from shore.surface.equator import build_equator
+from shore.topology.ch_channel import outer_quads_for_cgrid, resolve_frame
 from shore.topology.oh_channel import build_channel_block
 from shore.topology.sphere_cap import _adjust_nj
 
@@ -2140,6 +2141,1080 @@ class OHTopology(Topology):
             sign = np.where(sign == 0, 1.0, sign)
             out_corners[:, ax] = np.where(sign > 0, self.box_vmax[ax], self.box_vmin[ax])
         return out_corners
+
+
+class CHTopology(Topology):
+    """Hybrid C-grid wrap + H-channel far-field for sharp- or blunt-TE bodies.
+
+    Mirrors :class:`OHTopology` but with a C-grid wrap (3 or 4 blocks)
+    instead of a cubed-sphere wrap.  The user-supplied bounding "box"
+    is a rectangle in the chord/normal plane (extruded across the wrap's
+    span extents), defined by ``chord_min``, ``chord_max``, ``normal_min``,
+    ``normal_max`` in world coords.  ``freestream_world`` and
+    ``span_axis`` select which world axes carry chord and span.
+
+    **Block layout** returned by :meth:`build`:
+
+    CH-3 (sharp TE) — 12 blocks::
+
+        [upper, body, lower,                              # wrap
+         chan_upper, chan_body_top, chan_body_front,
+         chan_body_bot, chan_lower,                       # k_hi-side channels
+         chan_outflow_top_upper, chan_outflow_wake_upper,
+         chan_outflow_wake_lower, chan_outflow_top_lower] # outflow (4 sub-blocks)
+
+    CH-4 (blunt TE) — 14 blocks::
+
+        [upper, body, lower, wake_base,                   # wrap
+         chan_upper, chan_body_top, chan_body_front,
+         chan_body_bot, chan_lower,                       # k_hi-side channels
+         chan_outflow_top_upper, chan_outflow_wake_upper,
+         chan_outflow_wake_lower, chan_outflow_top_lower,
+         chan_outflow_wake_base]                          # outflow (5 sub-blocks)
+
+    The outflow region is partitioned per side into a *top* sub-block
+    (conformal SHARED to ``chan_upper.i_lo`` / ``chan_lower.i_hi`` —
+    same ``nk_channel``) and a *wake* sub-block (conformal SHARED to
+    the wrap's ``upper.i_lo`` / ``lower.i_hi`` — same ``nk_wrap``).
+    Adjacent sub-blocks meet at envelope-far-tip seams (SHARED) and
+    at the wake-cut seam (SHARED across upper and lower wake halves;
+    via ``chan_outflow_wake_base`` for blunt TE).
+
+    The 5 ``k_hi``-side channels (``chan_upper``, ``chan_body_top``,
+    ``chan_body_front``, ``chan_body_bot``, ``chan_lower``) are
+    SHARED-by-view with their wrap partners — wrap.k_hi and chan.k_lo
+    bit-identical via numpy view aliasing on a single ``nodes_all``
+    allocation per wrap segment.  The body wrap's k_hi is split into
+    3 i-segments at user-tunable indices ``i_split_body_upper`` and
+    ``i_split_body_lower`` (defaults: ``ni_body // 3`` and
+    ``2 * ni_body // 3``), each sub-channel sharing only its own
+    chunk of body.k_hi via numpy view aliasing.  Adjacent
+    chan_body_* sub-channels share their TE-direction seam by
+    overlapping on the split column (identity AxisMap).
+
+    The 2 (or 3) outflow channels are NOT view-aliased: their k=0
+    inner face has shape ``(nk_wrap, nj, 3)`` derived from the wrap's
+    ``i_lo`` / ``i_hi`` faces (a cross-axis remap from the wrap
+    convention), so :meth:`fill_channel_blocks` copies the face data
+    explicitly each time.  The SHARED face-graph entries are still
+    emitted so cc.par writers see the connection.
+
+    **Default face BCs**:
+
+    - Wrap k_lo = WALL on body, SHARED on upper/lower (wake-cut /
+      wake-base).
+    - Wrap k_hi = SHARED with the corresponding chan.k_lo.
+    - Wrap i_lo / i_hi at the wake far-tips = SHARED with chan_outflow_*.
+    - Channel k_lo = SHARED.  Channel k_hi = FREE (frame edge).
+    - Channel j_lo / j_hi = FREE (wing tips, Phase 2 will optionally
+      add spanwise tip channels).
+
+    Channels do NOT march; :meth:`shore.mesh.Mesh.march` runs only
+    the C-grid wrap marcher and then calls :meth:`fill_channel_blocks`.
+
+    Parameters
+    ----------
+    freestream_world :
+        Length-3 world-frame freestream vector.  ``None`` defaults to
+        the +chord_axis (chord_axis = first non-span world axis).
+    span_axis :
+        ``"x"``, ``"y"``, or ``"z"``.  Default ``"z"``.
+    chord_min, chord_max, normal_min, normal_max :
+        Frame extents in world coordinates.  Must contain the marched
+        wrap envelope (validated in :meth:`fill_channel_blocks`).
+    nk_channel :
+        Total channel-block layers (incl. shared-seam slot at k=0).
+        Must be >= 2.
+    k_law_channel :
+        Spacing law along channel k: ``'uniform'`` / ``'tanh'`` /
+        ``'tanh2'``.  Default ``'uniform'``.
+    k_beta_channel :
+        Clustering strength for tanh / tanh2.
+    c1_seam :
+        When True (default), the channel's first step at every (i, j)
+        is pinned to the wrap's last marching step at the same node —
+        bit-exact C1 spacing match across the wrap-channel seam.  Only
+        applies to the 5 ``k_hi``-side channels (the outflow channels
+        bridge wrap *side* faces and have no wrap "last step" along
+        their own k-axis to inherit from).
+    i_split_body_upper, i_split_body_lower :
+        Body-block i-indices at which ``body.k_hi`` is split into
+        the 3 chan_body_* sub-channels.  ``None`` (default) =
+        ``ni_body // 3`` and ``2 * ni_body // 3``.
+    """
+
+    def __init__(
+        self,
+        *,
+        chord_min: float,
+        chord_max: float,
+        normal_min: float,
+        normal_max: float,
+        nk_channel: int,
+        freestream_world: np.ndarray | None = None,
+        span_axis: str = "z",
+        k_law_channel: str = "uniform",
+        k_beta_channel: float = 3.0,
+        c1_seam: bool = True,
+        i_split_body_upper: int | None = None,
+        i_split_body_lower: int | None = None,
+        ni_outflow: int = 8,
+    ) -> None:
+        if nk_channel < 2:
+            raise ParameterError(f"CHTopology: nk_channel must be >= 2, got {nk_channel}")
+        if k_law_channel not in ("uniform", "tanh", "tanh2"):
+            raise ParameterError(
+                f"CHTopology: k_law_channel must be 'uniform' / 'tanh' / "
+                f"'tanh2', got {k_law_channel!r}"
+            )
+        # resolve_frame validates span_axis, freestream_world, and the
+        # chord/normal extents.
+        self.frame = resolve_frame(
+            freestream_world=freestream_world,
+            span_axis=span_axis,
+            chord_min=chord_min,
+            chord_max=chord_max,
+            normal_min=normal_min,
+            normal_max=normal_max,
+        )
+        self.freestream_world = (
+            None if freestream_world is None else np.asarray(freestream_world, dtype=np.float64)
+        )
+        self.span_axis = span_axis
+        self.nk_channel = int(nk_channel)
+        self.k_law_channel = k_law_channel
+        self.k_beta_channel = float(k_beta_channel)
+        self.c1_seam = bool(c1_seam)
+        self.i_split_body_upper = i_split_body_upper
+        self.i_split_body_lower = i_split_body_lower
+        if ni_outflow < 2:
+            raise ParameterError(f"CHTopology: ni_outflow must be >= 2, got {ni_outflow}")
+        self.ni_outflow = int(ni_outflow)
+        # Set in build() — fill_channel_blocks needs them later.
+        self._is_blunt: bool = False
+        self._ni_wake: int = 0
+        self._ni_body: int = 0
+        self._nk_wrap: int = 0
+
+    @property
+    def is_blunt(self) -> bool:
+        """True when build() detected a blunt TE (CH-4)."""
+        return self._is_blunt
+
+    def build(
+        self,
+        surface: np.ndarray | None,
+        nk: int,
+        *,
+        ni_body: int | None = None,
+        ni_wake: int | None = None,
+        n_stations: int | None = None,
+        wake_length: float | None = None,
+        wake_growth: float = 1.15,
+        te_dihedral_deg: float = 30.0,
+        spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
+        nk_w: int = 3,
+        **kwargs,
+    ) -> list[HexBlock]:
+        """Build the CH topology block list.
+
+        ``nk`` is the wrap depth.  The channel depth is taken from
+        ``CHTopology.nk_channel`` set at construction.
+        """
+        # --------------------------------------------------------------
+        # 1. Build / accept the C-grid k=0 layer.  Detect TE bluntness.
+        # --------------------------------------------------------------
+        if surface is None:
+            if mesh is None:
+                raise ParameterError(
+                    "CHTopology.build needs either a pre-built `surface` or a "
+                    "trimesh.Trimesh `mesh=` argument."
+                )
+            for name, val in (
+                ("ni_body", ni_body),
+                ("ni_wake", ni_wake),
+                ("n_stations", n_stations),
+                ("wake_length", wake_length),
+            ):
+                if val is None:
+                    raise ParameterError(f"CHTopology.build needs `{name}=` when surface is None.")
+            k0 = build_cgrid_k0(
+                mesh,  # type: ignore[arg-type]
+                ni_body=int(ni_body),  # type: ignore[arg-type]
+                ni_wake=int(ni_wake),  # type: ignore[arg-type]
+                n_stations=int(n_stations),  # type: ignore[arg-type]
+                wake_length=float(wake_length),  # type: ignore[arg-type]
+                span_axis=self.span_axis,
+                freestream_world=self.freestream_world,
+                te_dihedral_deg=te_dihedral_deg,
+                wake_growth=wake_growth,
+            )
+            surface_arr = k0.nodes
+            _ni_body = k0.ni_body
+            _ni_wake = k0.ni_wake
+            _is_blunt = k0.te_result.is_blunt
+        else:
+            if ni_body is None or ni_wake is None:
+                raise ParameterError(
+                    "CHTopology.build with a pre-built `surface` requires explicit "
+                    "`ni_body=` and `ni_wake=`."
+                )
+            _ni_body = int(ni_body)
+            _ni_wake = int(ni_wake)
+            _is_blunt = False
+            surface_arr = surface
+            if surface_arr.shape[0] != 2 * (_ni_wake - 1) + _ni_body:
+                raise ParameterError(
+                    f"CHTopology.build: surface i-extent {surface_arr.shape[0]} "
+                    f"does not match 2*(ni_wake-1) + ni_body = "
+                    f"{2 * (_ni_wake - 1) + _ni_body}."
+                )
+
+        self._is_blunt = _is_blunt
+        self._ni_wake = _ni_wake
+        self._ni_body = _ni_body
+        self._nk_wrap = int(nk)
+
+        _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
+
+        # Resolve body-split indices.
+        if self.i_split_body_upper is None:
+            i_split_upper = _ni_body // 3
+        else:
+            i_split_upper = int(self.i_split_body_upper)
+        if self.i_split_body_lower is None:
+            i_split_lower = (2 * _ni_body) // 3
+        else:
+            i_split_lower = int(self.i_split_body_lower)
+        if not (0 < i_split_upper < i_split_lower < _ni_body - 1):
+            raise ParameterError(
+                f"CHTopology.build: invalid body splits "
+                f"(0 < i_split_body_upper={i_split_upper} < "
+                f"i_split_body_lower={i_split_lower} < ni_body-1={_ni_body - 1}) "
+                f"violated.  Adjust the split indices or increase ni_body."
+            )
+        self._i_split_upper = i_split_upper
+        self._i_split_lower = i_split_lower
+
+        # --------------------------------------------------------------
+        # 2. Allocate the wrap+channel buffer with depth total_k.
+        # --------------------------------------------------------------
+        # Channel depth includes the SHARED seam slot at k=0 (= wrap's
+        # k=nk_wrap-1).  Total k-buffer length = nk_wrap + nk_channel - 1.
+        nk_wrap = int(nk)
+        nk_chan = self.nk_channel
+        total_k = nk_wrap + nk_chan - 1
+
+        nj = surface_arr.shape[1]
+        ni_total = 2 * (_ni_wake - 1) + _ni_body
+        nodes_all = np.empty((ni_total, nj, total_k, 3), dtype=np.float64)
+        nodes_all[:, :, 0, :] = surface_arr
+
+        i_te_upper = _ni_wake - 1
+        i_te_lower = i_te_upper + _ni_body - 1
+
+        # --- Wrap views (depth nk_wrap, k=0..nk_wrap-1) ---------------
+        upper_wrap = nodes_all[: i_te_upper + 1, :, :nk_wrap, :]
+        body_wrap = nodes_all[i_te_upper : i_te_lower + 1, :, :nk_wrap, :]
+        lower_wrap = nodes_all[i_te_lower:, :, :nk_wrap, :]
+
+        upper = HexBlock(
+            label="upper",
+            nodes=upper_wrap,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        body = HexBlock(
+            label="body",
+            nodes=body_wrap,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        lower = HexBlock(
+            label="lower",
+            nodes=lower_wrap,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+
+        # --- Wrap SHARED seams (mirrors CGridTopology) ----------------
+        upper._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=body.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        body._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=upper.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        body._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=body.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+
+        wrap_blocks: list[HexBlock] = [upper, body, lower]
+
+        # --- Wake-base block (CH-4 only) ------------------------------
+        if _is_blunt:
+            if nk_w < 2:
+                raise ParameterError(f"CHTopology.build: nk_w must be >= 2, got {nk_w}")
+            upper_k0 = upper_wrap[:, :, 0, :]
+            lower_k0 = lower_wrap[:, :, 0, :]
+            lower_k0_rev = lower_k0[::-1, :, :]
+            ts = np.linspace(0.0, 1.0, nk_w)
+            wake_base_nodes = np.empty((_ni_wake, nj, nk_w, 3), dtype=np.float64)
+            for k_idx, t in enumerate(ts):
+                wake_base_nodes[:, :, k_idx, :] = (1.0 - t) * lower_k0_rev + t * upper_k0
+            wake_base = HexBlock(
+                label="wake_base",
+                nodes=wake_base_nodes,
+                periodic_i=False,
+                periodic_j=False,
+                spacing_k=_sp_k,
+            )
+            wake_base._set_face_bc(
+                "k_hi",
+                FaceBC.SHARED,
+                partner=upper.face("k_lo"),
+                axis_map=AxisMap.identity("k_hi"),
+            )
+            upper._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=wake_base.face("k_hi"),
+                axis_map=AxisMap.identity("k_lo"),
+            )
+            i_flip = AxisMap.from_pairs(("i", True), ("j", False))
+            wake_base._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=lower.face("k_lo"),
+                axis_map=i_flip,
+            )
+            lower._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=wake_base.face("k_lo"),
+                axis_map=i_flip.inverse("k_lo", "k_lo"),
+            )
+            wake_base._set_face_bc("i_hi", FaceBC.WALL)
+            wrap_blocks.append(wake_base)
+        else:
+            # Sharp-TE wake cut: upper.k_lo ↔ lower.k_lo direct seam.
+            wake_cut_axis_map = AxisMap.from_pairs(("i", True), ("j", False))
+            upper._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=lower.face("k_lo"),
+                axis_map=wake_cut_axis_map,
+            )
+            lower._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=upper.face("k_lo"),
+                axis_map=wake_cut_axis_map.inverse("k_lo", "k_lo"),
+            )
+
+        # --------------------------------------------------------------
+        # 3. Carve the 5 k_hi-side channel views from nodes_all.
+        # --------------------------------------------------------------
+        # Each channel's k-axis runs from the wrap's k=nk_wrap-1 (the
+        # shared seam) up through the deeper buffer slots.
+        chan_upper_view = nodes_all[: i_te_upper + 1, :, nk_wrap - 1 :, :]
+        # Body-block slice in nodes_all: [i_te_upper, i_te_lower].  Split
+        # at i_split_upper (relative to body) -> nodes_all index
+        # i_te_upper + i_split_upper.  Channel views overlap by 1 row at
+        # the split columns to make those seams SHARED-by-view.
+        i_body_split_upper_global = i_te_upper + i_split_upper
+        i_body_split_lower_global = i_te_upper + i_split_lower
+        chan_body_top_view = nodes_all[
+            i_te_upper : i_body_split_upper_global + 1, :, nk_wrap - 1 :, :
+        ]
+        chan_body_front_view = nodes_all[
+            i_body_split_upper_global : i_body_split_lower_global + 1, :, nk_wrap - 1 :, :
+        ]
+        chan_body_bot_view = nodes_all[
+            i_body_split_lower_global : i_te_lower + 1, :, nk_wrap - 1 :, :
+        ]
+        chan_lower_view = nodes_all[i_te_lower:, :, nk_wrap - 1 :, :]
+
+        chan_upper = HexBlock(
+            label="chan_upper",
+            nodes=chan_upper_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        chan_body_top = HexBlock(
+            label="chan_body_top",
+            nodes=chan_body_top_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        chan_body_front = HexBlock(
+            label="chan_body_front",
+            nodes=chan_body_front_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        chan_body_bot = HexBlock(
+            label="chan_body_bot",
+            nodes=chan_body_bot_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        chan_lower = HexBlock(
+            label="chan_lower",
+            nodes=chan_lower_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+
+        khi_channels = [chan_upper, chan_body_top, chan_body_front, chan_body_bot, chan_lower]
+
+        # --- Wire wrap.k_hi ↔ chan.k_lo (SHARED, view-aliased) --------
+        # Each k_hi-side channel partners with a slice of one wrap block.
+        # The wrap-side face is the partial wrap.k_hi covering the
+        # channel's i-extent; we still emit the SHARED face on the
+        # whole wrap block (the face graph treats the whole face as one
+        # connection) — for the body wrap, that means body.k_hi has 3
+        # SHARED partners.  Face wiring only stores ONE partner per
+        # face on a HexBlock, so we use the body's i-range to identify
+        # the dominant partner; downstream consumers (cc.par writer)
+        # need the .adjacency.json sidecar to reconstruct the full
+        # body.k_hi → 3 channels mapping.  For Phase 1 we wire each
+        # channel.k_lo back to the relevant wrap's k_hi face and let
+        # the wrap's k_hi face partner with the central body-front
+        # channel (the one whose chord interval covers the LE — the
+        # most representative).  This is a documented Phase-1
+        # limitation; Phase 2 will add multi-partner face support.
+        upper._set_face_bc(
+            "k_hi",
+            FaceBC.SHARED,
+            partner=chan_upper.face("k_lo"),
+            axis_map=AxisMap.identity("k_hi"),
+        )
+        chan_upper._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=upper.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+        body._set_face_bc(
+            "k_hi",
+            FaceBC.SHARED,
+            partner=chan_body_front.face("k_lo"),
+            axis_map=AxisMap.identity("k_hi"),
+        )
+        chan_body_top._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=body.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+        chan_body_front._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=body.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+        chan_body_bot._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=body.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+        lower._set_face_bc(
+            "k_hi",
+            FaceBC.SHARED,
+            partner=chan_lower.face("k_lo"),
+            axis_map=AxisMap.identity("k_hi"),
+        )
+        chan_lower._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=lower.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+
+        # --- Channel-channel lateral SHARED seams (i↔i identity) ------
+        # chan_upper.i_hi  ↔ chan_body_top.i_lo  (upper-TE column)
+        chan_upper._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=chan_body_top.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        chan_body_top._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_upper.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # chan_body_top.i_hi ↔ chan_body_front.i_lo (upper body split)
+        chan_body_top._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=chan_body_front.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        chan_body_front._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_body_top.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # chan_body_front.i_hi ↔ chan_body_bot.i_lo (lower body split)
+        chan_body_front._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=chan_body_bot.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        chan_body_bot._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_body_front.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # chan_body_bot.i_hi ↔ chan_lower.i_lo (lower-TE column)
+        chan_body_bot._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=chan_lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        chan_lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_body_bot.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+
+        # --------------------------------------------------------------
+        # 4. Build the 4 (or 5) outflow channels (Phase-1.2 redesign).
+        # --------------------------------------------------------------
+        # Each side of the outflow region is partitioned into TWO
+        # sub-channels along the normal direction:
+        #
+        #   chan_outflow_top_upper:  normal in [normal_env_upper, normal_max]
+        #                            conformal SHARED to chan_upper.i_lo
+        #                            (channel.k count = nk_channel)
+        #
+        #   chan_outflow_wake_upper: normal in [+te/2, normal_env_upper]
+        #                            conformal SHARED to upper.i_lo
+        #                            (channel.k count = nk_wrap)
+        #
+        # Mirror layout on the lower side.  For blunt TE, a wake_base
+        # outflow channel sits between wake_lower and wake_upper at
+        # normal in [-te/2, +te/2] (channel.k count = nk_w).  All blocks
+        # share their lateral seams via numpy view aliasing on a single
+        # ``outflow_buf`` allocation per side.  Channel axes for every
+        # outflow block:
+        #
+        #     i (channel)  -> chord  (wrap-far-tip -> rear frame)
+        #     j (channel)  -> span
+        #     k (channel)  -> normal (low normal -> high normal)
+        #
+        # Conformal SHARED seams to the wrap and to the k_hi-side
+        # channels carry identity AxisMaps (same-axis i_lo <-> i_lo
+        # or i_lo <-> i_hi depending on the partner's i orientation).
+        ni_outflow = self.ni_outflow
+
+        # Convention: every outflow block has channel-k pointing OUTWARD
+        # from the wake-cut.  Upper-side blocks: k=0 at wake-cut (or at
+        # +te/2 for blunt), k=last at top frame.  Lower-side blocks:
+        # k=0 at wake-cut (or at -te/2 for blunt), k=last at bottom frame.
+        # This matches the wrap blocks' k orientation (wrap-upper.k=0 on
+        # wake-cut, wrap-upper.k=last on the marched envelope) so the
+        # conformal SHARED seams to upper.i_lo / lower.i_hi can use
+        # identity AxisMaps without k-flips.
+        #
+        # Buffer layout per side: stack [wake_half | top_half] along
+        # channel-k.  wake_half has depth nk_wrap; top_half has depth
+        # nk_chan; they share their seam row at the marched envelope
+        # normal (1-row overlap).
+        #
+        #   upper_buf shape (ni_outflow, nj, nk_wrap + nk_chan - 1, 3)
+        #     wake_upper view: [..., :nk_wrap, :]
+        #     top_upper  view: [..., nk_wrap - 1 :, :]
+        #
+        # Lower mirrors that.  Wake-cut SHARED between wake_upper.k_lo
+        # and wake_lower.k_lo (sharp) is geometrically coincident but
+        # lives in different buffers — the SHARED face graph still
+        # captures the relation; the geometry is enforced by writing
+        # bit-identical wake-cut data to both in fill_channel_blocks.
+        nk_outflow_side = nk_wrap + nk_chan - 1
+        upper_buf = np.empty((ni_outflow, nj, nk_outflow_side, 3), dtype=np.float64)
+        lower_buf = np.empty((ni_outflow, nj, nk_outflow_side, 3), dtype=np.float64)
+
+        wake_up_view = upper_buf[:, :, :nk_wrap, :]
+        top_up_view = upper_buf[:, :, nk_wrap - 1 :, :]
+        wake_lo_view = lower_buf[:, :, :nk_wrap, :]
+        top_lo_view = lower_buf[:, :, nk_wrap - 1 :, :]
+
+        chan_outflow_wake_upper = HexBlock(
+            label="chan_outflow_wake_upper",
+            nodes=wake_up_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        chan_outflow_top_upper = HexBlock(
+            label="chan_outflow_top_upper",
+            nodes=top_up_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        chan_outflow_wake_lower = HexBlock(
+            label="chan_outflow_wake_lower",
+            nodes=wake_lo_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+        chan_outflow_top_lower = HexBlock(
+            label="chan_outflow_top_lower",
+            nodes=top_lo_view,
+            periodic_i=False,
+            periodic_j=False,
+            spacing_k=_sp_k,
+        )
+
+        # ----- Internal envelope-seam SHARED (view-aliased) ------------------
+        # wake_upper.k_hi <-> top_upper.k_lo at envelope-top normal.
+        # wake_lower.k_hi <-> top_lower.k_lo at envelope-bot normal.
+        chan_outflow_wake_upper._set_face_bc(
+            "k_hi",
+            FaceBC.SHARED,
+            partner=chan_outflow_top_upper.face("k_lo"),
+            axis_map=AxisMap.identity("k_hi"),
+        )
+        chan_outflow_top_upper._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=chan_outflow_wake_upper.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+        chan_outflow_wake_lower._set_face_bc(
+            "k_hi",
+            FaceBC.SHARED,
+            partner=chan_outflow_top_lower.face("k_lo"),
+            axis_map=AxisMap.identity("k_hi"),
+        )
+        chan_outflow_top_lower._set_face_bc(
+            "k_lo",
+            FaceBC.SHARED,
+            partner=chan_outflow_wake_lower.face("k_hi"),
+            axis_map=AxisMap.identity("k_lo"),
+        )
+
+        # ----- Wake-cut SHARED -----------------------------------------------
+        # Sharp: wake_upper.k_lo (at normal=0) <-> wake_lower.k_lo (at normal=0).
+        #   Same-axis k<->k.  Both blocks have channel-k pointing outward
+        #   (away from the wake-cut), so their k=0 faces are coincident
+        #   but their k axes point in OPPOSITE directions.  AxisMap on
+        #   wake_upper.k_lo: along-axes (i, j) of wake_upper map to
+        #   along-axes (i, j) of wake_lower.  Channel-i for both runs
+        #   chord_far -> chord_max in the same direction; channel-j same.
+        #   Identity on (i, j).
+        # Blunt: wake_upper.k_lo (at +te/2) <-> wake_base.k_hi.
+        #        wake_lower.k_lo (at -te/2) <-> wake_base.k_lo.
+        if _is_blunt:
+            chan_outflow_wb_nodes = np.empty((ni_outflow, nj, nk_w, 3), dtype=np.float64)
+            chan_outflow_wb = HexBlock(
+                label="chan_outflow_wake_base",
+                nodes=chan_outflow_wb_nodes,
+                periodic_i=False,
+                periodic_j=False,
+                spacing_k=_sp_k,
+            )
+            # wake_lower.k_lo (-te/2 from below) <-> wake_base.k_lo (-te/2 from above)
+            chan_outflow_wake_lower._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=chan_outflow_wb.face("k_lo"),
+                axis_map=AxisMap.identity("k_lo"),
+            )
+            chan_outflow_wb._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=chan_outflow_wake_lower.face("k_lo"),
+                axis_map=AxisMap.identity("k_lo"),
+            )
+            # wake_upper.k_lo (+te/2 from above) <-> wake_base.k_hi
+            chan_outflow_wake_upper._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=chan_outflow_wb.face("k_hi"),
+                axis_map=AxisMap.identity("k_lo"),
+            )
+            chan_outflow_wb._set_face_bc(
+                "k_hi",
+                FaceBC.SHARED,
+                partner=chan_outflow_wake_upper.face("k_lo"),
+                axis_map=AxisMap.identity("k_hi"),
+            )
+        else:
+            chan_outflow_wake_upper._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=chan_outflow_wake_lower.face("k_lo"),
+                axis_map=AxisMap.identity("k_lo"),
+            )
+            chan_outflow_wake_lower._set_face_bc(
+                "k_lo",
+                FaceBC.SHARED,
+                partner=chan_outflow_wake_upper.face("k_lo"),
+                axis_map=AxisMap.identity("k_lo"),
+            )
+
+        # ----- Conformal SHARED seams to the wrap and k_hi-side channels -----
+        # Top-half seams to the k_hi-side channels (chan_upper / chan_lower).
+        # chan_upper.i_lo is at chord=chord_upper_far with normal range
+        # [normal_env_upper, normal_max]; channel.k along normal — matches
+        # chan_outflow_top_upper.i_lo exactly (nj * nk_chan).  Identity
+        # AxisMap, same-axis i_lo <-> i_lo.
+        chan_upper._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_outflow_top_upper.face("i_lo"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        chan_outflow_top_upper._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_upper.face("i_lo"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # chan_lower.i_hi is at chord=chord_lower_far (since chan_lower's i
+        # runs lower-TE -> lower-far-tip).  Pair to chan_outflow_top_lower.i_lo.
+        chan_lower._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=chan_outflow_top_lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        chan_outflow_top_lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_lower.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+
+        # Wake-half seams to the wrap upper / lower blocks.
+        # upper.i_lo is at chord=chord_upper_far with normal range [0,
+        # normal_env_upper] (or [+te/2, normal_env_upper] for blunt);
+        # nk = nk_wrap; same as chan_outflow_wake_upper.i_lo.  Identity
+        # AxisMap, same-axis i_lo <-> i_lo.
+        upper._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=chan_outflow_wake_upper.face("i_lo"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        chan_outflow_wake_upper._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=upper.face("i_lo"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+        # lower.i_hi is at chord=chord_lower_far (lower's i runs TE ->
+        # far-tip).  Pair to chan_outflow_wake_lower.i_lo (i_hi <-> i_lo
+        # identity AxisMap).
+        lower._set_face_bc(
+            "i_hi",
+            FaceBC.SHARED,
+            partner=chan_outflow_wake_lower.face("i_lo"),
+            axis_map=AxisMap.identity("i_hi"),
+        )
+        chan_outflow_wake_lower._set_face_bc(
+            "i_lo",
+            FaceBC.SHARED,
+            partner=lower.face("i_hi"),
+            axis_map=AxisMap.identity("i_lo"),
+        )
+
+        # Blunt: wake_base.i_lo <-> chan_outflow_wb.i_lo.
+        if _is_blunt:
+            wake_base._set_face_bc(
+                "i_lo",
+                FaceBC.SHARED,
+                partner=chan_outflow_wb.face("i_lo"),
+                axis_map=AxisMap.identity("i_lo"),
+            )
+            chan_outflow_wb._set_face_bc(
+                "i_lo",
+                FaceBC.SHARED,
+                partner=wake_base.face("i_lo"),
+                axis_map=AxisMap.identity("i_lo"),
+            )
+
+        # Outermost outflow faces are at the bottom / top frame edges.
+        # With the convention "channel-k points outward from wake-cut":
+        #   top_upper.k_hi = top frame    (HexBlock default FREE — OK)
+        #   top_lower.k_hi = bottom frame (default is FREE — OK; lower
+        #     stack's k_hi face is the outer-most slot, not k_lo).
+        # No override needed.
+
+        outflow_channels = [
+            chan_outflow_top_upper,
+            chan_outflow_wake_upper,
+            chan_outflow_wake_lower,
+            chan_outflow_top_lower,
+        ]
+        if _is_blunt:
+            outflow_channels.append(chan_outflow_wb)
+
+        return [*wrap_blocks, *khi_channels, *outflow_channels]
+
+    def fill_channel_blocks(self, blocks: list[HexBlock]) -> None:
+        """Populate every channel block's interior after wrap marching.
+
+        Walks the channel blocks in order, computes each channel's
+        outer quad on the user-specified frame, and fills the
+        ``k=1..nk_channel-1`` interior by ruled-surface frustum
+        interpolation.  C1 seam pinning (per-(i, j) first step =
+        wrap's last marching step) is applied to the 5 k_hi-side
+        channels when ``self.c1_seam`` is True.
+        """
+        # Identify wrap blocks and channel blocks by label.  Robust to
+        # caller-injected ordering changes.
+        labels = [b.label for b in blocks]
+        upper = blocks[labels.index("upper")]
+        body = blocks[labels.index("body")]
+        lower = blocks[labels.index("lower")]
+        wake_base = blocks[labels.index("wake_base")] if self._is_blunt else None
+
+        chan_upper = blocks[labels.index("chan_upper")]
+        chan_body_top = blocks[labels.index("chan_body_top")]
+        chan_body_front = blocks[labels.index("chan_body_front")]
+        chan_body_bot = blocks[labels.index("chan_body_bot")]
+        chan_lower = blocks[labels.index("chan_lower")]
+        chan_outflow_top_upper = blocks[labels.index("chan_outflow_top_upper")]
+        chan_outflow_wake_upper = blocks[labels.index("chan_outflow_wake_upper")]
+        chan_outflow_wake_lower = blocks[labels.index("chan_outflow_wake_lower")]
+        chan_outflow_top_lower = blocks[labels.index("chan_outflow_top_lower")]
+        chan_outflow_wb = blocks[labels.index("chan_outflow_wake_base")] if self._is_blunt else None
+
+        # Span extents from the wrap envelope's j_lo / j_hi rows.
+        sp_idx = self.frame.span_axis_idx
+        span_lo = float(body.nodes[:, 0, 0, sp_idx].mean())
+        span_hi = float(body.nodes[:, -1, 0, sp_idx].mean())
+
+        # k_hi envelopes at the marched outer layer.
+        upper_env = upper.nodes[:, :, -1, :]  # (ni_wake, nj, 3)
+        body_env = body.nodes[:, :, -1, :]
+        lower_env = lower.nodes[:, :, -1, :]
+        wake_base_env = wake_base.nodes if self._is_blunt and wake_base is not None else None
+
+        # Validate that the marched envelope lies inside the frame
+        # (chord, normal axes only).  Tolerance: the channel can
+        # interpolate inward as long as the envelope is on the wrap
+        # side of the frame edges; reject when envelope crosses out.
+        cax = self.frame.chord_axis
+        nax = self.frame.normal_axis
+        envelope_pts = np.concatenate(
+            [upper_env.reshape(-1, 3), body_env.reshape(-1, 3), lower_env.reshape(-1, 3)],
+            axis=0,
+        )
+        env_chord = envelope_pts[:, cax]
+        env_normal = envelope_pts[:, nax]
+        if not (
+            self.frame.chord_min <= env_chord.min()
+            and env_chord.max() <= self.frame.chord_max
+            and self.frame.normal_min <= env_normal.min()
+            and env_normal.max() <= self.frame.normal_max
+        ):
+            raise ParameterError(
+                f"CHTopology.fill_channel_blocks: marched wrap envelope is "
+                f"outside the frame [chord {self.frame.chord_min},"
+                f"{self.frame.chord_max}] x [normal {self.frame.normal_min},"
+                f"{self.frame.normal_max}].  Envelope chord range "
+                f"[{env_chord.min()}, {env_chord.max()}], normal range "
+                f"[{env_normal.min()}, {env_normal.max()}].  Either "
+                f"enlarge the frame or reduce nk / wrap step sizes."
+            )
+
+        # Compute outer quads for all 7 (or 8) channels.
+        quads = outer_quads_for_cgrid(
+            frame=self.frame,
+            upper_envelope=upper_env,
+            body_envelope=body_env,
+            lower_envelope=lower_env,
+            i_split_body_upper=self._i_split_upper,
+            i_split_body_lower=self._i_split_lower,
+            span_lo=span_lo,
+            span_hi=span_hi,
+            is_blunt=self._is_blunt,
+            wake_base_envelope=wake_base_env,
+        )
+
+        # ---- 5 k_hi-side channels: bilinear frustum + optional C1 ----
+        khi_specs: list[tuple[HexBlock, np.ndarray, str]] = [
+            (chan_upper, upper.nodes, "upper"),
+            (chan_body_top, body.nodes, "body_top"),
+            (chan_body_front, body.nodes, "body_front"),
+            (chan_body_bot, body.nodes, "body_bot"),
+            (chan_lower, lower.nodes, "lower"),
+        ]
+
+        # The 5 k_hi-side channels share their k=0 with a wrap.k_hi
+        # slice.  C1 first-step is the wrap's last layer thickness
+        # at every (i, j) within the channel's i-extent.
+        # Sub-block i-ranges within the wrap's nodes for the 3 body
+        # channels:
+        body_i_ranges = {
+            "body_top": (0, self._i_split_upper + 1),
+            "body_front": (self._i_split_upper, self._i_split_lower + 1),
+            "body_bot": (self._i_split_lower, body.nodes.shape[0]),
+        }
+
+        for chan, wrap_nodes, key in khi_specs:
+            inner = chan.nodes[:, :, 0, :]  # SHARED-by-view with wrap.k_hi slice
+            outer_quad = quads[key]
+            if self.c1_seam:
+                # last-step on the wrap, per-(i, j), within the
+                # channel's i-extent.
+                if key in body_i_ranges:
+                    i_lo, i_hi = body_i_ranges[key]
+                    last_step = np.linalg.norm(
+                        wrap_nodes[i_lo:i_hi, :, -1, :] - wrap_nodes[i_lo:i_hi, :, -2, :],
+                        axis=-1,
+                    )
+                else:
+                    last_step = np.linalg.norm(
+                        wrap_nodes[:, :, -1, :] - wrap_nodes[:, :, -2, :], axis=-1
+                    )
+                c1 = last_step
+            else:
+                c1 = None
+            frustum = build_channel_block(
+                inner_face=inner,
+                outer_quad=outer_quad,
+                nk_channel=self.nk_channel,
+                k_law=self.k_law_channel,
+                k_beta=self.k_beta_channel,
+                c1_first_step=c1,
+            )
+            chan.nodes[:, :, 1:, :] = frustum[:, :, 1:, :]
+
+        # ---- 4 (or 5) outflow channels: conformal SHARED to wrap ----
+        # The outflow region downstream of the wrap is partitioned per
+        # side into:
+        #   - top_X:   conformal SHARED to chan_X.i_lo/i_hi
+        #              (channel-k count = nk_chan; normal range
+        #               [envelope_X, frame_top/bot])
+        #   - wake_X:  conformal SHARED to wrap.X.i_lo/i_hi
+        #              (channel-k count = nk_wrap; normal range
+        #               [wake_cut, envelope_X])
+        # plus, for blunt TE, a wake_base outflow bridging the TE gap.
+        #
+        # Filling strategy: each outflow block's i_lo face (at chord =
+        # chord_X_far) is COPIED bit-exact from the partner wrap or
+        # k_hi-side channel face, so the conformal SHARED is honoured.
+        # The i_hi face (at chord = chord_max) inherits the same
+        # (j, normal) pattern but with chord = chord_max.  Interior is
+        # bilinear in chord between the two faces, with the chord
+        # distribution shaped by k_law_channel.
+        from shore.volume.spacing import build_i_coords
+
+        cax = self.frame.chord_axis
+        rear = self.frame.chord_max
+
+        def _fill_outflow_block(
+            chan: HexBlock,
+            *,
+            inner_face: np.ndarray,
+        ) -> None:
+            """Fill a rectangular outflow block from a copied inner face.
+
+            ``inner_face`` is the (nj, nk_face, 3) data to plant on the
+            channel's i_lo face (chord = chord_far).  The outer i_hi
+            face has the same span/normal coordinates but chord =
+            chord_max.  Interior columns are bilinear in chord under
+            ``k_law_channel`` spacing.
+            """
+            ni_c = chan.nodes.shape[0]
+            nj_c, nk_c, _ = inner_face.shape
+            assert chan.nodes.shape[1:3] == (nj_c, nk_c), (
+                f"outflow block {chan.label}: inner face shape mismatch "
+                f"{inner_face.shape} vs {chan.nodes.shape}"
+            )
+
+            # i_lo face = inner_face copy.
+            chan.nodes[0, :, :, :] = inner_face
+
+            # i_hi face = inner with chord swapped to rear.
+            outer_face = inner_face.copy()
+            outer_face[..., cax] = rear
+            chan.nodes[-1, :, :, :] = outer_face
+
+            # Interior: blend between inner and outer along channel-i
+            # under k_law_channel.
+            t = build_i_coords(
+                ni_c, 0.0, 1.0, spacing=self.k_law_channel, beta=self.k_beta_channel
+            )  # (ni_c,)
+            t_arr = t[1:-1, None, None, None]  # (ni_c-2, 1, 1, 1)
+            inner4 = inner_face[None, ...]
+            outer4 = outer_face[None, ...]
+            chan.nodes[1:-1, :, :, :] = (1.0 - t_arr) * inner4 + t_arr * outer4
+
+        # ---- Inner-face data sources (conformal SHARED partners) ----
+        # top_upper inner face = chan_upper.i_lo face (= chan_upper.nodes[0, :, :, :])
+        # top_lower inner face = chan_lower.i_hi face (= chan_lower.nodes[-1, :, :, :])
+        # wake_upper inner face = upper.i_lo face (= upper.nodes[0, :, :, :])
+        # wake_lower inner face = lower.i_hi face (= lower.nodes[-1, :, :, :])
+        # wake_base inner face (blunt) = wake_base.i_lo face
+        _fill_outflow_block(
+            chan_outflow_top_upper,
+            inner_face=chan_upper.nodes[0, :, :, :].copy(),
+        )
+        _fill_outflow_block(
+            chan_outflow_top_lower,
+            inner_face=chan_lower.nodes[-1, :, :, :].copy(),
+        )
+        _fill_outflow_block(
+            chan_outflow_wake_upper,
+            inner_face=upper.nodes[0, :, :, :].copy(),
+        )
+        _fill_outflow_block(
+            chan_outflow_wake_lower,
+            inner_face=lower.nodes[-1, :, :, :].copy(),
+        )
+        if self._is_blunt and chan_outflow_wb is not None and wake_base is not None:
+            _fill_outflow_block(
+                chan_outflow_wb,
+                inner_face=wake_base.nodes[0, :, :, :].copy(),
+            )
+
+        # The conformal-SHARED partners are i_lo/i_hi face-graph entries.
+        # We just wrote the channel's i_lo face from a COPY of the wrap
+        # face data; the wrap face itself is unchanged, so geometric
+        # coincidence is exact (bit-identical) at the seam.
+
+        _ = quads  # outflow quads are now documentation-only; computed for
+        # side-effect validation in outer_quads_for_cgrid.
 
 
 def _projector_from_mesh(mesh: object) -> object:

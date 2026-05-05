@@ -24,7 +24,7 @@ features:
     linkText: Pipeline walkthrough
   - icon: 📐
     title: Body-fitted near-body meshes
-    details: Four topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, and a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box. One `shore mesh` call from a triangulated body to Xall-compatible .geo files.
+    details: Six topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, 3-/4-block C-grid for sharp-/blunt-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, conformal C-grid wing-tip caps, a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box, and a 12-/14-block CH hybrid that does the same for C-grid airfoils with a chord/normal-aligned far-field frame. One `shore mesh` call from a triangulated body to Xall-compatible .geo files.
     link: /topologies/cubed-sphere
     linkText: Cubed sphere
   - icon: 🧱
@@ -51,7 +51,7 @@ features:
 
 SHORE produces every structured grid a Chimera (overset) CFD assembly needs and packages them for the solver. Two product lines, one tool:
 
-**Body-fitted near-body meshes** by hyperbolic normal extrusion of a body surface. Surface input is a triangulated STL today; CAD (STEP / IGES / BREP) is on the roadmap. Two topologies:
+**Body-fitted near-body meshes** by hyperbolic normal extrusion of a body surface. Surface input is a triangulated STL today; CAD (STEP / IGES / BREP) is on the roadmap. Four CLI-selectable topologies (`--topology cubed_sphere|ogrid|cgrid|ch`); two further topologies (`OHTopology`, `CGridTipCap`) are available from the Python API:
 
 ```bash
 # 6-block cubed sphere (default) — no polar singularity, conforming seams
@@ -59,6 +59,17 @@ shore mesh fuselage.stl --ni 60 --nj 80 --nk 40 --ds 1e-4 --growth 1.15 -o fusel
 
 # Single-block O-grid — j-periodic, one .geo file
 shore mesh fuselage.stl --topology ogrid --ni 60 --nj 80 --nk 40 -o fuselage
+
+# 3-/4-block C-grid for airfoils (sharp / blunt TE auto-detected)
+shore mesh airfoil.stl --topology cgrid \
+    --ni-body 80 --ni-wake 20 --n-stations 5 --wake-length 15 \
+    --nk 12 --ds 5e-4 --growth 1.08 -o airfoil
+
+# 12-/14-block CH hybrid — C-grid wrap + far-field H-channel in one mesh
+shore mesh airfoil.stl --topology ch \
+    --ni-body 80 --ni-wake 20 --n-stations 5 --wake-length 15 --nk 12 \
+    --ch-chord-min -2 --ch-chord-max 20 --ch-normal-min -2.5 --ch-normal-max 2.5 \
+    --nk-channel 8 -o ch
 ```
 
 **Parametric backgrounds** that fill the far field — no STL needed, just analytic geometry:
@@ -137,7 +148,9 @@ The single-block O-grid is the simpler alternative — one j-periodic block, pol
 
 The **OH hybrid** topology extends the cubed-sphere wrap with a 6-block structured H-channel that bridges the wrap envelope to a user-supplied axis-aligned bounding box. The wrap and channel are SHARED-by-view (one numpy buffer per pair) and the seam is C1 by construction — wrap and channel cells line up bit-exactly and grow geometrically across the seam. The result is a 12-block, single-component near-body mesh that covers everything from the body surface out to a Cartesian box without a chimera-fringe handover. Available as a Python API (`shore.mesh.OHTopology`); CLI integration is on the roadmap.
 
-See [Cubed-sphere topology](topologies/cubed-sphere.md), [O-grid topology](topologies/o-grid.md), and [OH hybrid topology](topologies/oh-hybrid.md) for the full algorithm.
+The **CH hybrid** does the same for C-grid airfoils: it extends the C-grid wrap (3-block sharp-TE or 4-block blunt-TE) with 7 (sharp) / 8 (blunt) channel sub-blocks bridging the wrap to a chord/normal-aligned far-field frame. The k_hi-side channels share memory with the wrap; the outflow sub-blocks are conformal SHARED to the wrap's wake far-tip faces (no chimera-fringe handover). Total: 12 blocks (sharp) or 14 blocks (blunt). Available as `shore mesh --topology ch`.
+
+See [Cubed-sphere topology](topologies/cubed-sphere.md), [O-grid topology](topologies/o-grid.md), [C-grid topology](topologies/c-grid.md), [OH hybrid topology](topologies/oh-hybrid.md), and [CH hybrid topology](topologies/ch-hybrid.md) for the full algorithm.
 
 ## Authors
 

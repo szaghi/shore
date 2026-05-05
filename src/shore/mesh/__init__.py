@@ -18,6 +18,7 @@ from shore.mesh.spacing import Spacing1D
 from shore.mesh.topology import (
     CGridTipCap,
     CGridTopology,
+    CHTopology,
     CubedSphereTopology,
     OGridTopology,
     OHTopology,
@@ -31,6 +32,7 @@ __all__ = [
     "Body",
     "CGridTipCap",
     "CGridTopology",
+    "CHTopology",
     "CubedSphereTopology",
     "Edge",
     "Face",

@@ -32,6 +32,7 @@ from shore.mesh import (
     Body,
     CGridTipCap,
     CGridTopology,
+    CHTopology,
     CubedSphereTopology,
     Mesh,
     OGridTopology,
@@ -345,6 +346,69 @@ _CAP_NK = Annotated[
 ]
 
 
+# CH topology flags (only used when --topology ch).
+_CH_CHORD_MIN = Annotated[
+    float | None,
+    typer.Option(
+        "--ch-chord-min",
+        help="[ch] Far-field box minimum chord coordinate (world units).",
+    ),
+]
+_CH_CHORD_MAX = Annotated[
+    float | None,
+    typer.Option(
+        "--ch-chord-max",
+        help="[ch] Far-field box maximum chord coordinate (world units).",
+    ),
+]
+_CH_NORMAL_MIN = Annotated[
+    float | None,
+    typer.Option(
+        "--ch-normal-min",
+        help="[ch] Far-field box minimum normal coordinate (world units).",
+    ),
+]
+_CH_NORMAL_MAX = Annotated[
+    float | None,
+    typer.Option(
+        "--ch-normal-max",
+        help="[ch] Far-field box maximum normal coordinate (world units).",
+    ),
+]
+_NK_CHANNEL = Annotated[
+    int,
+    typer.Option(
+        "--nk-channel",
+        help="[ch] Total channel-block layers including shared seam (default 5).",
+    ),
+]
+_K_LAW_CHANNEL = Annotated[
+    str,
+    typer.Option(
+        "--k-law-channel",
+        help="[ch] Channel k-axis spacing law: uniform / tanh / tanh2 (default uniform).",
+    ),
+]
+_K_BETA_CHANNEL = Annotated[
+    float,
+    typer.Option(
+        "--k-beta-channel",
+        help="[ch] Clustering strength for tanh / tanh2 channel spacing (default 3.0).",
+    ),
+]
+_C1_SEAM_CHANNEL = Annotated[
+    bool,
+    typer.Option(
+        "--c1-seam-channel/--no-c1-seam-channel",
+        help=(
+            "[ch] Pin the channel's first step at every (i, j) to the wrap's "
+            "last marching step — bit-exact C1 spacing match across the "
+            "wrap-channel seam (default on)."
+        ),
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -478,9 +542,11 @@ def mesh(
         str,
         typer.Option(
             "--topology",
-            help="Topology: 'cubed_sphere' (default), 'ogrid', or 'cgrid' "
+            help="Topology: 'cubed_sphere' (default), 'ogrid', 'cgrid' "
             "(C-grid for sharp-TE bodies — see --ni-body / --ni-wake / "
-            "--n-stations / --wake-length).",
+            "--n-stations / --wake-length), or 'ch' (C-grid wrap + "
+            "H-channel far-field — adds --ch-chord-min/max / "
+            "--ch-normal-min/max / --nk-channel).",
         ),
     ] = "cubed_sphere",
     ni_body: _NI_BODY = None,
@@ -501,6 +567,14 @@ def mesh(
     cap_j_spacing_cgrid: _CAP_J_SPACING = "tanh",
     cap_j_beta_cgrid: _CAP_J_BETA = 4.0,
     cap_nk: _CAP_NK = None,
+    ch_chord_min: _CH_CHORD_MIN = None,
+    ch_chord_max: _CH_CHORD_MAX = None,
+    ch_normal_min: _CH_NORMAL_MIN = None,
+    ch_normal_max: _CH_NORMAL_MAX = None,
+    nk_channel: _NK_CHANNEL = 5,
+    k_law_channel: _K_LAW_CHANNEL = "uniform",
+    k_beta_channel: _K_BETA_CHANNEL = 3.0,
+    c1_seam_channel: _C1_SEAM_CHANNEL = True,
     adjacency_json: Annotated[
         Path | None,
         typer.Option(
@@ -575,14 +649,14 @@ def mesh(
         "volume_k_thickness", volume_k_thickness, cfg.volume.k_thickness if cfg else None
     )
     topology = _pick("topology", topology, cfg.grid.topology if cfg else None)
-    if topology not in ("cubed_sphere", "ogrid", "cgrid"):
+    if topology not in ("cubed_sphere", "ogrid", "cgrid", "ch"):
         _err.print(
             f"[red]Error:[/red] unknown --topology {topology!r}; "
-            "expected 'cubed_sphere', 'ogrid', or 'cgrid'."
+            "expected 'cubed_sphere', 'ogrid', 'cgrid', or 'ch'."
         )
         raise typer.Exit(1) from None
 
-    if topology == "cgrid":
+    if topology in ("cgrid", "ch"):
         for flag_name, val in (
             ("--ni-body", ni_body),
             ("--ni-wake", ni_wake),
@@ -590,20 +664,31 @@ def mesh(
             ("--wake-length", wake_length),
         ):
             if val is None:
-                _err.print(f"[red]Error:[/red] --topology cgrid requires {flag_name}.")
+                _err.print(f"[red]Error:[/red] --topology {topology} requires {flag_name}.")
                 raise typer.Exit(1) from None
         if span_axis not in ("x", "y", "z"):
             _err.print(
                 f"[red]Error:[/red] --span-axis must be 'x', 'y', or 'z'; got {span_axis!r}."
             )
             raise typer.Exit(1) from None
-        if cgrid_blocks not in (1, 3, 4):
+        if topology == "cgrid" and cgrid_blocks not in (1, 3, 4):
             _err.print(
                 f"[red]Error:[/red] --cgrid-blocks must be 1, 3, or 4; "
                 f"got {cgrid_blocks}.  Use 3 (default, sharp-TE), "
                 "4 (blunt-TE), or 1 (legacy single-block)."
             )
             raise typer.Exit(1) from None
+
+    if topology == "ch":
+        for flag_name, val in (
+            ("--ch-chord-min", ch_chord_min),
+            ("--ch-chord-max", ch_chord_max),
+            ("--ch-normal-min", ch_normal_min),
+            ("--ch-normal-max", ch_normal_max),
+        ):
+            if val is None:
+                _err.print(f"[red]Error:[/red] --topology ch requires {flag_name}.")
+                raise typer.Exit(1) from None
 
     # theta_cap is special: CLI exposes two flags (--theta-cap and
     # --theta-cap-deg) but the config has a single resolved radian
@@ -656,7 +741,7 @@ def mesh(
     # C-grid topology doesn't ray-cast through the body — it slices the
     # STL directly with mesh_plane.  Skip the trimesh.repair pass to
     # avoid the optional networkx dependency.
-    _skip_hygiene = topology == "cgrid"
+    _skip_hygiene = topology in ("cgrid", "ch")
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Loading STL   ", total=1, info="")
@@ -667,13 +752,25 @@ def mesh(
 
     # --- build topology + march ---
     _theta_topo = theta if theta is not None else 0.05 * np.pi
-    topo: CubedSphereTopology | OGridTopology | CGridTopology
+    topo: CubedSphereTopology | OGridTopology | CGridTopology | CHTopology
     if topology == "cubed_sphere":
         topo = CubedSphereTopology()
     elif topology == "ogrid":
         topo = OGridTopology()
-    else:  # cgrid
+    elif topology == "cgrid":
         topo = CGridTopology()
+    else:  # ch
+        topo = CHTopology(
+            chord_min=ch_chord_min,
+            chord_max=ch_chord_max,
+            normal_min=ch_normal_min,
+            normal_max=ch_normal_max,
+            nk_channel=nk_channel,
+            span_axis=span_axis,
+            k_law_channel=k_law_channel,
+            k_beta_channel=k_beta_channel,
+            c1_seam=c1_seam_channel,
+        )
     try:
         if topology == "cgrid":
             if cap_tips not in ("none", "jlo", "jhi", "both"):
@@ -705,6 +802,19 @@ def mesh(
                 cap_j_spacing=cap_j_spacing_cgrid,
                 cap_j_beta=cap_j_beta_cgrid,
                 cap_nk=cap_nk,
+            )
+        elif topology == "ch":
+            blocks = topo.build(
+                surface=None,
+                nk=nk,
+                mesh=body.mesh,
+                spacing_k=spacing_k,
+                ni_body=ni_body,
+                ni_wake=ni_wake,
+                n_stations=n_stations,
+                wake_length=wake_length,
+                wake_growth=wake_growth,
+                te_dihedral_deg=te_dihedral_deg,
             )
         else:
             blocks = topo.build(

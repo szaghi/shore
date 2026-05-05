@@ -28,9 +28,14 @@ spacing continuity is preserved layer by layer.
 The pipeline above is run **per topology**. The topology determines
 the block layout and how stages 2 and 3 stitch the blocks together.
 SHORE's production default is the
-[cubed-sphere topology](/topologies/cubed-sphere) (6 blocks); the
-single-block [O-grid](/topologies/o-grid) is also a first-class
-choice for `shore mesh --topology ogrid`. The full catalogue lives
+[cubed-sphere topology](/topologies/cubed-sphere) (6 blocks). Other
+CLI-selectable topologies are the single-block
+[O-grid](/topologies/o-grid) (`--topology ogrid`), the airfoil
+[C-grid](/topologies/c-grid) (`--topology cgrid`, 3-/4-block sharp /
+blunt TE), and the airfoil [CH hybrid](/topologies/ch-hybrid)
+(`--topology ch`, C-grid wrap + far-field channel, 12-/14-block).
+The Python-only [OH hybrid](/topologies/oh-hybrid) extends the
+cubed-sphere wrap with a 6-face H-channel. The full catalogue lives
 in the [Topologies](/topologies/) section.
 
 ## Inputs

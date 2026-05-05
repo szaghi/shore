@@ -355,21 +355,23 @@ class Mesh:
 
         from shore.mesh.topology import (
             CGridTopology,
+            CHTopology,
             CubedSphereTopology,
             OGridTopology,
             OHTopology,
         )
 
-        if isinstance(topology, CGridTopology):
+        if isinstance(topology, (CGridTopology, CHTopology)):
+            kind = type(topology).__name__
             raise ValueError(
-                "Mesh.from_stl does not support CGridTopology — its "
+                f"Mesh.from_stl does not support {kind} — its "
                 "parameters (ni_body, ni_wake, n_stations, wake_length, "
                 "span_axis, freestream_world) don't fit the (ni, nj, nk) "
-                "signature.  Build the C-grid block list directly:\n\n"
+                "signature.  Build the block list directly:\n\n"
                 "    import trimesh\n"
-                "    from shore.mesh import Body, Mesh, CGridTopology\n"
+                f"    from shore.mesh import Body, Mesh, {kind}\n"
                 "    body = Body.from_stl(path)\n"
-                "    topo = CGridTopology()\n"
+                f"    topo = {kind}(...)\n"
                 "    blocks = topo.build(\n"
                 "        surface=None, nk=nk, mesh=body.mesh,\n"
                 "        ni_body=..., ni_wake=..., n_stations=...,\n"
@@ -457,6 +459,7 @@ class Mesh:
         from shore.mesh.topology import (
             CGridTipCap,
             CGridTopology,
+            CHTopology,
             CubedSphereTopology,
             OGridTopology,
             OHTopology,
@@ -472,6 +475,20 @@ class Mesh:
             wrap_blocks = self.blocks[:6]
             self._march_caps_blocks(
                 wrap_blocks,
+                ds=ds,
+                growth=growth,
+                smooth_strength=smooth_strength,
+                smooth_iters=smooth_iters,
+                steps=steps,
+                layer_callback=layer_callback,
+                blend_normals_k=blend_normals_k,
+            )
+            self.topology.fill_channel_blocks(self.blocks)
+        elif isinstance(self.topology, CHTopology):
+            # March the C-grid wrap (first 3 blocks; 4th is wake_base which
+            # is fully determined at build time and not marched).  Then fill
+            # the channel-block interiors against the chord/normal frame.
+            self._march_cgrid_three(
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,

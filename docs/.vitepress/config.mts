@@ -92,6 +92,7 @@ export default defineConfig({
             { text: 'C-grid (sharp / blunt TE)', link: '/topologies/c-grid' },
             { text: 'H-grid (duct, internal flow)', link: '/topologies/h-grid' },
             { text: 'OH hybrid (cubed-sphere wrap + H-channel)', link: '/topologies/oh-hybrid' },
+            { text: 'CH hybrid (C-grid wrap + H-channel)',       link: '/topologies/ch-hybrid' },
           ],
         },
         {

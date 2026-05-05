@@ -590,6 +590,9 @@ C-grid body wrap is.  The signature stays the same.
 - [Algorithm — C-grid construction](/algorithm/c-grid) — full derivation
   of TE detection, span slicing, C-curve build, and the SHARED-seam
   wiring for 3-block / 4-block topologies.
+- [CH hybrid topology](/topologies/ch-hybrid) — the C-grid wrap
+  composed with a far-field H-channel (12-/14-block contiguous
+  body-to-frame mesh).
 - [`shore mesh` reference](/reference/mesh) — full CLI command reference.
 - [Pipeline overview](/guide/pipeline) — where the C-grid fits in the
   body-fitted workflow.

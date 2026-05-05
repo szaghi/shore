@@ -207,6 +207,113 @@ class TestMeshCGrid:
         assert r.exit_code == 1
 
 
+class TestMeshCH:
+    """`shore mesh --topology ch` end-to-end."""
+
+    _CH: ClassVar[list[str]] = [
+        "--topology",
+        "ch",
+        "--ni-body",
+        "60",
+        "--ni-wake",
+        "15",
+        "--n-stations",
+        "4",
+        "--wake-length",
+        "10.0",
+        "--nk",
+        "8",
+        "--ds",
+        "1e-3",
+        "--smooth",
+        "0.0",
+        "--smooth-iters",
+        "0",
+        "--ch-chord-min",
+        "-2.0",
+        "--ch-chord-max",
+        "15.0",
+        "--ch-normal-min",
+        "-2.5",
+        "--ch-normal-max",
+        "2.5",
+        "--nk-channel",
+        "4",
+    ]
+
+    def test_exit_code_ok(self, naca0012_stl, tmp_path):
+        out = tmp_path / "ch"
+        r = _invoke("mesh", str(naca0012_stl), *self._CH, "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_writes_12_geo_for_sharp_te(self, naca0012_stl, tmp_path):
+        out = tmp_path / "ch"
+        _invoke("mesh", str(naca0012_stl), *self._CH, "-o", str(out))
+        for label in (
+            "upper",
+            "body",
+            "lower",
+            "chan_upper",
+            "chan_body_top",
+            "chan_body_front",
+            "chan_body_bot",
+            "chan_lower",
+            "chan_outflow_top_upper",
+            "chan_outflow_wake_upper",
+            "chan_outflow_wake_lower",
+            "chan_outflow_top_lower",
+        ):
+            assert (tmp_path / f"ch_{label}.geo").exists(), f"missing {label}.geo"
+
+    def test_missing_box_extent_exits_1(self, naca0012_stl, tmp_path):
+        # Missing --ch-normal-max.
+        r = _invoke(
+            "mesh",
+            str(naca0012_stl),
+            "--topology",
+            "ch",
+            "--ni-body",
+            "60",
+            "--ni-wake",
+            "15",
+            "--n-stations",
+            "4",
+            "--wake-length",
+            "10.0",
+            "--ch-chord-min",
+            "-2.0",
+            "--ch-chord-max",
+            "15.0",
+            "--ch-normal-min",
+            "-2.5",
+        )
+        assert r.exit_code == 1
+
+    def test_missing_cgrid_flag_exits_1(self, naca0012_stl, tmp_path):
+        # Missing --wake-length (a C-grid wrap requirement).
+        r = _invoke(
+            "mesh",
+            str(naca0012_stl),
+            "--topology",
+            "ch",
+            "--ni-body",
+            "60",
+            "--ni-wake",
+            "15",
+            "--n-stations",
+            "4",
+            "--ch-chord-min",
+            "-2.0",
+            "--ch-chord-max",
+            "15.0",
+            "--ch-normal-min",
+            "-2.5",
+            "--ch-normal-max",
+            "2.5",
+        )
+        assert r.exit_code == 1
+
+
 # ---------------------------------------------------------------------------
 # shore project
 # ---------------------------------------------------------------------------

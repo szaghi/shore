@@ -2,7 +2,7 @@
 
 Full pipeline: STL → structured volume → geo files.
 
-Two topologies are supported, selected via `--topology`:
+Four topologies are supported, selected via `--topology`:
 
 - **[`cubed_sphere`](/topologies/cubed-sphere)** (default): 6-block
   decomposition (4 equatorial sub-blocks + 2 polar caps), gnomonic
@@ -11,6 +11,15 @@ Two topologies are supported, selected via `--topology`:
 - **[`ogrid`](/topologies/o-grid)**: single-block lat-lon grid,
   j-periodic. Writes one `<stem>.geo` file. Polar singular axis at
   `i = 0` and `i = ni - 1`.
+- **[`cgrid`](/topologies/c-grid)**: 3-block (sharp TE) or 4-block
+  (blunt TE) C-grid for airfoils / hydrofoils with downstream wake
+  branches. Optional 1-block legacy layout via `--cgrid-blocks 1`.
+  Writes one `<stem>_<label>.geo` per block (or one `<stem>.geo` for
+  the legacy 1-block). Requires C-grid wrap flags (see below).
+- **[`ch`](/topologies/ch-hybrid)**: 12-block (sharp TE) or 14-block
+  (blunt TE) hybrid: C-grid wrap + H-channel out to a chord/normal-
+  aligned far-field frame. Requires both C-grid wrap flags and frame
+  extents (`--ch-chord-min/max`, `--ch-normal-min/max`).
 
 ## Synopsis
 
@@ -90,16 +99,51 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 
 | Option | Default | Description |
 |---|---|---|
-| `--topology TEXT` | `cubed_sphere` | One of `cubed_sphere` (6 blocks) or `ogrid` (1 block, j-periodic). |
+| `--topology TEXT` | `cubed_sphere` | One of `cubed_sphere` (6 blocks), `ogrid` (1 block, j-periodic), `cgrid` (3-/4-/1-block C-grid for airfoils — see [C-grid](#c-grid-options-topology-cgrid-or-ch) options), or `ch` (12-/14-block CH hybrid — see [CH hybrid](#ch-hybrid-options-topology-ch) options). |
+
+### C-grid options (`--topology cgrid` or `ch`)
+
+These flags are required for both `cgrid` and `ch` topologies. They
+configure the C-grid wrap geometry around an airfoil / hydrofoil.
+
+| Option | Default | Description |
+|---|---|---|
+| `--ni-body INTEGER` | — | Per-station body wrap node count (upper-TE → LE → lower-TE). |
+| `--ni-wake INTEGER` | — | Per-branch wake node count (TE node included). |
+| `--n-stations INTEGER` | — | Span-direction station count. |
+| `--wake-length FLOAT` | — | Length of each wake branch downstream of TE (body units). |
+| `--wake-growth FLOAT` | 1.15 | Geometric growth ratio for wake i-spacing. |
+| `--span-axis TEXT` | `z` | `x` / `y` / `z` — span world axis. |
+| `--te-dihedral-deg FLOAT` | 30.0 | Sharpness threshold for TE detection. |
+| `--cgrid-blocks INTEGER` | 3 | `cgrid` only: 3 (Xall-correct sharp-TE), 4 (Xall-correct blunt-TE), or 1 (legacy single-block). Ignored for `--topology ch`. |
+| `--cap-tips TEXT` | `none` | `cgrid` only: `none` / `jlo` / `jhi` / `both` — wing-tip cap blocks at the requested spanwise extreme(s). See [`shore cap-tip`](cap-tip) for a standalone CLI. |
+| `--cap-te-thickness*`, `--cap-le-frac`, `--cap-te-frac`, `--cap-tip-inset`, `--cap-n-cap-j`, `--cap-j-spacing-cgrid`, `--cap-j-beta-cgrid`, `--cap-nk` | various | `cgrid + caps` only — cap-block geometry. See [C-grid topology](/topologies/c-grid#tip-caps-closed-finite-wing). |
+
+### CH hybrid options (`--topology ch`)
+
+In addition to the C-grid wrap flags above, CH requires the frame
+extents in world coordinates and exposes channel knobs.
+
+| Option | Default | Description |
+|---|---|---|
+| `--ch-chord-min FLOAT` | — | Far-field box minimum chord coordinate. |
+| `--ch-chord-max FLOAT` | — | Far-field box maximum chord coordinate. |
+| `--ch-normal-min FLOAT` | — | Far-field box minimum normal coordinate. |
+| `--ch-normal-max FLOAT` | — | Far-field box maximum normal coordinate. |
+| `--nk-channel INTEGER` | 5 | Total channel-block layers (incl. shared seam at k=0). |
+| `--k-law-channel TEXT` | `uniform` | Channel k-axis spacing law (`uniform` / `tanh` / `tanh2`). |
+| `--k-beta-channel FLOAT` | 3.0 | Clustering strength for tanh / tanh2 channel spacing. |
+| `--c1-seam-channel/--no-c1-seam-channel` | on | Pin each k_hi-side channel's first step to the wrap's last marching step (per `(i, j)`). |
 
 ### I/O and display
 
 | Option | Default | Description |
 |---|---|---|
 | `-c` / `--config PATH` | — | Read parameter values from a TOML file (see [Config files](config)). Explicit CLI flags still override the file. |
-| `-o` / `--output PATH` | `<INPUT stem>` | Output stem. For `cubed_sphere`: writes `<stem>_sub0.geo` ... `<stem>_cap_south.geo` (6 files). For `ogrid`: writes one `<stem>.geo`. |
-| `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats |
-| `--help` | — | Show this help and exit |
+| `-o` / `--output PATH` | `<INPUT stem>` | Output stem. Multi-block topologies (`cubed_sphere`, `cgrid`, `ch`) write one `<stem>_<label>.geo` per block; `ogrid` and `cgrid --cgrid-blocks 1` write one `<stem>.geo`. |
+| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar describing the SHARED / DIRICHLET face graph (required by [`shore cc-par`](cc-par)). |
+| `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats. |
+| `--help` | — | Show this help and exit. |
 
 ### Deprecated
 
@@ -118,7 +162,9 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 
 ## Output
 
-The command writes 6 `.geo` files (one per block):
+The exact file set depends on `--topology`:
+
+**`cubed_sphere`** (default) — 6 `.geo` files:
 
 ```
 <stem>_sub0.geo        sub-block 0 (phi 0°→90°)         (ni × nc × nk)
@@ -130,6 +176,19 @@ The command writes 6 `.geo` files (one per block):
 ```
 
 with `nc = nj // 4 + 1`.
+
+**`ogrid`** — 1 `.geo` file: `<stem>.geo` of shape `(ni × nj × nk)`.
+
+**`cgrid`** with `--cgrid-blocks 3` (default sharp-TE) — 3 `.geo`
+files: `<stem>_upper.geo`, `<stem>_body.geo`, `<stem>_lower.geo`.
+`--cgrid-blocks 4` (blunt-TE) adds `<stem>_wake_base.geo`.
+`--cgrid-blocks 1` (legacy) writes a single `<stem>.geo`. The
+`--cap-tips` option adds 5–6 cap blocks per requested tip (see
+[C-grid](/topologies/c-grid#tip-caps-closed-finite-wing)).
+
+**`ch`** — 12 `.geo` files (sharp TE) or 14 (blunt TE). See
+[CH hybrid block decomposition](/topologies/ch-hybrid#block-decomposition)
+for the full list.
 
 ## Examples
 
@@ -197,6 +256,33 @@ shore mesh sphere.stl --topology ogrid \
 # → sphere.geo  (40 x 60 x 30, j-periodic)
 ```
 
+C-grid for an airfoil (3-block sharp-TE default, 3 `.geo` files):
+
+```bash
+shore mesh airfoil.stl --topology cgrid \
+  --ni-body 80 --ni-wake 20 --n-stations 5 --wake-length 15.0 \
+  --nk 12 --ds 5e-4 --growth 1.08 \
+  -o airfoil
+# → airfoil_upper.geo, airfoil_body.geo, airfoil_lower.geo
+```
+
+CH hybrid (C-grid wrap + far-field H-channel; 12 `.geo` files for sharp TE):
+
+```bash
+shore mesh airfoil.stl --topology ch \
+  --ni-body 80 --ni-wake 20 --n-stations 5 --wake-length 15.0 \
+  --nk 12 --ds 5e-4 --growth 1.08 \
+  --ch-chord-min -2.0 --ch-chord-max 20.0 \
+  --ch-normal-min -2.5 --ch-normal-max 2.5 \
+  --nk-channel 8 \
+  -o ch
+# → ch_upper.geo, ch_body.geo, ch_lower.geo,
+#   ch_chan_upper.geo, ch_chan_body_top.geo, ch_chan_body_front.geo,
+#   ch_chan_body_bot.geo, ch_chan_lower.geo,
+#   ch_chan_outflow_top_upper.geo, ch_chan_outflow_wake_upper.geo,
+#   ch_chan_outflow_wake_lower.geo, ch_chan_outflow_top_lower.geo
+```
+
 Drive the full pipeline from a TOML config (see [Config files](config)):
 
 ```bash
@@ -209,10 +295,18 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
 - The STL must be a single connected, watertight mesh. Multi-body STL files
   (multiple shells) will fail during projection — split them first with a
   CAD tool or trimesh.
-- `--nj` must be a multiple of 4 (otherwise rounded down with a warning,
-  so the equatorial band can be split into 4 equal sectors).
-- The outer boundary (k=nk-1) is currently sphere-shaped after marching.
-  Use `shore check` to verify the per-block Jacobians.
+- For `cubed_sphere`, `--nj` must be a multiple of 4 (otherwise rounded
+  down with a warning, so the equatorial band can be split into 4
+  equal sectors).
+- For `cgrid` / `ch`, the body STL must be a finite-span wing-like mesh
+  with a detectable trailing-edge polyline (sharp or blunt). See
+  [C-grid construction](/algorithm/c-grid) for the TE-detection
+  algorithm.
+- For `ch`, the frame extents (`--ch-chord-min/max` /
+  `--ch-normal-min/max`) must contain the marched wrap envelope.
+  Validation runs at `fill_channel_blocks` time and raises a
+  `ParameterError` on violation.
+- Use `shore check` to verify the per-block Jacobians.
 - See [Spacing laws](/algorithm/spacing-laws) for a detailed explanation of each
   distribution and when to use it.
 
@@ -225,5 +319,9 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
 - [`shore export`](export) — convert `.geo` to VTK MultiBlock for ParaView
 - [Cubed-sphere topology](/topologies/cubed-sphere) — block layout, cap construction,
   seam matching
+- [O-grid topology](/topologies/o-grid) — single-block alternative
+- [C-grid topology](/topologies/c-grid) — sharp-/blunt-TE wrap for airfoils
+- [CH hybrid topology](/topologies/ch-hybrid) — C-grid wrap + far-field channel
+- [OH hybrid topology](/topologies/oh-hybrid) — cubed-sphere wrap + 6-face H-channel (Python API)
 - [Spacing laws](/algorithm/spacing-laws) — clustering distributions
 - [Hyperbolic marching](/algorithm/hyperbolic-marching) — algorithm details

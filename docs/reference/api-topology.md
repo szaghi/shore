@@ -15,6 +15,7 @@ several topologies; new ones plug into the same interface.
 | `CGridTopology` | C-grid for sharp- / blunt-TE airfoils (3-block / 4-block / legacy 1-block). |
 | `CGridTipCap` | Wing-tip cap for the C-grid: 5-block H-fill (or 6-block when the body wrap is blunt) chimera component, with auto-rounding for sharp-TE inputs. |
 | `OHTopology` | 12-block hybrid: cubed-sphere wrap + H-channel out to an axis-aligned bounding box. |
+| `CHTopology` | 12-/14-block hybrid: C-grid wrap + H-channel out to a chord/normal-aligned far-field frame (sharp-/blunt-TE airfoils). |
 | `HexBlock` | Structured hexahedral block (`(ni, nj, nk, 3)` nodes + 6 faces + 12 edges + 8 vertices). |
 | `Face`, `FaceBC`, `AxisMap`, `FACE_ALONG_AXES` | Face metadata used for multi-block wiring (re-exported from `shore.mesh.face`). |
 
@@ -254,6 +255,121 @@ for the channel-block builder, and
 [`examples/08-oh-hybrid/`](https://github.com/szaghi/shore/tree/main/examples/08-oh-hybrid)
 for a runnable demo.
 
+## `CHTopology`
+
+```python
+class CHTopology(Topology):
+    def __init__(
+        self,
+        *,
+        chord_min: float,
+        chord_max: float,
+        normal_min: float,
+        normal_max: float,
+        nk_channel: int,
+        freestream_world: np.ndarray | None = None,
+        span_axis: str = "z",
+        k_law_channel: str = "uniform",
+        k_beta_channel: float = 3.0,
+        c1_seam: bool = True,
+        i_split_body_upper: int | None = None,
+        i_split_body_lower: int | None = None,
+        ni_outflow: int = 8,
+    ): ...
+
+    def build(
+        self,
+        surface: np.ndarray | None,
+        nk: int,
+        *,
+        ni_body: int | None = None,
+        ni_wake: int | None = None,
+        n_stations: int | None = None,
+        wake_length: float | None = None,
+        wake_growth: float = 1.15,
+        te_dihedral_deg: float = 30.0,
+        spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
+        nk_w: int = 3,
+        **kwargs,
+    ) -> list[HexBlock]
+```
+
+**12-block** (sharp TE) or **14-block** (blunt TE) conforming hybrid:
+a 3-/4-block [C-grid](/topologies/c-grid) wrap (marched outward
+from the airfoil STL surface) plus 7 (sharp) or 8 (blunt) H-channel
+sub-blocks bridging the wrap envelope to a user-specified rectangular
+far-field frame in the chord/normal plane (extruded across span).
+
+Block list returned (sharp TE):
+
+```text
+[upper, body, lower,                                 # wrap
+ chan_upper, chan_body_top, chan_body_front,
+ chan_body_bot, chan_lower,                          # k_hi-side channels
+ chan_outflow_top_upper, chan_outflow_wake_upper,
+ chan_outflow_wake_lower, chan_outflow_top_lower]    # outflow sub-blocks
+```
+
+For blunt TE the wrap gains a `wake_base` block (4th wrap block) and
+the outflow gains a `chan_outflow_wake_base` sub-block bridging the
+TE-thickness gap downstream.
+
+The 5 k_hi-side channels are SHARED-by-view with their wrap partners
+(one contiguous numpy buffer of depth `nk_wrap + nk_channel - 1` per
+wrap segment). The outflow sub-blocks are **conformal SHARED** to
+the wrap's wake far-tip faces:
+
+| Outflow sub-block | Conformal partner | nk |
+|---|---|---|
+| `chan_outflow_top_upper.i_lo` | `chan_upper.i_lo` | `nk_channel` |
+| `chan_outflow_top_lower.i_lo` | `chan_lower.i_hi` | `nk_channel` |
+| `chan_outflow_wake_upper.i_lo` | `upper.i_lo` | `nk_wrap` |
+| `chan_outflow_wake_lower.i_lo` | `lower.i_hi` | `nk_wrap` |
+| `chan_outflow_wake_base.i_lo` *(blunt)* | `wake_base.i_lo` | `nk_w` |
+
+All identity AxisMap, with the channel `i_lo` face data copied
+bit-exact from the partner in `fill_channel_blocks`.
+
+The frame's chord and normal axes are picked from
+`freestream_world` (largest non-span component is chord). Defaults
+to `+x` chord with `span_axis="z"`.
+
+When `c1_seam=True` (default), each k_hi-side channel's first cell
+at every `(i, j)` is pinned to the wrap's last marching step at the
+same `(i, j)` (same algorithm as `OHTopology`). Outflow sub-blocks
+do not use C1 pinning — their channel-i runs along chord, not normal,
+so there is no wrap k-axis to inherit from.
+
+`Mesh.from_stl` does **not** accept `CHTopology` (its build
+parameters don't fit the `(ni, nj, nk)` signature). Build the
+block list directly:
+
+```python
+from shore.mesh import Body, CHTopology, Mesh, Spacing1D
+
+body = Body.from_stl("airfoil.stl", skip_hygiene=True)
+topo = CHTopology(
+    chord_min=-2.0, chord_max=20.0,
+    normal_min=-2.5, normal_max=2.5,
+    nk_channel=8,
+)
+blocks = topo.build(
+    surface=None, nk=12, mesh=body.mesh,
+    spacing_k=Spacing1D(law="geometric", ds=5e-4, growth=1.08),
+    ni_body=80, ni_wake=20, n_stations=5, wake_length=15.0,
+)
+mesh = Mesh(body=body, blocks=blocks, topology=topo)
+mesh.march(ds=5e-4, growth=1.08)
+```
+
+`mesh.is_blunt` (forwarded to the topology) reports the TE class
+detected at build time.
+
+See [CH hybrid topology](/topologies/ch-hybrid) for the geometry and
+[`examples/09-ch-hybrid/`](https://github.com/szaghi/shore/tree/main/examples/09-ch-hybrid)
+for a runnable demo.
+
 ## `HexBlock`
 
 ```python
@@ -369,5 +485,6 @@ constructing their seam mappings.
 - [`shore.mesh.spacing`](./api-spacing) — `Edge`, `Spacing1D`.
 - [Cubed-sphere topology](/topologies/cubed-sphere) — block layout.
 - [O-grid topology](/topologies/o-grid) — single-block alternative.
-- [OH hybrid topology](/topologies/oh-hybrid) — wrap + channel hybrid.
+- [OH hybrid topology](/topologies/oh-hybrid) — cubed-sphere wrap + channel hybrid.
+- [CH hybrid topology](/topologies/ch-hybrid) — C-grid wrap + channel hybrid.
 - [Topology overview](/topologies/) — taxonomy and how to choose.
