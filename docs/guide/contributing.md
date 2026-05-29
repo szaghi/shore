@@ -9,7 +9,7 @@ git clone https://github.com/szaghi/shore.git
 cd shore
 python -m venv .venv && source .venv/bin/activate
 make dev    # pip install -e ".[dev]"
-make test   # currently ~588 passing
+make test   # 999 passing (~1 min, coverage ~85%)
 ```
 
 ## Code conventions

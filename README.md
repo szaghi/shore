@@ -2,7 +2,7 @@
 
 # SHORE — Structured Hyperbolic Overlapping Remeshing Engine
 
-[![Latest Version](https://img.shields.io/pypi/v/shore.svg)](https://pypi.org/project/shore/)
+[![Latest Version](https://img.shields.io/pypi/v/shore-mesh.svg)](https://pypi.org/project/shore-mesh/)
 [![Build Status](https://github.com/szaghi/shore/actions/workflows/python-package.yml/badge.svg)](https://github.com/szaghi/shore/actions)
 [![Coverage](https://img.shields.io/endpoint?url=https://szaghi.github.io/shore/coverage-badge.json)](https://szaghi.github.io/shore/)
 [![Supported Python versions](https://img.shields.io/badge/Py-%203.11,%203.12-blue.svg)]()
@@ -14,14 +14,14 @@
 <table>
 <tr>
 <td><b>🏗️ Full Chimera assembly in one tool</b><br><sub>Generate every grid an overset assembly needs — body-fitted near-body meshes and parametric backgrounds — in the same world frame. Pack them into the Xall solver bundle (.grd + cc.par + marker boxes) without leaving the SHORE CLI. <a href="https://szaghi.github.io/shore/guide/cc-par-pipeline">Pipeline walkthrough</a></sub></td>
-<td><b>📐 Body-fitted near-body meshes</b><br><sub>Four topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, a single-block C-grid for sharp-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, and a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box. One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
+<td><b>📐 Body-fitted near-body meshes</b><br><sub>Six topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, a 3-/4-block C-grid for sharp-/blunt-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, conformal C-grid wing-tip caps, a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box, and a 12-/14-block CH hybrid that does the same for C-grid airfoils with a chord/normal-aligned far-field frame. Four are driven straight from <code>shore mesh --topology cubed_sphere|ogrid|cgrid|ch</code> (the OH hybrid and tip caps are Python-API only). One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
 </tr>
 <tr>
 <td><b>🧱 Parametric backgrounds</b><br><sub>Box, annular cylinder, and 5-block flat-caps cylinder primitives with per-axis spacing laws — fill the far field without an STL. Per-edge spacing on Box and Annulus, transfinite-interpolation blends; flat-caps cylinder is Chimera-fringe-free for GPU-friendly backgrounds. <a href="https://szaghi.github.io/shore/topologies/primitives">Primitives</a></sub></td>
 <td><b>🌊 Seam-aware hyperbolic marching</b><br><sub>Each wall-normal layer advances along outward normals computed with centred differences across multi-block seams (ghost rows from partner blocks). Spacing continuity across block edges holds layer by layer; per-layer Laplacian smoothing + Jacobian guard catch any cell inversion immediately. <a href="https://szaghi.github.io/shore/algorithm/hyperbolic-marching">Algorithm</a></sub></td>
 </tr>
 <tr>
-<td><b>🔍 Focused CLI</b><br><sub>Nineteen commands cover the full chimera pipeline — generate (<code>mesh</code>, <code>primitive</code>), subdivide and balance for parallel solvers (<code>split</code>, <code>balance</code>), pack for the solver (<code>grd</code>, <code>cc-par</code>, <code>proc-input</code>, <code>boxes-from-stl</code>), merge multi-component runs (<code>grd-merge</code>, <code>cc-par-merge</code>, <code>proc-input-merge</code>), inspect (<code>info</code>, <code>check</code>), and visualise (<code>export</code>, <code>view</code>, <code>boxes-export</code>). A Rich progress bar shows per-layer Jacobians during marching. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
+<td><b>🔍 Focused CLI</b><br><sub>Twenty-one commands cover the full chimera pipeline — generate (<code>mesh</code>, <code>primitive</code>), subdivide and balance for parallel solvers (<code>split</code>, <code>balance</code>), pack for the solver (<code>grd</code>, <code>cc-par</code>, <code>proc-input</code>, <code>boxes-from-stl</code>), merge multi-component runs (<code>grd-merge</code>, <code>cc-par-merge</code>, <code>proc-input-merge</code>), inspect (<code>info</code>, <code>check</code>), and visualise (<code>export</code>, <code>view</code>, <code>boxes-export</code>). A Rich progress bar shows per-layer Jacobians during marching. <a href="https://szaghi.github.io/shore/reference/mesh">CLI reference</a></sub></td>
 <td><b>🎨 ParaView and Jupyter visualization</b><br><sub>Export to VTK StructuredGrid (<code>shore export</code>) and MultiBlock (<code>.vtm</code>) for ParaView with per-cell Jacobian colour maps and overlaid marker boxes. Or use <code>shore view</code> for an immediate PyVista window, or <code>shore.vis</code> directly in Jupyter notebooks with the HTML backend. <a href="https://szaghi.github.io/shore/reference/api-vis">API reference</a></sub></td>
 </tr>
 <tr>
@@ -102,7 +102,23 @@ git clone https://github.com/szaghi/shore.git
 cd shore
 python -m venv .venv && source .venv/bin/activate
 make dev    # pip install -e ".[dev]"
-make test   # currently ~588 passing
+make test   # 999 passing (~1 min, coverage ~85%)
+```
+
+### Using SHORE with Claude Code
+
+This repo ships a [Claude Code](https://claude.com/claude-code) skill at
+[`.claude/skills/shore/`](.claude/skills/shore/) that teaches the agent how to
+*operate* the `shore` CLI end-to-end — topology choice, the spacing knobs, and
+the full STL → mesh → Xall-bundle (`grd` / `cc-par` / `proc-input`) workflow,
+including the argument-order gotchas. Claude Code discovers it automatically
+when you open this repository.
+
+To make it available in **every** project (so you can drive `shore` from any
+directory), copy it into your user skills directory:
+
+```bash
+cp -r .claude/skills/shore ~/.claude/skills/shore
 ```
 
 ### Your first body-fitted mesh

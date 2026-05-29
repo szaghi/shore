@@ -1,0 +1,74 @@
+{
+  "skill_name": "shore",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have a fuselage.stl in my current directory (not the SHORE source repo). Using the shore tool, generate a structured body-fitted volume mesh from it with a tight first wall-normal layer, then confirm the mesh is valid before I trust it. Give me the exact commands.",
+      "expected_output": "Activate a .venv (shore-mesh is venv-only on WSL2). Run `shore mesh fuselage.stl -o <stem>` with a topology suited to a closed star-shaped body (cubed_sphere default or ogrid), --ni/--nj/--nk, and a small --ds with a --growth for the first-layer clustering. Then validate with `shore check <stem>.geo` (layer-by-layer Jacobian) and inspect with `shore info` / export with `shore export`. Should note marching aborts on negative Jacobian and how to recover (smaller --ds, lower --growth).",
+      "files": [],
+      "expectations": [
+        "Recommends activating or creating a .venv before running shore",
+        "Uses `shore mesh` with the STL as the input and -o for the output stem",
+        "Selects cubed_sphere or ogrid topology (and/or notes the star-shaped requirement for centroid ray-casting)",
+        "Sets a small first-layer step via --ds (and typically --growth)",
+        "Validates the result with `shore check` on the .geo file",
+        "Mentions that marching aborts on a negative Jacobian and at least one recovery lever (smaller --ds, lower --growth, fewer layers, or more smoothing)",
+        "Does NOT invent a flag that contradicts `shore <cmd> --help` (or explicitly defers to --help for exact flags)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I've generated a multi-block body-fitted mesh with shore (I have the per-block .geo files, the .adjacency.json sidecar, and the original body STL). Walk me through producing the full Xall solver bundle: the binary grid, the chimera connectivity with hole-cutting marker boxes, and the MPI work distribution for 16 ranks. Order matters.",
+      "expected_output": "Correct ordering: (1) `shore grd *.geo -o run.grd`; (2) `shore boxes-from-stl body.stl --block <label> --max-outward-gap <v> -o boxes.json` BEFORE cc-par, because cc-par consumes the boxes; (3) `shore cc-par run.adjacency.json run.cc.par --grd run.grd --boxes boxes.json` with input and output as POSITIONAL args (the .grd name flag is --grd, not --grd-filename); (4) `shore proc-input run.grd run.proc.input --np 16` with positional args, weights from .grd cell counts. Should note boxes --block is a SHORE block label not a .geo path, and --max-outward-gap is required.",
+      "files": [],
+      "expectations": [
+        "Uses `shore grd` to pack the .geo files into a .grd",
+        "Generates marker boxes with `shore boxes-from-stl` BEFORE running `shore cc-par`",
+        "Passes the boxes JSON into `shore cc-par` via --boxes",
+        "Treats `shore cc-par` input (.adjacency.json) and output (cc.par) as positional arguments, not -o",
+        "Treats `shore proc-input` grd and output as positional arguments with --np 16, not -o",
+        "Notes boxes-from-stl --block is a SHORE block label (and/or that --max-outward-gap is required)",
+        "Does NOT place cc-par before the boxes are generated"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I want to mesh a NACA 0012 wing for CFD with the shore tool, starting from nothing (no STL, no section file). Which topology should I use and why, and what's the command chain to get from zero to a meshed wing?",
+      "expected_output": "Build the section then the body then mesh: `shore profile naca 0012 -o n0012.dat`, `shore body extrude --section n0012.dat -o wing.stl --span ... --n-stations ...` (section passed via the --section flag, not positionally), then `shore mesh wing.stl --topology cgrid` (NOT cubed_sphere/ogrid). Reasoning: an airfoil/wing is a sharp-TE non-star body; cubed-sphere/o-grid ray-cast from the centroid and fail on such geometry, while the C-grid slices cross-sections and handles sharp/blunt TE. cgrid needs --ni-body/--ni-wake/--n-stations/--wake-length; mention --cap-tips for finite wings.",
+      "files": [],
+      "expectations": [
+        "Selects the cgrid (C-grid) topology",
+        "Justifies it by the airfoil being non-star / sharp-TE and that cubed-sphere/o-grid centroid ray-casting fails there",
+        "Builds the NACA section with `shore profile naca`",
+        "Builds the wing STL with `shore body extrude` from the section",
+        "Runs `shore mesh --topology cgrid` and mentions the cgrid-specific params (--ni-body/--ni-wake/--n-stations/--wake-length)",
+        "Does NOT recommend cubed_sphere or ogrid for the wing"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "When I run `shore mesh` it dies partway through with a marching error / negative Jacobian, and separately I tried `shore mesh blob.stl --volume-k-spacing tanh` and that was also rejected. What's going on and how do I fix both?",
+      "expected_output": "Two distinct issues. (1) Negative Jacobian during marching = the extrusion tangled, usually too-aggressive stepping or a non-star body: fix with smaller --ds, lower --growth, fewer --nk layers, more smoothing, or switch to cgrid for a non-star/foil body. (2) tanh/tanh2 wall-normal spacing requires --volume-k-thickness to be supplied as well — it's a required pair. Should distinguish the two and give the concrete fix for each.",
+      "files": [],
+      "expectations": [
+        "Identifies the negative Jacobian as the marching tangling / abort condition",
+        "Gives at least two recovery levers for it (from: smaller --ds, lower --growth, fewer layers, more smoothing, switch topology for non-star bodies)",
+        "Identifies that `--volume-k-spacing tanh` (or tanh2) requires `--volume-k-thickness`",
+        "Treats the two failures as separate problems with separate fixes",
+        "Mentions the non-star-body cause and the cgrid alternative for it"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "I'm editing the SHORE source code itself, inside the ~/python/shore repository (its CLAUDE.md is loaded). Should I rely on the shore operating skill here? Also, unrelated: I tried `import shore_mesh` in a script and it failed — why?",
+      "expected_output": "Inside the SHORE source repo the repo's CLAUDE.md is authoritative for architecture/conventions/editing; the operating skill is for driving the CLI from outside the repo and should defer there. For the import: the install/distribution name is `shore-mesh` (pip install shore-mesh) but the importable package and the CLI are both `shore` — so `import shore`, not `import shore_mesh`.",
+      "files": [],
+      "expectations": [
+        "States that inside the SHORE repo the repo's CLAUDE.md is authoritative and the operating skill defers there",
+        "Frames the skill as for operating shore from outside the source repo",
+        "Explains the install name is `shore-mesh` while the importable package / CLI is `shore`",
+        "Gives the correct import as `import shore` (not `import shore_mesh`)"
+      ]
+    }
+  ]
+}

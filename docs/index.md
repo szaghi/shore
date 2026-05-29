@@ -39,7 +39,7 @@ features:
     linkText: Algorithm
   - icon: 🔍
     title: Focused CLI
-    details: Nineteen commands cover the full chimera pipeline — generate (`mesh`, `primitive`), subdivide and balance for parallel solvers (`split`, `balance`), pack for the solver (`grd`, `cc-par`, `proc-input`, `boxes-from-stl`), merge multi-component runs (`grd-merge`, `cc-par-merge`, `proc-input-merge`), inspect (`info`, `check`), and visualise (`export`, `view`, `boxes-export`). A Rich progress bar shows per-layer Jacobians during marching.
+    details: Twenty-one commands cover the full chimera pipeline — generate (`mesh`, `primitive`), subdivide and balance for parallel solvers (`split`, `balance`), pack for the solver (`grd`, `cc-par`, `proc-input`, `boxes-from-stl`), merge multi-component runs (`grd-merge`, `cc-par-merge`, `proc-input-merge`), inspect (`info`, `check`), and visualise (`export`, `view`, `boxes-export`). A Rich progress bar shows per-layer Jacobians during marching.
     link: /reference/mesh
     linkText: CLI reference
   - icon: 🆓
