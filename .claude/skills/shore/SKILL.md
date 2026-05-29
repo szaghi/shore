@@ -109,7 +109,7 @@ Never invent a flag. If a workflow below names a flag and `--help` disagrees,
 
 ## Topology — the first real decision
 
-`shore mesh --topology` selects one of four:
+`shore mesh --topology` selects one of five:
 
 - **`cubed_sphere`** (default) — 6-block (4 equatorial + 2 polar caps). For
   closed, **star-shaped** bodies (sphere, fuselage, blob). Gnomonic flat-square
@@ -120,11 +120,19 @@ Never invent a flag. If a workflow below names a flag and `--help` disagrees,
   hydrofoils). 1/3/4-block. Needs `--ni-body`/`--ni-wake`/`--n-stations`/
   `--wake-length`. Optional `--cap-tips` for finite wings.
 - **`ch`** — C-grid wrap + far-field H-channel hybrid (12-block sharp / 14
-  blunt). Adds the frame flags `--ch-chord-min`/`--ch-chord-max`/
-  `--ch-normal-min`/`--ch-normal-max` + `--nk-channel`.
+  blunt). Frame flags `--ch-chord-min`/`--ch-chord-max`/`--ch-normal-min`/
+  `--ch-normal-max` + `--nk-channel`; optional `--ch-freestream-{x,y,z}`,
+  `--ch-i-split-body-upper`/`--ch-i-split-body-lower`, `--ch-ni-outflow`.
+- **`oh`** — cubed-sphere wrap + far-field H-channel hybrid (12-block), for the
+  same star-shaped bodies as `cubed_sphere`. Needs box extents
+  `--oh-box-{x,y,z}{min,max}` and reuses the channel flags `--nk-channel`/
+  `--k-law-channel`/`--k-beta-channel`/`--c1-seam-channel`. `--theta-cap` is
+  ignored (the wrap pins it to pi/4; passing it warns).
 
-Two more (`OHTopology`, `CGridTipCap`) are **Python-API-only** — not exposed on
-`shore mesh`. Drive them from `shore.mesh`.
+`CGridTipCap` is **Python-API-only** — not on `--topology` (but the C-grid's
+`--cap-tips` flag and the `shore cap-tip` command cover wing-tip caps). Drive
+the rest of the object-composition API (`Mesh.from_array`, hand-built block
+lists) from `shore.mesh`.
 
 **Star-shaped requirement**: cubed-sphere and o-grid ray-cast from the body
 centroid. If a ray from the centroid can't reach a surface point in one shot
