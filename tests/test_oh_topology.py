@@ -298,6 +298,99 @@ class TestChannelConstruction:
 
 
 # ---------------------------------------------------------------------------
+# Off-centre body: the box need not be centred on the body.  Face picking
+# and corner snapping are judged relative to the wrap-envelope centroid, not
+# the box centre.  (Regression: a distance-to-box-plane face pick collapsed
+# every channel onto the box wall nearest the body, tangling the far side.)
+# ---------------------------------------------------------------------------
+
+
+class TestOffCentreBody:
+    def _offset_sphere_stl(self, tmp_path, dz: float):
+        import trimesh
+
+        sph = trimesh.creation.icosphere(subdivisions=4, radius=1.0)
+        sph.apply_translation([0.0, 0.0, dz])
+        path = tmp_path / f"sphere_off_{dz:g}.stl"
+        sph.export(str(path))
+        return path
+
+    def test_caps_reach_correct_z_faces_when_body_offset(self, tmp_path):
+        """Body pushed far downstream: -z cap must still reach the upstream
+        wall and +z cap the downstream wall (not both collapsing to the
+        nearer wall)."""
+        # Body at z=8 inside a box z in [-3, 30] (centre z=13.5, body far
+        # upstream of the box centre).
+        stl = self._offset_sphere_stl(tmp_path, dz=8.0)
+        vmin = (-6.0, -6.0, -3.0)
+        vmax = (6.0, 6.0, 30.0)
+        m = Mesh.from_stl(
+            stl,
+            topology=OHTopology(box_vmin=vmin, box_vmax=vmax, nk_channel=NK_CHANNEL),
+            ni=NI,
+            nj=NJ,
+            nk=NK_WRAP,
+        )
+        m.march(ds=0.05, growth=1.1)
+
+        chan_north = m.blocks[10]  # faces -z
+        chan_south = m.blocks[11]  # faces +z
+        np.testing.assert_allclose(chan_north.nodes[:, :, -1, 2], vmin[2], atol=1e-9)
+        np.testing.assert_allclose(chan_south.nodes[:, :, -1, 2], vmax[2], atol=1e-9)
+
+    def test_all_six_faces_still_covered_when_body_offset(self, tmp_path):
+        """Even off-centre, the 6 channels tile the 6 distinct box faces."""
+        stl = self._offset_sphere_stl(tmp_path, dz=8.0)
+        vmin = (-6.0, -6.0, -3.0)
+        vmax = (6.0, 6.0, 30.0)
+        m = Mesh.from_stl(
+            stl,
+            topology=OHTopology(box_vmin=vmin, box_vmax=vmax, nk_channel=NK_CHANNEL),
+            ni=NI,
+            nj=NJ,
+            nk=NK_WRAP,
+        )
+        m.march(ds=0.05, growth=1.1)
+
+        faces_hit = []
+        tol = 1e-9
+        for q in range(6, 12):
+            outer = m.blocks[q].nodes[:, :, -1, :]
+            for idx, lo, hi, sym in (
+                (0, vmin[0], vmax[0], "x"),
+                (1, vmin[1], vmax[1], "y"),
+                (2, vmin[2], vmax[2], "z"),
+            ):
+                if np.allclose(outer[..., idx], lo, atol=tol):
+                    faces_hit.append(f"{sym}-")
+                    break
+                if np.allclose(outer[..., idx], hi, atol=tol):
+                    faces_hit.append(f"{sym}+")
+                    break
+        assert sorted(faces_hit) == ["x+", "x-", "y+", "y-", "z+", "z-"]
+
+    def test_channel_cells_not_inverted_when_body_offset(self, tmp_path):
+        """Off-centre channels must remain right-handed (positive Jacobian)."""
+        from shore.volume.jacobian import _jacobian_field_open
+
+        stl = self._offset_sphere_stl(tmp_path, dz=8.0)
+        vmin = (-6.0, -6.0, -3.0)
+        vmax = (6.0, 6.0, 30.0)
+        m = Mesh.from_stl(
+            stl,
+            topology=OHTopology(box_vmin=vmin, box_vmax=vmax, nk_channel=NK_CHANNEL),
+            ni=NI,
+            nj=NJ,
+            nk=NK_WRAP,
+        )
+        m.march(ds=0.05, growth=1.1)
+
+        for q in range(6, 12):
+            jf = _jacobian_field_open(m.blocks[q].nodes)
+            assert jf.min() > 0.0, f"channel block {q} has inverted cells"
+
+
+# ---------------------------------------------------------------------------
 # Marching does not regress the wrap (the channel must not interfere)
 # ---------------------------------------------------------------------------
 

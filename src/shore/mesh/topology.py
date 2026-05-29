@@ -2049,9 +2049,22 @@ class OHTopology(Topology):
         wrap_blocks = blocks[:6]
         channel_blocks = blocks[6:12]
 
+        # Reference centre for the radial "which face does this block point
+        # at?" decision and the corner sidedness snap.  This is the global
+        # wrap-envelope centroid (mean over all six k_hi faces) — a robust,
+        # purely geometric proxy for the body centre.  It is deliberately
+        # NOT the box centre: the body need not sit at the box centre (e.g.
+        # a sphere placed upstream in a long downstream-biased wake box), and
+        # using the box centre there makes every block snap toward the
+        # nearest box face instead of the face it actually points at.
+        body_centre = np.stack(
+            [w.nodes[:, :, -1, :].reshape(-1, 3).mean(axis=0) for w in wrap_blocks],
+            axis=0,
+        ).mean(axis=0)
+
         for w_blk, c_blk in zip(wrap_blocks, channel_blocks, strict=True):
             inner = w_blk.nodes[:, :, -1, :]  # (ni, nj, 3) — wrap envelope
-            outer_quad = self._outer_quad_for_block(inner)
+            outer_quad = self._outer_quad_for_block(inner, body_centre)
             if self.c1_seam:
                 # Per-(i, j) last marching step on the wrap.  Smoothing means
                 # this isn't perfectly uniform, so we pin per-node.
@@ -2073,18 +2086,31 @@ class OHTopology(Topology):
             # Write only the k>=1 interior; k=0 is the shared seam.
             c_blk.nodes[:, :, 1:, :] = frustum[:, :, 1:, :]
 
-    def _outer_quad_for_block(self, inner_face: np.ndarray) -> np.ndarray:
+    def _outer_quad_for_block(
+        self, inner_face: np.ndarray, body_centre: np.ndarray
+    ) -> np.ndarray:
         """Find the box face this wrap block points at; return its 4 corners.
 
-        Algorithm: pick the cube face from the **full** envelope centroid
-        (mean of all i, j envelope nodes — robust because corners sit at
-        cap-equator junctions where the bulk is not).  Then snap each of
-        the 4 envelope corners onto the cube by:
+        ``body_centre`` is the global wrap-envelope centroid (see
+        :meth:`fill_channel_blocks`).  Everything here is judged relative to
+        it, never to the box centre, so the body may sit anywhere inside the
+        box (including far off-centre, e.g. a body placed upstream in a long
+        downstream wake box).
+
+        Algorithm: pick the cube face from the block's **outward direction**
+        — the vector from ``body_centre`` to this block's envelope centroid.
+        The face is the one whose outward normal that direction most aligns
+        with (largest signed component), NOT the geometrically nearest box
+        plane.  For an off-centre body the nearest plane is often the wrong
+        one (every block's nearest face is whichever box wall the body was
+        pushed toward), so a distance-based pick collapses multiple blocks
+        onto a single face.  Then snap each of the 4 envelope corners onto
+        the cube by:
 
         1. Setting the face-normal component to the picked plane value.
         2. For each in-plane component, taking the sign of the corner's
-           coordinate (around the box centre) and pushing it to the
-           corresponding ``vmin`` / ``vmax``.
+           offset from ``body_centre`` and pushing it to the corresponding
+           ``vmin`` / ``vmax``.
 
         The result: each corner lands at a cube **vertex**, the 4 corners
         of a single cube face.  Adjacent wrap blocks pick adjacent faces
@@ -2110,21 +2136,23 @@ class OHTopology(Topology):
                 f"enlarge the box or reduce nk / wrap step sizes."
             )
 
-        dists = np.array(
+        # Outward direction of this block, relative to the body centre.  The
+        # six cubed-sphere blocks point at the six cardinal directions; the
+        # dominant signed component selects the box face.
+        outward = full_centroid - body_centre
+        signed = np.array(
             [
-                self.box_vmax[0] - full_centroid[0],  # +x face
-                full_centroid[0] - self.box_vmin[0],  # -x face
-                self.box_vmax[1] - full_centroid[1],  # +y face
-                full_centroid[1] - self.box_vmin[1],  # -y face
-                self.box_vmax[2] - full_centroid[2],  # +z face
-                full_centroid[2] - self.box_vmin[2],  # -z face
+                outward[0],  # +x face
+                -outward[0],  # -x face
+                outward[1],  # +y face
+                -outward[1],  # -y face
+                outward[2],  # +z face
+                -outward[2],  # -z face
             ]
         )
-        face_idx = int(np.argmin(dists))
+        face_idx = int(np.argmax(signed))
         axis_idx = face_idx // 2
         plane_val = (self.box_vmax if face_idx % 2 == 0 else self.box_vmin)[axis_idx]
-
-        box_centre = 0.5 * (self.box_vmin + self.box_vmax)
 
         out_corners = np.stack([c00, c10, c11, c01], axis=0).copy()
         out_corners[:, axis_idx] = plane_val
@@ -2132,9 +2160,9 @@ class OHTopology(Topology):
             if ax == axis_idx:
                 continue
             # Push each corner's in-plane component to vmin or vmax based on
-            # its sign relative to the box centre.  This snaps every corner
+            # its sign relative to the body centre.  This snaps every corner
             # to a cube vertex of the picked face.
-            sign = np.sign(out_corners[:, ax] - box_centre[ax])
+            sign = np.sign(out_corners[:, ax] - body_centre[ax])
             # Treat exactly-on-axis corners (sign == 0) as positive; in
             # practice they don't occur for cubed-sphere envelopes but the
             # snap must be deterministic.
