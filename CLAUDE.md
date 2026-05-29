@@ -12,17 +12,49 @@ make fmt          # ruff check --fix + ruff format (destructive)
 make clean        # remove dist/, build/, .egg-info, caches
 ```
 
-Run a single test: `.venv/bin/pytest tests/test_hyperbolic.py -k "test_march_sphere"`
+Run a single test: `.venv/bin/pytest tests/test_cap_gnomonic.py -k "TestSeamStepMatching"`
 
 ## Architecture
 
-SHORE converts triangulated STL surfaces into structured body-fitted O-grid volumes via hyperbolic normal extrusion. It is the foundational meshing layer for Chimera (overset) CFD mesh generation.
+SHORE converts triangulated STL surfaces into structured body-fitted volumes via hyperbolic normal extrusion, and packages the result for the Xall/Xnavis Chimera (overset) CFD solver chain. The package name is `shore-mesh`; the importable package and CLI are both `shore`.
 
-### Two-Stage Pipeline
+Two halves:
+
+1. **Mesh generation** — STL → structured multi-block volume (`mesh/`, `surface/`, `volume/`, `topology/`, `primitive/`). Several topologies (cubed-sphere, O-grid, C-grid, OH/CH hybrids) plus parametric primitives.
+2. **Xall preprocessing pipeline** — turn the block list into the files the solver reads: ASCII `.geo` per block, binary `.grd` packs, `cc.par` chimera connectivity, `proc.input` MPI work distribution, marker boxes for hole-cutting, and a load-balance split planner (`io/`, `split.py`, `balance.py`, `boxes.py`). There are also `merge` variants (`grd-merge`, `cc-par-merge`, `proc-input-merge`) for combining independent Chimera components into one Xall run.
+
+Geometry generators (`shapes/`, `profiles/`) round out the front end: analytic STL bodies (sphere/cylinder/torus/box/capsule), NACA airfoil sections, and section-extrusion wings — so a test case can be built end-to-end without external CAD.
+
+### Two-Stage Pipeline (body-fitted topologies)
 
 1. **Surface projection** (`surface/remesh.py`): Ray-cast from body centroid through a structured lat-lon sphere template onto the STL. Produces the k=0 surface layer `(ni, nj, 3)`. Requires star-shaped bodies.
 
 2. **Hyperbolic marching** (`volume/hyperbolic.py`): Extrudes outward layer-by-layer: `P[i,j,k+1] = P[i,j,k] + step[k] * n_hat[i,j,k]`. Step sizes come from `spacing.build_k_steps` (geometric, tanh, or tanh2). Laplacian smoothing per layer. Aborts immediately on negative Jacobian.
+
+### OOP Block Model
+
+The mesh layer is an explicit object model, not bare arrays. `Block`
+(ABC) / `HexBlock` (`mesh/block.py`) own a `(ni, nj, nk, 3)` `nodes`
+array (often a numpy *view* into a topology's shared buffer so adjacent
+blocks alias their seam data) plus typed `Vertex` / `Edge` / `Face`
+lists. `Face` (`mesh/face.py`) carries a `FaceBC`
+(`WALL | FREE | SHARED | DIRICHLET | PERIODIC`), a `partner` Face, and
+an `AxisMap`. **Wiring invariant:** `HexBlock._set_face_bc` *requires*
+an `AxisMap` for every SHARED/DIRICHLET/PERIODIC seam and validates it
+against the partner face's along-axes at construction — a topology
+builder that wires a seam wrong fails loudly then, not silently in the
+downstream `cc.par`. `AxisMap` records, per along-seam axis, the
+partner axis and a flip flag; `cc_par.py` turns it into Xnavis 3-digit
+orientation codes.
+
+Per-edge spacing lives on `Edge.spacing` (a `Spacing1D`). Override
+detection is by **identity**: `HexBlock.__init__` assigns the same
+`Spacing1D` instance to all edges of an axis, so `mesh.py`'s
+`_resolve_k_steps` treats any k-edge whose `spacing is not
+block._default_spacing_k` as a user override. All blocks in one `Mesh`
+share a single k-step schedule (k-coupled seams must stay coincident
+layer-by-layer); block 0 wins, with a `UserWarning` if other blocks
+disagree.
 
 ### Topology
 
@@ -56,15 +88,19 @@ gap.  Optional conformal wing-tip cap blocks via `--cap-tips`
 (per-tip 5 cap blocks + 1 wake-base cap; auto-rounds sharp TE).
 Marched by `Mesh._march_cgrid_three` (TE-aware ghost rows).
 
-**`ch`** (10- / 12-block hybrid, `mesh/topology.py:CHTopology`,
-`topology/ch_channel.py`): C-grid wrap (3 or 4 blocks, sharp or
-blunt) + 7 or 8 H-channel blocks bridging the wrap envelope to a
-chord/normal/span-aligned far-field box.  Channel blocks: `chan_upper`
-/ `chan_body_top` / `chan_body_front` / `chan_body_bot` / `chan_lower`
-SHARED-by-view with their wrap k_hi slices; `chan_outflow_upper` /
-`chan_outflow_lower` (and `chan_outflow_wake_base` for CH-4) bridge
-the wrap's i-direction far-tip faces to the rear frame edge with
-cross-axis SHARED face mapping (k=0 data copied — channel-i = wrap-k).
+**`ch`** (12-block sharp-TE / 14-block blunt-TE hybrid,
+`mesh/topology.py:CHTopology`, `topology/ch_channel.py`): C-grid wrap
+(3 or 4 blocks, sharp or blunt) + 5 k_hi-side channel blocks + 4 (or
+5) outflow sub-blocks, bridging the wrap envelope to a
+chord/normal/span-aligned far-field box.  The 5 k_hi-side channel
+blocks `chan_upper` / `chan_body_top` / `chan_body_front` /
+`chan_body_bot` / `chan_lower` are SHARED-by-view with their wrap k_hi
+slices; the 4 outflow sub-blocks `chan_outflow_top_upper` /
+`chan_outflow_wake_upper` / `chan_outflow_wake_lower` /
+`chan_outflow_top_lower` (plus `chan_outflow_wake_base` for CH-4)
+bridge the wrap's i-direction far-tip faces to the rear frame edge
+with cross-axis SHARED face mapping (k=0 data copied — channel-i =
+wrap-k).
 Body wrap is split into 3 i-segments; the splits' outer-quad
 endpoints land at the frame's top-front and bottom-front corners so
 all channel outer quads are planar.  Frame is defined by
@@ -120,8 +156,9 @@ per (i, j).
 - **Geo file ordering**: Fortran column-major (i-fastest) via `order="F"` — matching Xall_GPU
 - **Intermediate format**: `.npz` files with key `"k0"` for surface layers; readable via `np.load("file.npz")["k0"]`
 - **Jacobian check**: scalar triple product `(e_i x e_j) . e_k`; periodic j wraps via modular indexing; open blocks use `_jacobian_field_open` which has `nj-1` cells in j
-- **Theta-cap aliases**: `--theta-cap` (radians), `--theta-cap-deg` (degrees), `--theta-margin` (deprecated radians alias) are mutually exclusive on every command that accepts them
-- **Spacing laws**: Three 1D distributions in `volume/spacing.py`: `uniform` (equal spacing, default), `tanh` (one-sided Roberts, cluster near start), `tanh2` (two-sided Roberts, cluster at both ends or at `cluster_at`). Surface i/j directions and wall-normal k direction each have independent spacing controls via CLI flags (`--surface-i-spacing`, `--surface-j-spacing`, `--volume-k-spacing`). Tanh/tanh2 k-spacing requires `--volume-k-thickness`.
+- **Theta-cap aliases**: the CLI exposes `--theta-cap` (radians) and `--theta-cap-deg` (degrees), mutually exclusive on every command that accepts them. At the Python level `surface/remesh.py` also accepts a deprecated `theta_margin` radians kwarg (same exclusivity), but it is not surfaced as a CLI flag
+- **Spacing laws**: low-level 1D distributions in `volume/spacing.py` (pure numpy — no scipy): `uniform` (equal spacing, default), `tanh` (one-sided Roberts, cluster near start), `tanh2` (two-sided Roberts, cluster at both ends or at `cluster_at`), and `pinned_distribution` (interior law with caller-given first/last interval lengths, for C1 endpoint matching at multi-block seams). `mesh/spacing.py:Spacing1D` is the OOP wrapper carried by every `Edge`: `law ∈ {uniform, tanh, tanh2, geometric, pinned}` plus parameters (`beta`, `ds`, `growth`, `total_thickness`, `cluster_at`, `first_step`/`last_step`, `interior`). Surface i/j directions and wall-normal k direction each have independent CLI controls (`--surface-i-spacing`, `--surface-j-spacing`, `--volume-k-spacing`). Tanh/tanh2 k-spacing requires `--volume-k-thickness`.
+- **Xall file formats** (the solver target, all in `io/`): `.geo` ASCII per-block coordinates (i-fastest); `.grd` Fortran-unformatted binary pack of N blocks (header = block count + per-block cell-count triples, then X/Y/Z records); `cc.par` ASCII chimera connectivity + per-block metadata + marker boxes; `proc.input` MPI rank/group/body assignment. `.adjacency.json` is SHORE's own sidecar (the SHARED/DIRICHLET/PERIODIC face graph) and the bridge from the block model to `cc-par`. SHORE node counts (`ni`, `nj`, `nk`) are always **node** counts; the `.grd` header is the only place cell counts (= node − 1) appear, converted automatically.
 - **Smoothing**: `march()` applies Laplacian smoothing after each extrusion step: `smooth_iters` sweeps of `_laplacian_smooth` with blend factor `smooth_strength`. Non-periodic boundaries and the k=0 wall are always clamped.
 - **Exceptions**: `ShoreError` base with `MeshInputError(ValueError)`, `ParameterError(ValueError)`, `MarchingError(RuntimeError)`. Dual inheritance preserves backward-compat `isinstance` checks.
 
@@ -129,14 +166,26 @@ per (i, j).
 
 | Module | Role |
 |---|---|
-| `cli.py` | Typer CLI — 10 commands: `mesh`, `primitive` (sub-app: `box`/`annulus`/`flat-caps`), `split`, `cc-par`, `project`, `config`, `info`, `check`, `export`, `view`. `mesh` selects topology via `--topology cubed_sphere|ogrid` (default `cubed_sphere`); `project` runs the single-block lat-lon path. Shared option aliases (`_NI`, `_NJ`, `_NK`, `_DS`, `_GROWTH`, `_SMOOTH`, `_SITERS`, spacing flags) enforce consistent help text. Deprecated flags: `--cap-pull`, `--cap-squareness`, `--j-cluster-lon` accept values, warn, and are ignored. |
-| `surface/io.py` | `load_stl` — loads an STL file into a `trimesh.Trimesh`; validates it is a single mesh. |
+| `cli.py` | Typer CLI. Top-level commands: `mesh`, `project`, `config`, `info`, `check`, `export`, `view`, `split`, `cap-tip`, `grd`, `grd-merge`, `cc-par`, `cc-par-merge`, `proc-input`, `proc-input-merge`, `balance`, `boxes-from-stl`, `boxes-export`. Sub-apps: `primitive` (`box`/`annulus`/`flat-caps`/`h-grid-rect`/`h-grid-tube`), `profile` (`naca`), `body` (`sphere`/`cylinder`/`torus`/`box`/`capsule`/`extrude`). `mesh` selects topology via `--topology cubed_sphere\|ogrid\|cgrid\|ch` (cgrid/ch need `--ni-body`/`--ni-wake`/`--n-stations`/`--wake-length`; ch adds `--ch-chord/normal-min/max`/`--nk-channel`). Parameter precedence everywhere: explicit CLI flag → `--config` TOML → built-in default (`_make_picker` + click's `ParameterSource`). Shared option aliases (`_NI`, `_NJ`, `_NK`, `_DS`, `_GROWTH`, `_SMOOTH`, `_SITERS`, spacing flags). Deprecated `mesh` flags: `--cap-pull`, `--cap-squareness`, `--j-cluster-lon` accept values, warn, are ignored. |
+| `config.py` | TOML config loaders/validators + template emitters. `MeshConfig` (`[grid]`/`[march]`/`[surface]`/`[volume]`) for `shore mesh`; `PrimitiveConfig` (`[geometry]`/`[grid]`/`[spacing]`) for `shore primitive`; `SplitConfig` (`[[splits]]`) for `shore split`. `load_config` / `load_primitive_config` / `load_split_config`, `dump_template` / `dump_primitive_template`. Rejects unknown keys; resolves `--theta-cap`/`--theta-cap-deg`. |
+| `shapes/` | trimesh-backed 3D STL body builders. `_primitives.py`: `sphere`, `cylinder`, `torus`, `box`, `capsule` (thin `trimesh.creation` wrappers). `_extrude.py`: `extrude_section(coords, span, n_stations, taper, sweep_deg, twist_deg, span_axis, end_caps)` — stack a 2D Selig section into a wing STL. Backs `shore body`. |
+| `profiles/` | Pure-numpy 2D airfoil section generators. `_naca.py`: `naca` / `naca4` / `naca5` → `(N, 2)` Selig-ordered coords (upper-TE → LE → lower-TE), sharp (`closed_te=True`) or blunt TE. `io.py`: `read_section` / `write_section` for Selig `.dat`. Backs `shore profile naca`; consumed by `shapes.extrude_section`. |
+| `surface/io.py` | `load_stl` — loads an STL file into a `trimesh.Trimesh`; validates it is a single mesh; warns on non-watertight. |
 | `surface/projector.py` | `Projector` — ray-cast helper around `trimesh.RayMeshIntersector` with cached BVH; `Projector.project(dirs)` returns hit positions + per-ray status. Used by `Body` (lazy) and by `build_cap_k0` / `build_equator` directly. |
 | `surface/anchor.py` | `resolve_anchor(mesh)` — chooses an anchor inside the body for ray casting (centroid-based, with star-shaped checks). |
 | `surface/cap.py` | `build_cap_k0(theta_cap, nc, pole, projector, j_spacing, j_beta)` — gnomonic flat-square cap k=0 seed. Diamond in tangent plane (corners at azimuth 0/90/180/270°, distance `tan(theta_cap)`), bilinear interior, radial projection via `Projector`. |
 | `surface/equator.py` | `build_equator(cap_south, cap_north, ni, theta_cap, projector, i_spacing, i_beta)` — equator k=0 from cap seam rings. `_seam_ring(cap, pole)` extracts the `nj`-node seam in sub-block order. `_constrained_distribution(ni, start, stop, first_step, last_step, spacing, beta)` builds a 1D distribution with pinned first/last intervals. Per-j slerp-meridian + ray-cast onto STL. C1 seam pinning when cap/equator radial steps are within ~2x; warns + falls back otherwise. |
 | `surface/remesh.py` | Single-block lat-lon path: `sphere_latlon_directions(ni, nj, theta_cap, i_spacing, i_beta, j_spacing, j_beta, j_cluster_lon)`, `project_sphere_to_surface(mesh, ...)`. Used by `Body.project()`, the `shore project` CLI command, and `OGridTopology` for the k=0 surface ray-cast. **Not** used by the cubed-sphere topology. |
-| `volume/spacing.py` | 1D spacing laws: low-level `uniform`, `tanh_one_sided`, `tanh_two_sided`; domain builders `build_i_coords` (`uniform`/`tanh`/`tanh2`), `build_j_coords` (`uniform`/`tanh2`, periodic), `build_k_steps` (`geometric`/`tanh`/`tanh2`). Pure numpy — no scipy. |
+| `surface/cgrid.py` | C-grid k=0 construction from an STL: `detect_te_edges` (sharp/blunt TE by dihedral), `slice_by_span` (per-station cross-sections via `mesh_plane`), `build_c_curve` / `build_cgrid_k0` (wrap + wake-branch polylines, arc-length resample), `round_body_te_in_surface` (synthetic TE rounding). Feeds `CGridTopology` / `CHTopology`. |
+| `volume/spacing.py` | Low-level 1D spacing laws: `uniform`, `tanh_one_sided`, `tanh_two_sided`; domain builders `build_i_coords` (`uniform`/`tanh`/`tanh2`), `build_j_coords` (`uniform`/`tanh2`, periodic), `build_k_steps` (`geometric`/`tanh`/`tanh2`), `pinned_distribution` (interior law + pinned first/last intervals). Pure numpy — no scipy. |
+| `mesh/spacing.py` | `Spacing1D` dataclass — the OOP spacing law carried by every `Edge`. `build(n, start, stop)` dispatches to `volume/spacing.py`; `build_steps(nk)` returns wall-normal step sizes. See the **Spacing laws** convention above. |
+| `mesh/block.py` | `Block` ABC + `HexBlock` (8 vertices / 12 edges / 6 faces over a `(ni, nj, nk, 3)` node array, often a view). `_set_face_bc(name, bc, partner, axis_map)` enforces the AxisMap-required-for-connection-seams invariant. Default face BCs: k_lo=WALL, all others FREE; topology rewires after construction. |
+| `mesh/face.py` | `FaceBC` enum (`WALL`/`FREE`/`SHARED`/`DIRICHLET`/`PERIODIC`), `Face` dataclass (name/bc/partner/axis_map/body_projected), and `AxisMap` (per-along-axis partner-axis + flip; `identity`/`from_pairs`/`inverse`/`validate_against_partner`). `FACE_ALONG_AXES` maps each face name to its two in-plane axes. |
+| `mesh/edge.py` / `mesh/vertex.py` | `Edge` (axis, endpoint vertices, node count, `Spacing1D`, `body_projected`) and `Vertex` (corner index, ijk sign tuple, `body_projected`) — the rest of the block element model. |
+| `mesh/body.py` | `Body` dataclass — STL wrapper. `Body.from_stl(path, skip_hygiene=...)` loads + (optionally) repairs; `.projector` (lazy cached `Projector`), `.project(...)` (lat-lon k=0), `.project_caps(...)`, `.directions(...)`, `save_surface`/`load_surface` (`.npz` with key `"k0"`). |
+| `mesh/inspect.py` | File-level inspection/export backing the CLI: `info_geo`/`info_surface`, `check_geo`, `export_geo`/`export_surface`, `view_geo_file`/`view_surface_file`. |
+| `topology/cgrid_cap.py` | Wing-tip cap builder for the C-grid: `build_cap_blocks` (3/4 H-style blocks closing the airfoil section at a span extreme), `find_symmetric_le_cuts`, `detect_te_thickness`, `auto_round_sharp_te`. Backs `CGridTipCap` and the `shore cap-tip` CLI. |
+| `primitive/` | Parametric structured-grid primitives (no STL). `base.py` (`PrimitiveMesh` ABC, `resolve_axis`/`axis_frame`/`coords_1d`), `box.py` (`BoxMesh`), `annulus.py` (`AnnularCylinderMesh`, optional periodic-j sector), `flat_caps.py` (`FlatCapsCylinder`, 5-block Chimera-free background), `h_grid_rect.py` (`HGridRectMesh`, rectangular duct), `h_grid_tube.py` (`HGridTubeMesh`, circular bore, j-periodic, k=0 polar singular axis). All expose `.build(...)` + `.blocks` + `write_geo`. |
 | `exceptions.py` | `ShoreError` base + `MeshInputError(ShoreError, ValueError)`, `ParameterError(ShoreError, ValueError)`, `MarchingError(ShoreError, RuntimeError)`. |
 | `volume/hyperbolic.py` | `_compute_normals(layer, periodic, ghost_rows=None)`: outward unit normals via cross of i- and j-tangents. When `ghost_rows` is supplied (dict with optional keys `'i_lo'` / `'i_hi'` / `'j_lo'` / `'j_hi'`), the corresponding boundary tangent uses a centred difference against the ghost row instead of one-sided. `_laplacian_smooth(layer, strength, periodic)`: per-iteration `strength * (laplacian - node)` blend; non-periodic boundary rows clamped, k=0 wall always clamped. `_stl_normals` for blending. |
 | `volume/jacobian.py` | `jacobian_field` (periodic-j, shape `(ni-1, nj, nk-1)`), `_jacobian_field_open` (non-periodic, shape `(ni-1, nj-1, nk-1)`), `min_jacobian_two_layers` (used during marching), `jacobian_per_layer` (used by `check`). |
@@ -144,30 +193,34 @@ per (i, j).
 | `topology/oh_channel.py` | OH (and shared by CH) channel-block frustum builder: `build_channel_block(inner_face, outer_quad, nk_channel, k_law, k_beta, c1_first_step)` — bilinear sweep of `outer_quad` to produce the channel's k=nk-1 face, ruled-surface interior, optional per-(i, j) C1 first-step pin via geometric tail (`_solve_geometric_ratio` Newton solver). Pure numpy; no marching. |
 | `topology/ch_channel.py` | CH-specific frame and outer-quad helpers: `CHFrame` dataclass (chord/normal/span axis indices + box extents), `resolve_frame(...)` (validates inputs, picks chord_axis from freestream), `outer_quads_for_cgrid(...)` (returns 7 or 8 planar `(4, 3)` quads keyed by channel label — `upper`, `body_top`, `body_front`, `body_bot`, `lower`, `outflow_upper`, `outflow_lower`, +`outflow_wake_base` for CH-4). Body-side splits land at frame corners so all outer quads are planar and adjacent quads agree at shared columns. |
 | `mesh/topology.py` | `Topology` ABC and `CubedSphereTopology.build(surface, nk, ni, nj, spacing_k, projector, theta_cap, i_spacing, i_beta, j_spacing, j_beta)` — calls `build_cap_k0` for both poles, `build_equator`, then wires the 6 `HexBlock`s with SHARED views (sub-sub j-seams) and DIRICHLET partners (cap-equator i-seams). The `surface` arg is ignored (kept for backwards-compat); the gnomonic algorithm projects through `projector` directly.  Also defines `OGridTopology` (single-block, j-periodic), `CGridTopology` (sharp/blunt 1- / 3- / 4-block C-grid; conformal cap-tips path), `CGridTipCap` (C-grid wing-tip cap, fully volumetric — no marching), `OHTopology` (cubed-sphere wrap + 6-face H-channel; 12 blocks, channel views aliased to wrap.k_hi via deeper buffer allocation, `fill_channel_blocks(...)` after marching), and `CHTopology` (C-grid wrap + H-channel; 12 blocks for sharp TE, 14 for blunt — 5 k_hi-side channels SHARED-by-view via single `nodes_all` buffer of depth `nk_wrap+nk_chan-1`; 4 (or 5) outflow sub-blocks per side `top_upper / wake_upper / wake_lower / top_lower` (+ `wake_base` for blunt) with conformal SHARED to wrap.upper.i_lo / lower.i_hi (nk = nk_wrap) and to chan_upper.i_lo / chan_lower.i_hi (nk = nk_channel)).  All non-cubed-sphere topologies expose `is_blunt` and `fill_channel_blocks` where applicable. |
-| `mesh/mesh.py` | `Mesh.from_stl(...)` orchestrates body load + topology build. `Mesh.march()` dispatches by topology: `_march_caps()` for `CubedSphereTopology` (per layer: snapshots all 6 blocks, builds ghost rows via `_sub_ghost_rows` / `_cap_ghost_rows`, advances each block with seam-aware normals + Laplacian + cap-block DIRICHLET pin, restitches sub-sub seams, runs Jacobian guards, commits), `_march_ogrid()` for `OGridTopology` (single-block hyperbolic march with `periodic=(False, True)` and j-periodic Jacobian guard), `_march_cgrid()` (1/3/4-block C-grid, dispatches to `_march_cgrid_three` for the multi-block path), and the OH/CH hybrids (run the underlying wrap marcher, then call `topology.fill_channel_blocks(blocks)` to fill the channel interiors). `Mesh.from_stl` rejects `CGridTopology` and `CHTopology` because their build params (`ni_body`/`ni_wake`/`n_stations`/`wake_length`) don't fit the `(ni, nj, nk)` signature — build the block list explicitly. |
+| `mesh/mesh.py` | `Mesh.from_stl(...)` orchestrates body load + topology build for `(ni, nj, nk)`-signature topologies; `Mesh.from_array(surface, topology, nk, ...)` builds from a pre-made surface array (e.g. a cross-section polyline) with `body=None` (used by `CGridTipCap`). `Mesh.march()` dispatches by topology: `_march_caps()` for `CubedSphereTopology` (per layer: snapshots all 6 blocks, builds ghost rows via `_sub_ghost_rows` / `_cap_ghost_rows`, advances each block with seam-aware normals + Laplacian + cap-block DIRICHLET pin, restitches sub-sub seams, runs Jacobian guards, commits), `_march_ogrid()` for `OGridTopology` (single-block, `periodic=(False, True)`, j-periodic Jacobian guard), `_march_cgrid()` (1/3/4-block C-grid, dispatching to `_march_cgrid_three`), the OH/CH hybrids (run the underlying wrap marcher via `_march_caps_blocks` / `_march_cgrid_three`, then `topology.fill_channel_blocks(blocks)`), and `CGridTipCap` (no-op — fully volumetric at build). `_resolve_k_steps` picks the one shared k-schedule (see OOP Block Model). In-memory inspection: `.info()`, `.check()`, `.export()`/`.write_vtk()`, `.view()`. `Mesh.from_stl` rejects `CGridTopology` and `CHTopology` because their build params (`ni_body`/`ni_wake`/`n_stations`/`wake_length`) don't fit the `(ni, nj, nk)` signature — build the block list explicitly. |
 | `io/geo.py` | ASCII geo format (Xall_GPU compatible): `read_geo`, `write_geo`. |
-| `io/vtk.py` | VTK XML StructuredGrid export: `write_vts`, `write_surface_vts`, `write_caps_vtm` (MultiBlock for the 6-block cubed-sphere topology), `geo_to_pyvista`, `surface_to_pyvista`. |
-| `io/adjacency.py` | JSON sidecar for split block lists: `write_adjacency_json` / `read_adjacency_json` serialise the per-face BC + partner graph (FaceBC name + `{label, face}` partner reference). Read by downstream solvers to learn which faces are SHARED between which split chunks. |
-| `io/cc_par.py` | Xnavis `cc.par` writer (the chimera pre-processor input format used by Xall_GPU): `write_cc_par(adjacency_payload, path, *, grd_filename, ..., block_metadata)` translates a SHORE `.adjacency.json` into the Fortran ASCII format. Maps `WALL/FREE/SHARED/DIRICHLET` to Xnavis BC codes; emits paired connection patches with the 3-digit orientation codes (135 for same-axis seams, lookup table from `_overwrite_cap_boundaries` for cubed-sphere cap-equator cross-axis pairs). `BlockMeta` dataclass exposes per-block level/group/priority/comment + `free_face_bc` (40 chimera vs negative natural BC for far-field). One-way bridge — no reader. |
-| `split.py` | `BlockSplit` dataclass + `split_blocks(blocks, splits)`: post-processing pass that subdivides any list of `HexBlock`s along ijk vertex indices, wires internal SHARED seams between consecutive chunks (numpy-view aliased; bit-exact node coincidence), and rewires external SHARED partner pointers. v1 supports single-axis-per-block per call; raises `ParameterError` on cross-block split mismatches (e.g. splitting `sub0` along k without paired splits on `sub1`/`sub2`/`sub3`). Used by the `shore split` CLI and reusable from Python. |
+| `io/grd.py` | Fortran-unformatted binary `.grd` pack of N `.geo` blocks: `write_grd`, `read_grd_metadata` (per-block cell-count triples — also the weight source for `balance`/`proc-input`), `merge_grd` (byte-passthrough concat for multi-component Xall runs). Backs `shore grd` / `grd-merge`. |
+| `io/vtk.py` | VTK XML export (optional `pyvista` dep): `write_vts`, `write_surface_vts`, `write_caps_vtm` (MultiBlock for multi-block topologies), `write_boxes_vtm` (marker boxes), `geo_to_pyvista` / `surface_to_pyvista` / `open_to_pyvista`. |
+| `io/adjacency.py` | JSON sidecar for block lists: `write_adjacency_json` / `read_adjacency_json` serialise the per-face BC + partner graph (FaceBC name, `{label, face}` partner reference, AxisMap). `summarise_adjacency` for a human summary. The bridge from the block model to `cc-par`. |
+| `io/cc_par.py` | Xnavis `cc.par` reader-aware writer/merger. `write_cc_par(adjacency_payload, path, *, grd_filename, ..., block_metadata, boxes)` translates `.adjacency.json` → Fortran ASCII: maps `WALL/FREE/SHARED/DIRICHLET` to Xnavis BC codes, emits paired connection patches with 3-digit orientation codes derived from the `AxisMap` (`_orientation_code_from_axis_map`), and writes a marker-boxes section. `BlockMeta` = per-block level/group/priority/comment + `free_face_bc` (40 chimera vs negative natural BC). `merge_cc_par` shifts block/patch indices across components (parses inputs back in). |
+| `io/proc_input.py` | `proc.input` (MPI work distribution) writer/merger: `write_proc_input(grd, out, np, ...)` greedily weight-balances blocks across ranks (weights from the `.grd` cell counts), with per-block `proc`/`group`/`body` overrides; `merge_proc_input` concatenates components (no re-balancing). `BalanceSummary` reports per-rank load + imbalance. |
+| `io/boxes.py` | `Box` dataclass (8-vertex hexahedron, canonical i-fastest order) + `box_to_json` / `box_from_json`. The cc.par marker-box value type. |
+| `split.py` | `BlockSplit` dataclass + `split_blocks(blocks, splits)`: subdivides a list of `HexBlock`s along ijk vertex indices, wires internal SHARED seams between consecutive chunks (numpy-view aliased; bit-exact), rewires external SHARED partner pointers. Raises `ParameterError` on cross-block split mismatches (e.g. splitting `sub0` along k without paired splits on `sub1`/`sub2`/`sub3`). Used by `shore split` and by `balance`-generated plans. |
+| `balance.py` | Iterative split *planner* for MPI load balancing. `plan_balance(grd, np, tolerance, max_iterations, adjacency_path)` reads `.grd` cell counts (+ optional adjacency seam graph), greedily schedules topology-safe cuts on the heaviest block (k-axis preferred since k-faces are WALL/FREE, never SHARED; falls back to j/i with paired co-splits), returns a `BalancePlan` that serialises to a `shore split` `split.toml`. Plans only — never mutates files. Backs `shore balance`. |
+| `boxes.py` | `boxes_from_stl(stl, block, max_outward_gap, method)` — generate chimera hole-cutting marker boxes from a body STL. `voxel-fill` (default, watertight interior cover; resolution from the gap budget), `aabb` / `obb` (single best-effort box with an outward-gap post-check + warning). Backs `shore boxes-from-stl`. |
 | `vis.py` | PyVista interactive visualisation: `view_geo`, `view_surface`, `save_screenshot`. Optional dep (`shore[vis]`); Jupyter backend via `jupyter=True`. |
 
 ### Test Suite
 
-Tests in `tests/` use `conftest.py` helpers:
-- `sphere_stl` — `pytest.fixture(scope="session")`, exports a unit icosphere STL once per session
-- `sphere_layer(ni, nj, ...)` — plain function returning a `(ni, nj, 3)` lat-lon sphere layer (used by legacy single-block tests)
+Tests in `tests/` use `conftest.py` session fixtures/helpers:
+- `sphere_stl` — exports a unit icosphere STL once per session
+- `naca0012_stl` / `naca0012_blunt_stl` — extruded NACA 0012 wing STLs (sharp / blunt TE) for the C-grid and hybrid tests
+- `sphere_layer(ni, nj, ...)` — plain function returning a `(ni, nj, 3)` lat-lon sphere layer (legacy single-block tests)
 
-Test files:
-- `test_cli.py` — all CLI commands via `typer.testing.CliRunner`
-- `test_mesh.py` — OOP `Mesh` API + `CubedSphereTopology.build` block wiring
-- `test_cap_gnomonic.py` — gnomonic cap k=0 corners on a unit sphere; cap aspect ratio; seam C0 conformity (north + south); equator meridian colatitude monotonicity; per-j seam C1 step matching (`TestSeamStepMatching`); volume seam continuity across marching layers (`TestVolumeSeamContinuity`); marching robustness for `nk` ∈ {5, 10, 20}
-- `test_anchor.py` / `test_load_stl_hygiene.py` — anchor resolution, STL preconditioning
-- `test_projector.py` / `test_projector_validation.py` — `Projector` ray-cast contract + status enum
-- `test_spacing.py` — 1D spacing laws, domain builders, error cases
-- `test_jacobian.py` — Jacobian field calculations, inversion detection
-- `test_geo.py` / `test_vtk.py` / `test_vis.py` — file I/O round-trips, VTK export, PyVista helpers
-- `test_split.py` — `BlockSplit` validation, single- and multi-cut splits, internal-seam wiring, external-face BC preservation, cross-block adjacency rewiring, JSON sidecar round-trip, `shore split` CLI
+Test files (grouped by subsystem):
+- **CLI / config**: `test_cli.py`, `test_primitive_cli.py`, `test_config.py`
+- **Mesh + topologies**: `test_mesh.py`, `test_cap_gnomonic.py` (gnomonic cap corners, aspect ratio, seam C0/C1, volume seam continuity, marching robustness), `test_ogrid.py`, `test_cgrid.py`, `test_cgrid_tip_cap.py`, `test_cgrid_cap.py`, `test_oh_topology.py`, `test_oh_channel.py`, `test_ch_topology.py`, `test_ch_channel.py`, `test_axis_map.py`, `test_edge_spacing.py`
+- **Primitives**: `test_primitive.py`, `test_h_grid_rect.py`, `test_h_grid_tube.py`
+- **Geometry front end**: `test_profiles.py`, `test_shapes.py`
+- **Surface / numerics**: `test_anchor.py`, `test_load_stl_hygiene.py`, `test_projector.py`, `test_projector_validation.py`, `test_spacing.py`, `test_jacobian.py`
+- **Xall pipeline**: `test_geo.py`, `test_grd.py`, `test_cc_par.py`, `test_proc_input.py`, `test_balance.py`, `test_boxes.py`, `test_boxes_from_stl.py`, `test_split.py`, `test_vtk.py`, `test_vis.py`
+- **Worked examples** (run the `examples/` scripts end-to-end): `test_assembly_example.py`, `test_split_example.py`
 - `test_exceptions.py` — exception hierarchy
 
-Full suite: 194 tests, runs in ~2.5 s on a modern laptop.
+Full suite: ~1000 tests, ~2 min on a modern laptop (the marching and example tests dominate; coverage ~85%).
