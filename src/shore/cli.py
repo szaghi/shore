@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-import click
 import numpy as np
 import typer
 from rich.console import Console
@@ -443,27 +442,39 @@ def _resolve_theta(
     return theta_cap
 
 
-def _param_source(name: str) -> click.core.ParameterSource | None:
-    """Return how *name* was supplied for the current click invocation, or None."""
+def _is_commandline(ctx, name: str) -> bool:  # type: ignore[no-untyped-def]
+    """True iff parameter *name* was supplied on the command line.
+
+    The source is read from the *passed* context rather than
+    ``click.get_current_context()``: typer >= 0.26 vendors its own copy of
+    click (``typer._click``) with a separate context stack, so the global
+    click context is empty during a typer command and the lookup would
+    silently return ``None``.  The comparison is by enum *name* (not identity
+    against ``click.core.ParameterSource``) for the same reason — typer's
+    vendored ``ParameterSource`` is a distinct enum object from the
+    top-level click one, so identity comparison is ``False`` under vendoring.
+    """
+    if ctx is None:
+        return False
     try:
-        ctx = click.get_current_context()
-    except RuntimeError:
-        return None
-    return ctx.get_parameter_source(name)
+        src = ctx.get_parameter_source(name)
+    except Exception:
+        return False
+    return src is not None and getattr(src, "name", None) == "COMMANDLINE"
 
 
-def _make_picker(cfg):  # type: ignore[no-untyped-def]
+def _make_picker(cfg, ctx):  # type: ignore[no-untyped-def]
     """Build a (name, cli_value, cfg_value) -> resolved-value function.
 
     Precedence: explicit CLI flag wins; otherwise config (when present and
-    not None); otherwise the CLI default.
+    not None); otherwise the CLI default.  *ctx* is the typer/click context
+    of the running command (see :func:`_is_commandline`).
     """
 
     def pick(name: str, cli_value, cfg_value):  # type: ignore[no-untyped-def]
         if cfg is None:
             return cli_value
-        src = _param_source(name)
-        if src == click.core.ParameterSource.COMMANDLINE:
+        if _is_commandline(ctx, name):
             return cli_value
         if cfg_value is not None:
             return cfg_value
@@ -502,6 +513,7 @@ def _build_spacing_k(
 
 @app.command()
 def mesh(
+    ctx: typer.Context,
     input: Annotated[
         Path | None,
         typer.Argument(help="Input STL file (optional when --config supplies it)."),
@@ -621,7 +633,7 @@ def mesh(
     # the CLI value when the user typed the flag explicitly (click's
     # parameter source is COMMANDLINE), otherwise the config value
     # (when a config file was loaded), otherwise the CLI default.
-    _pick = _make_picker(cfg)
+    _pick = _make_picker(cfg, ctx)
     output = _pick("output", output, cfg.output if cfg else None)
     ni = _pick("ni", ni, cfg.grid.ni if cfg else None)
     nj = _pick("nj", nj, cfg.grid.nj if cfg else None)
@@ -694,8 +706,8 @@ def mesh(
     # --theta-cap-deg) but the config has a single resolved radian
     # value.  Apply the same picker logic to whichever CLI flag was set.
     if cfg is not None and cfg.grid.theta_cap is not None:
-        cli_set_rad = _param_source("theta_cap") == click.core.ParameterSource.COMMANDLINE
-        cli_set_deg = _param_source("theta_cap_deg") == click.core.ParameterSource.COMMANDLINE
+        cli_set_rad = _is_commandline(ctx, "theta_cap")
+        cli_set_deg = _is_commandline(ctx, "theta_cap_deg")
         if not (cli_set_rad or cli_set_deg):
             theta_cap = cfg.grid.theta_cap
             theta_cap_deg = None
@@ -1344,14 +1356,13 @@ def _load_prim_config(path: Path | None) -> PrimitiveConfig | None:
         raise typer.Exit(1) from None
 
 
-def _pick_prim(cfg: PrimitiveConfig | None):  # type: ignore[no-untyped-def]
+def _pick_prim(cfg: PrimitiveConfig | None, ctx):  # type: ignore[no-untyped-def]
     """Same precedence picker as ``shore mesh``: explicit CLI > config > default."""
 
     def pick(name: str, cli_value, cfg_value):  # type: ignore[no-untyped-def]
         if cfg is None:
             return cli_value
-        src = _param_source(name)
-        if src == click.core.ParameterSource.COMMANDLINE:
+        if _is_commandline(ctx, name):
             return cli_value
         if cfg_value is not None:
             return cfg_value
@@ -1365,6 +1376,7 @@ def _pick_prim(cfg: PrimitiveConfig | None):  # type: ignore[no-untyped-def]
 
 @primitive_app.command("box")
 def primitive_box(
+    ctx: typer.Context,
     config: Annotated[
         Path | None,
         typer.Option(
@@ -1416,7 +1428,7 @@ def primitive_box(
         )
         raise typer.Exit(1) from None
 
-    pick = _pick_prim(cfg)
+    pick = _pick_prim(cfg, ctx)
     g = cfg.geometry if cfg else None
     grid = cfg.grid if cfg else None
     sp = cfg.spacing if cfg else None
@@ -1460,6 +1472,7 @@ def primitive_box(
 
 @primitive_app.command("annulus")
 def primitive_annulus(
+    ctx: typer.Context,
     config: Annotated[
         Path | None,
         typer.Option(
@@ -1514,7 +1527,7 @@ def primitive_annulus(
         )
         raise typer.Exit(1) from None
 
-    pick = _pick_prim(cfg)
+    pick = _pick_prim(cfg, ctx)
     g = cfg.geometry if cfg else None
     grid = cfg.grid if cfg else None
     sp = cfg.spacing if cfg else None
@@ -1570,6 +1583,7 @@ def primitive_annulus(
 
 @primitive_app.command("flat-caps")
 def primitive_flat_caps(
+    ctx: typer.Context,
     config: Annotated[
         Path | None,
         typer.Option(
@@ -1635,7 +1649,7 @@ def primitive_flat_caps(
         )
         raise typer.Exit(1) from None
 
-    pick = _pick_prim(cfg)
+    pick = _pick_prim(cfg, ctx)
     g = cfg.geometry if cfg else None
     grid = cfg.grid if cfg else None
     sp = cfg.spacing if cfg else None
