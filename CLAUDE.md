@@ -58,14 +58,14 @@ disagree.
 
 ### Topology
 
-The `shore mesh` CLI supports four topologies, selected with
-`--topology cubed_sphere|ogrid|cgrid|ch` (default `cubed_sphere`).
-Two further topologies (`OHTopology`, `CGridTipCap`) are available
-from the Python API only.  Hybrid topologies (`OHTopology`,
-`CHTopology`) compose a marched wrap with non-marching far-field
-channel blocks; the channels are SHARED-by-view to the wrap envelope
-where geometry permits and filled by `topology.fill_channel_blocks`
-after marching:
+The `shore mesh` CLI supports five topologies, selected with
+`--topology cubed_sphere|ogrid|cgrid|ch|oh` (default `cubed_sphere`).
+`CGridTipCap` is available from the Python API only (and via the
+dedicated `shore cap-tip` command / `--cap-tips` flag on the C-grid).
+Hybrid topologies (`OHTopology`, `CHTopology`) compose a marched wrap
+with non-marching far-field channel blocks; the channels are
+SHARED-by-view to the wrap envelope where geometry permits and filled
+by `topology.fill_channel_blocks` after marching:
 
 **`cubed_sphere`** (6-block, `mesh/topology.py:CubedSphereTopology`, `surface/cap.py`,
 `surface/equator.py`, `topology/sphere_cap.py`): 4 equatorial sub-blocks
@@ -110,6 +110,20 @@ do not march; `Mesh.march` runs `_march_cgrid_three` on the wrap and
 then `topology.fill_channel_blocks(blocks)`.  Optional C1 seam pin
 matches each channel's first step to the wrap's last marching step
 per (i, j).
+
+**`oh`** (12-block hybrid, `mesh/topology.py:OHTopology`,
+`topology/oh_channel.py`): cubed-sphere wrap (6 blocks, marched from
+the STL) + 6 H-channel frustum blocks (`chan_sub0..chan_sub3`,
+`chan_north`, `chan_south`) bridging the wrap k_hi envelope to an
+axis-aligned far-field box.  Channels are SHARED-by-view to the wrap
+k_hi slices (deeper buffer allocation) and filled by
+`fill_channel_blocks` after `_march_caps_blocks`.  The wrap pins
+`theta_cap = pi/4` and `phi_offset = pi/4` so each sub-block maps onto
+exactly one cube face (any CLI `--theta-cap` is ignored, with a
+`UserWarning`).  CLI frame is the box `--oh-box-{x,y,z}{min,max}`;
+channel depth/law via the shared `--nk-channel` / `--k-law-channel` /
+`--k-beta-channel` / `--c1-seam-channel` flags.  Star-shaped bodies
+only (centroid ray-cast, like `cubed_sphere`).
 
 - **Cap k=0 seed**: gnomonic flat-square projection
   (`surface/cap.py:build_cap_k0`). A flat diamond is placed in the
@@ -166,7 +180,7 @@ per (i, j).
 
 | Module | Role |
 |---|---|
-| `cli.py` | Typer CLI. Top-level commands: `mesh`, `project`, `config`, `info`, `check`, `export`, `view`, `split`, `cap-tip`, `grd`, `grd-merge`, `cc-par`, `cc-par-merge`, `proc-input`, `proc-input-merge`, `balance`, `boxes-from-stl`, `boxes-export`. Sub-apps: `primitive` (`box`/`annulus`/`flat-caps`/`h-grid-rect`/`h-grid-tube`), `profile` (`naca`), `body` (`sphere`/`cylinder`/`torus`/`box`/`capsule`/`extrude`). `mesh` selects topology via `--topology cubed_sphere\|ogrid\|cgrid\|ch` (cgrid/ch need `--ni-body`/`--ni-wake`/`--n-stations`/`--wake-length`; ch adds `--ch-chord-min`/`--ch-chord-max`/`--ch-normal-min`/`--ch-normal-max`/`--nk-channel`). Parameter precedence everywhere: explicit CLI flag → `--config` TOML → built-in default (`_make_picker` + click's `ParameterSource`). Shared option aliases (`_NI`, `_NJ`, `_NK`, `_DS`, `_GROWTH`, `_SMOOTH`, `_SITERS`, spacing flags). Deprecated `mesh` flags: `--cap-pull`, `--cap-squareness`, `--j-cluster-lon` accept values, warn, are ignored. |
+| `cli.py` | Typer CLI. Top-level commands: `mesh`, `project`, `config`, `info`, `check`, `export`, `view`, `split`, `cap-tip`, `grd`, `grd-merge`, `cc-par`, `cc-par-merge`, `proc-input`, `proc-input-merge`, `balance`, `boxes-from-stl`, `boxes-export`. Sub-apps: `primitive` (`box`/`annulus`/`flat-caps`/`h-grid-rect`/`h-grid-tube`), `profile` (`naca`), `body` (`sphere`/`cylinder`/`torus`/`box`/`capsule`/`extrude`). `mesh` selects topology via `--topology cubed_sphere\|ogrid\|cgrid\|ch\|oh` (cgrid/ch need `--ni-body`/`--ni-wake`/`--n-stations`/`--wake-length`; ch adds `--ch-chord-min/max`/`--ch-normal-min/max`/`--nk-channel`, plus optional `--ch-freestream-{x,y,z}`/`--ch-i-split-body-upper/lower`/`--ch-ni-outflow`; oh needs `--oh-box-{x,y,z}{min,max}` and reuses `--nk-channel`/`--k-law-channel`/`--k-beta-channel`/`--c1-seam-channel`). Parameter precedence everywhere: explicit CLI flag → `--config` TOML → built-in default (`_make_picker` + click's `ParameterSource`). Shared option aliases (`_NI`, `_NJ`, `_NK`, `_DS`, `_GROWTH`, `_SMOOTH`, `_SITERS`, spacing flags). Deprecated `mesh` flags: `--cap-pull`, `--cap-squareness`, `--j-cluster-lon` accept values, warn, are ignored. |
 | `config.py` | TOML config loaders/validators + template emitters. `MeshConfig` (`[grid]`/`[march]`/`[surface]`/`[volume]`) for `shore mesh`; `PrimitiveConfig` (`[geometry]`/`[grid]`/`[spacing]`) for `shore primitive`; `SplitConfig` (`[[splits]]`) for `shore split`. `load_config` / `load_primitive_config` / `load_split_config`, `dump_template` / `dump_primitive_template`. Rejects unknown keys; resolves `--theta-cap`/`--theta-cap-deg`. |
 | `shapes/` | trimesh-backed 3D STL body builders. `_primitives.py`: `sphere`, `cylinder`, `torus`, `box`, `capsule` (thin `trimesh.creation` wrappers). `_extrude.py`: `extrude_section(section_2d, span, n_stations, taper, sweep_deg, twist_deg, span_axis, end_caps)` — stack a 2D Selig section into a wing STL. Backs `shore body`. |
 | `profiles/` | Pure-numpy 2D airfoil section generators. `_naca.py`: `naca` / `naca4` / `naca5` → `(N, 2)` Selig-ordered coords (upper-TE → LE → lower-TE), sharp (`closed_te=True`) or blunt TE. `io.py`: `read_section` / `write_section` for Selig `.dat`. Backs `shore profile naca`; consumed by `shapes.extrude_section`. |

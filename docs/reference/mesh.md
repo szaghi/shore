@@ -2,7 +2,7 @@
 
 Full pipeline: STL → structured volume → geo files.
 
-Four topologies are supported, selected via `--topology`:
+Five topologies are supported, selected via `--topology`:
 
 - **[`cubed_sphere`](/topologies/cubed-sphere)** (default): 6-block
   decomposition (4 equatorial sub-blocks + 2 polar caps), gnomonic
@@ -20,6 +20,11 @@ Four topologies are supported, selected via `--topology`:
   (blunt TE) hybrid: C-grid wrap + H-channel out to a chord/normal-
   aligned far-field frame. Requires both C-grid wrap flags and frame
   extents (`--ch-chord-min/max`, `--ch-normal-min/max`).
+- **[`oh`](/topologies/oh-hybrid)**: 12-block hybrid: cubed-sphere
+  wrap + 6-block H-channel out to an axis-aligned far-field box.
+  Requires the box extents (`--oh-box-{x,y,z}{min,max}`) and reuses
+  the shared channel flags. Star-shaped bodies only; `--theta-cap` is
+  ignored (the wrap pins it to `pi/4`).
 
 ## Synopsis
 
@@ -99,7 +104,7 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 
 | Option | Default | Description |
 |---|---|---|
-| `--topology TEXT` | `cubed_sphere` | One of `cubed_sphere` (6 blocks), `ogrid` (1 block, j-periodic), `cgrid` (3-/4-/1-block C-grid for airfoils — see [C-grid](#c-grid-options-topology-cgrid-or-ch) options), or `ch` (12-/14-block CH hybrid — see [CH hybrid](#ch-hybrid-options-topology-ch) options). |
+| `--topology TEXT` | `cubed_sphere` | One of `cubed_sphere` (6 blocks), `ogrid` (1 block, j-periodic), `cgrid` (3-/4-/1-block C-grid for airfoils — see [C-grid](#c-grid-options-topology-cgrid-or-ch) options), `ch` (12-/14-block CH hybrid — see [CH hybrid](#ch-hybrid-options-topology-ch) options), or `oh` (12-block cubed-sphere + H-channel hybrid — see [OH hybrid](#oh-hybrid-options-topology-oh) options). |
 
 ### C-grid options (`--topology cgrid` or `ch`)
 
@@ -134,13 +139,30 @@ extents in world coordinates and exposes channel knobs.
 | `--k-law-channel TEXT` | `uniform` | Channel k-axis spacing law (`uniform` / `tanh` / `tanh2`). |
 | `--k-beta-channel FLOAT` | 3.0 | Clustering strength for tanh / tanh2 channel spacing. |
 | `--c1-seam-channel/--no-c1-seam-channel` | on | Pin each k_hi-side channel's first step to the wrap's last marching step (per `(i, j)`). |
+| `--ch-freestream-x/y/z FLOAT` | auto | Freestream direction components (world). Selects the chord axis; defaults to the largest non-span component when unset. |
+| `--ch-i-split-body-upper/lower INTEGER` | auto | Body-wrap i index where the upper / lower channel segment splits. Auto-placed at frame corners when unset. |
+| `--ch-ni-outflow INTEGER` | 8 | Outflow sub-block i resolution. |
+
+### OH hybrid options (`--topology oh`)
+
+OH requires an axis-aligned far-field box (six world-coordinate
+extents) and reuses the shared channel knobs (`--nk-channel`,
+`--k-law-channel`, `--k-beta-channel`, `--c1-seam-channel`). The wrap
+is star-shaped (centroid ray-cast); `--theta-cap` is ignored (the
+wrap pins it to `pi/4`, emitting a `UserWarning` if set).
+
+| Option | Default | Description |
+|---|---|---|
+| `--oh-box-xmin/xmax FLOAT` | — | Far-field box x extents (world). |
+| `--oh-box-ymin/ymax FLOAT` | — | Far-field box y extents (world). |
+| `--oh-box-zmin/zmax FLOAT` | — | Far-field box z extents (world). Box must contain the marched wrap envelope. |
 
 ### I/O and display
 
 | Option | Default | Description |
 |---|---|---|
 | `-c` / `--config PATH` | — | Read parameter values from a TOML file (see [Config files](config)). Explicit CLI flags still override the file. |
-| `-o` / `--output PATH` | `<INPUT stem>` | Output stem. Multi-block topologies (`cubed_sphere`, `cgrid`, `ch`) write one `<stem>_<label>.geo` per block; `ogrid` and `cgrid --cgrid-blocks 1` write one `<stem>.geo`. |
+| `-o` / `--output PATH` | `<INPUT stem>` | Output stem. Multi-block topologies (`cubed_sphere`, `cgrid`, `ch`, `oh`) write one `<stem>_<label>.geo` per block; `ogrid` and `cgrid --cgrid-blocks 1` write one `<stem>.geo`. |
 | `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar describing the SHARED / DIRICHLET face graph (required by [`shore cc-par`](cc-par)). |
 | `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats. |
 | `--help` | — | Show this help and exit. |
@@ -189,6 +211,11 @@ files: `<stem>_upper.geo`, `<stem>_body.geo`, `<stem>_lower.geo`.
 **`ch`** — 12 `.geo` files (sharp TE) or 14 (blunt TE). See
 [CH hybrid block decomposition](/topologies/ch-hybrid#block-decomposition)
 for the full list.
+
+**`oh`** — 12 `.geo` files: the 6 cubed-sphere wrap blocks
+(`<stem>_sub0..sub3`, `<stem>_cap_north`, `<stem>_cap_south`) plus
+6 channel blocks (`<stem>_chan_sub0..chan_sub3`,
+`<stem>_chan_north`, `<stem>_chan_south`).
 
 ## Examples
 
@@ -322,6 +349,6 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
 - [O-grid topology](/topologies/o-grid) — single-block alternative
 - [C-grid topology](/topologies/c-grid) — sharp-/blunt-TE wrap for airfoils
 - [CH hybrid topology](/topologies/ch-hybrid) — C-grid wrap + far-field channel
-- [OH hybrid topology](/topologies/oh-hybrid) — cubed-sphere wrap + 6-face H-channel (Python API)
+- [OH hybrid topology](/topologies/oh-hybrid) — cubed-sphere wrap + 6-face H-channel (`--topology oh`)
 - [Spacing laws](/algorithm/spacing-laws) — clustering distributions
 - [Hyperbolic marching](/algorithm/hyperbolic-marching) — algorithm details

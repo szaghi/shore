@@ -46,10 +46,12 @@ override.  Run from the project root after activating .venv:
 
 Note
 ----
-``OHTopology`` is a Python-only API at the moment.  ``shore mesh``
-(the CLI) currently dispatches only ``cubed_sphere`` and ``ogrid``;
-the OH topology has no ``--topology oh-hybrid`` flag yet.  Drive it
-from Python via :class:`shore.mesh.OHTopology`, as this script does.
+This script drives :class:`shore.mesh.OHTopology` through the Python
+API.  The same mesh is also available from the CLI via
+``shore mesh --topology oh`` (box extents as
+``--oh-box-{x,y,z}{min,max}``).  The Python API is shown here because
+it takes the box as 3-vectors and gives direct access to the block
+list for inspection.
 """
 
 from __future__ import annotations

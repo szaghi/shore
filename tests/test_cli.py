@@ -313,6 +313,95 @@ class TestMeshCH:
         )
         assert r.exit_code == 1
 
+    def test_ni_outflow_knob_changes_outflow_shape(self, naca0012_stl, tmp_path):
+        """--ch-ni-outflow flows through to the outflow block i-dimension."""
+        out = tmp_path / "ch"
+        r = _invoke("mesh", str(naca0012_stl), *self._CH, "--ch-ni-outflow", "12", "-o", str(out))
+        assert r.exit_code == 0, r.output
+        arr = read_geo(str(tmp_path / "ch_chan_outflow_top_lower.geo"))
+        assert arr.shape[0] == 12
+
+
+class TestMeshOH:
+    """`shore mesh --topology oh` end-to-end (cubed-sphere wrap + H-channel)."""
+
+    _OH: ClassVar[list[str]] = [
+        "--topology",
+        "oh",
+        "--ni",
+        "16",
+        "--nj",
+        "16",
+        "--nk",
+        "5",
+        "--ds",
+        "0.05",
+        "--growth",
+        "1.1",
+        "--oh-box-xmin",
+        "-3.0",
+        "--oh-box-xmax",
+        "3.0",
+        "--oh-box-ymin",
+        "-3.0",
+        "--oh-box-ymax",
+        "3.0",
+        "--oh-box-zmin",
+        "-3.0",
+        "--oh-box-zmax",
+        "3.0",
+        "--nk-channel",
+        "4",
+    ]
+
+    _OH_LABELS: ClassVar[list[str]] = [
+        "sub0",
+        "sub1",
+        "sub2",
+        "sub3",
+        "cap_north",
+        "cap_south",
+        "chan_sub0",
+        "chan_sub1",
+        "chan_sub2",
+        "chan_sub3",
+        "chan_north",
+        "chan_south",
+    ]
+
+    def test_exit_code_ok(self, sphere_stl, tmp_path):
+        out = tmp_path / "oh"
+        r = _invoke("mesh", str(sphere_stl), *self._OH, "-o", str(out))
+        assert r.exit_code == 0, r.output
+
+    def test_writes_12_geo(self, sphere_stl, tmp_path):
+        out = tmp_path / "oh"
+        _invoke("mesh", str(sphere_stl), *self._OH, "-o", str(out))
+        for label in self._OH_LABELS:
+            assert (tmp_path / f"oh_{label}.geo").exists(), f"missing {label}.geo"
+
+    def test_missing_box_extent_exits_1(self, sphere_stl, tmp_path):
+        # Drop --oh-box-zmax.
+        args = list(self._OH)
+        i = args.index("--oh-box-zmax")
+        del args[i : i + 2]
+        r = _invoke("mesh", str(sphere_stl), *args, "-o", str(tmp_path / "oh"))
+        assert r.exit_code == 1
+
+    def test_inverted_box_exits_1(self, sphere_stl, tmp_path):
+        # xmin >= xmax.
+        args = list(self._OH)
+        args[args.index("--oh-box-xmin") + 1] = "3.0"
+        args[args.index("--oh-box-xmax") + 1] = "-3.0"
+        r = _invoke("mesh", str(sphere_stl), *args, "-o", str(tmp_path / "oh"))
+        assert r.exit_code == 1
+
+    def test_theta_cap_warns_and_is_ignored(self, sphere_stl, tmp_path):
+        out = tmp_path / "oh"
+        with pytest.warns(UserWarning, match="ignored for --topology oh"):
+            r = _invoke("mesh", str(sphere_stl), *self._OH, "--theta-cap", "0.3", "-o", str(out))
+        assert r.exit_code == 0, r.output
+
 
 # ---------------------------------------------------------------------------
 # shore project

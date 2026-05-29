@@ -14,7 +14,7 @@
 <table>
 <tr>
 <td><b>🏗️ Full Chimera assembly in one tool</b><br><sub>Generate every grid an overset assembly needs — body-fitted near-body meshes and parametric backgrounds — in the same world frame. Pack them into the Xall solver bundle (.grd + cc.par + marker boxes) without leaving the SHORE CLI. <a href="https://szaghi.github.io/shore/guide/cc-par-pipeline">Pipeline walkthrough</a></sub></td>
-<td><b>📐 Body-fitted near-body meshes</b><br><sub>Six topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, a 3-/4-block C-grid for sharp-/blunt-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, conformal C-grid wing-tip caps, a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box, and a 12-/14-block CH hybrid that does the same for C-grid airfoils with a chord/normal-aligned far-field frame. Four are driven straight from <code>shore mesh --topology cubed_sphere|ogrid|cgrid|ch</code> (the OH hybrid and tip caps are Python-API only). One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
+<td><b>📐 Body-fitted near-body meshes</b><br><sub>Six topologies for surface inputs (STL today; CAD on the roadmap) — single-block O-grid, 6-block cubed sphere with gnomonic cap k=0 seed and C1 cap-equator seam pinning, a 3-/4-block C-grid for sharp-/blunt-TE bodies (airfoils, hydrofoils) with auto TE detection and downstream wake branches, conformal C-grid wing-tip caps, a 12-block OH hybrid that extends the cubed-sphere wrap with a structured H-channel out to a Cartesian bounding box, and a 12-/14-block CH hybrid that does the same for C-grid airfoils with a chord/normal-aligned far-field frame. Five are driven straight from <code>shore mesh --topology cubed_sphere|ogrid|cgrid|ch|oh</code> (the wing-tip caps are Python-API only, plus the dedicated <code>shore cap-tip</code> command). One <code>shore mesh</code> call from a triangulated body to Xall-compatible .geo files. <a href="https://szaghi.github.io/shore/topologies/cubed-sphere">Cubed sphere</a></sub></td>
 </tr>
 <tr>
 <td><b>🧱 Parametric backgrounds</b><br><sub>Box, annular cylinder, and 5-block flat-caps cylinder primitives with per-axis spacing laws — fill the far field without an STL. Per-edge spacing on Box and Annulus, transfinite-interpolation blends; flat-caps cylinder is Chimera-fringe-free for GPU-friendly backgrounds. <a href="https://szaghi.github.io/shore/topologies/primitives">Primitives</a></sub></td>
@@ -247,7 +247,7 @@ For chimera assemblies, SHORE generates marker boxes from the body STL via voxel
 
 ## Roadmap
 
-- [x] Body-fitted topologies: 6-block cubed sphere (production default) + single-block O-grid + 3-/4-block C-grid + 12-block OH hybrid (Python API)
+- [x] Body-fitted topologies: 6-block cubed sphere (production default) + single-block O-grid + 3-/4-block C-grid + 12-/14-block CH hybrid + 12-block OH hybrid (all via `shore mesh --topology`)
 - [x] Parametric primitives: box, annular cylinder, 5-block flat-caps cylinder
 - [x] Gnomonic flat-square cap k=0 projection with C1 seam-step pinning
 - [x] Seam-aware hyperbolic marching (centred-difference normals across block seams)

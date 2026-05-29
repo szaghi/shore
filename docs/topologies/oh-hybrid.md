@@ -118,10 +118,30 @@ The lateral seam wiring on the channel side mirrors the wrap exactly
 generation that handles the cubed-sphere lateral seams handles the
 channel lateral seams without changes.
 
+## CLI
+
+`shore mesh --topology oh` builds the OH hybrid end-to-end. The
+far-field box is given by six scalar extents; channel depth and law
+reuse the shared channel flags (also used by `--topology ch`):
+
+```bash
+shore mesh sphere.stl -o oh --topology oh \
+  --ni 24 --nj 32 --nk 20 --ds 0.02 --growth 1.10 \
+  --oh-box-xmin -3 --oh-box-xmax 3 \
+  --oh-box-ymin -3 --oh-box-ymax 3 \
+  --oh-box-zmin -3 --oh-box-zmax 3 \
+  --nk-channel 10
+# writes 12 oh_<label>.geo files
+```
+
+`--theta-cap` is ignored for `--topology oh` (the wrap pins it to
+`pi/4`); passing it emits a `UserWarning`. OH requires a star-shaped
+body (centroid ray-cast, like `cubed_sphere`).
+
 ## Python API
 
-`OHTopology` is currently Python-only — `shore mesh` does not yet
-accept `--topology oh-hybrid`.
+The Python API exposes the same topology with full control over the
+box as 3-vectors:
 
 ```python
 from shore.mesh import Mesh, OHTopology, Spacing1D

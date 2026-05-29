@@ -35,6 +35,7 @@ from shore.mesh import (
     CubedSphereTopology,
     Mesh,
     OGridTopology,
+    OHTopology,
     Spacing1D,
     check_geo,
     export_geo,
@@ -378,21 +379,21 @@ _NK_CHANNEL = Annotated[
     int,
     typer.Option(
         "--nk-channel",
-        help="[ch] Total channel-block layers including shared seam (default 5).",
+        help="[ch/oh] Total channel-block layers including shared seam (default 5).",
     ),
 ]
 _K_LAW_CHANNEL = Annotated[
     str,
     typer.Option(
         "--k-law-channel",
-        help="[ch] Channel k-axis spacing law: uniform / tanh / tanh2 (default uniform).",
+        help="[ch/oh] Channel k-axis spacing law: uniform / tanh / tanh2 (default uniform).",
     ),
 ]
 _K_BETA_CHANNEL = Annotated[
     float,
     typer.Option(
         "--k-beta-channel",
-        help="[ch] Clustering strength for tanh / tanh2 channel spacing (default 3.0).",
+        help="[ch/oh] Clustering strength for tanh / tanh2 channel spacing (default 3.0).",
     ),
 ]
 _C1_SEAM_CHANNEL = Annotated[
@@ -400,11 +401,72 @@ _C1_SEAM_CHANNEL = Annotated[
     typer.Option(
         "--c1-seam-channel/--no-c1-seam-channel",
         help=(
-            "[ch] Pin the channel's first step at every (i, j) to the wrap's "
+            "[ch/oh] Pin the channel's first step at every (i, j) to the wrap's "
             "last marching step — bit-exact C1 spacing match across the "
             "wrap-channel seam (default on)."
         ),
     ),
+]
+
+# CH frame/outflow knobs not previously exposed.  freestream_world is a
+# 3-vector (exposed as three scalars); i_split_body_* and ni_outflow are ints.
+_CH_FREESTREAM_X = Annotated[
+    float | None,
+    typer.Option("--ch-freestream-x", help="[ch] Freestream direction x component (world)."),
+]
+_CH_FREESTREAM_Y = Annotated[
+    float | None,
+    typer.Option("--ch-freestream-y", help="[ch] Freestream direction y component (world)."),
+]
+_CH_FREESTREAM_Z = Annotated[
+    float | None,
+    typer.Option("--ch-freestream-z", help="[ch] Freestream direction z component (world)."),
+]
+_CH_I_SPLIT_UPPER = Annotated[
+    int | None,
+    typer.Option(
+        "--ch-i-split-body-upper",
+        help="[ch] Body-wrap i index where the upper channel segment splits (auto if unset).",
+    ),
+]
+_CH_I_SPLIT_LOWER = Annotated[
+    int | None,
+    typer.Option(
+        "--ch-i-split-body-lower",
+        help="[ch] Body-wrap i index where the lower channel segment splits (auto if unset).",
+    ),
+]
+_CH_NI_OUTFLOW = Annotated[
+    int,
+    typer.Option("--ch-ni-outflow", help="[ch] Outflow sub-block i resolution (default 8)."),
+]
+
+# OH far-field box extents (axis-aligned, world coords).  OHTopology takes
+# box_vmin / box_vmax as 3-vectors; the CLI exposes them as six scalars to
+# match the scalar-flag house style used by the CH frame.
+_OH_BOX_XMIN = Annotated[
+    float | None,
+    typer.Option("--oh-box-xmin", help="[oh] Far-field box minimum x (world units)."),
+]
+_OH_BOX_XMAX = Annotated[
+    float | None,
+    typer.Option("--oh-box-xmax", help="[oh] Far-field box maximum x (world units)."),
+]
+_OH_BOX_YMIN = Annotated[
+    float | None,
+    typer.Option("--oh-box-ymin", help="[oh] Far-field box minimum y (world units)."),
+]
+_OH_BOX_YMAX = Annotated[
+    float | None,
+    typer.Option("--oh-box-ymax", help="[oh] Far-field box maximum y (world units)."),
+]
+_OH_BOX_ZMIN = Annotated[
+    float | None,
+    typer.Option("--oh-box-zmin", help="[oh] Far-field box minimum z (world units)."),
+]
+_OH_BOX_ZMAX = Annotated[
+    float | None,
+    typer.Option("--oh-box-zmax", help="[oh] Far-field box maximum z (world units)."),
 ]
 
 
@@ -587,6 +649,18 @@ def mesh(
     k_law_channel: _K_LAW_CHANNEL = "uniform",
     k_beta_channel: _K_BETA_CHANNEL = 3.0,
     c1_seam_channel: _C1_SEAM_CHANNEL = True,
+    ch_freestream_x: _CH_FREESTREAM_X = None,
+    ch_freestream_y: _CH_FREESTREAM_Y = None,
+    ch_freestream_z: _CH_FREESTREAM_Z = None,
+    ch_i_split_body_upper: _CH_I_SPLIT_UPPER = None,
+    ch_i_split_body_lower: _CH_I_SPLIT_LOWER = None,
+    ch_ni_outflow: _CH_NI_OUTFLOW = 8,
+    oh_box_xmin: _OH_BOX_XMIN = None,
+    oh_box_xmax: _OH_BOX_XMAX = None,
+    oh_box_ymin: _OH_BOX_YMIN = None,
+    oh_box_ymax: _OH_BOX_YMAX = None,
+    oh_box_zmin: _OH_BOX_ZMIN = None,
+    oh_box_zmax: _OH_BOX_ZMAX = None,
     adjacency_json: Annotated[
         Path | None,
         typer.Option(
@@ -661,10 +735,10 @@ def mesh(
         "volume_k_thickness", volume_k_thickness, cfg.volume.k_thickness if cfg else None
     )
     topology = _pick("topology", topology, cfg.grid.topology if cfg else None)
-    if topology not in ("cubed_sphere", "ogrid", "cgrid", "ch"):
+    if topology not in ("cubed_sphere", "ogrid", "cgrid", "ch", "oh"):
         _err.print(
             f"[red]Error:[/red] unknown --topology {topology!r}; "
-            "expected 'cubed_sphere', 'ogrid', 'cgrid', or 'ch'."
+            "expected 'cubed_sphere', 'ogrid', 'cgrid', 'ch', or 'oh'."
         )
         raise typer.Exit(1) from None
 
@@ -701,6 +775,41 @@ def mesh(
             if val is None:
                 _err.print(f"[red]Error:[/red] --topology ch requires {flag_name}.")
                 raise typer.Exit(1) from None
+
+    if topology == "oh":
+        for flag_name, val in (
+            ("--oh-box-xmin", oh_box_xmin),
+            ("--oh-box-xmax", oh_box_xmax),
+            ("--oh-box-ymin", oh_box_ymin),
+            ("--oh-box-ymax", oh_box_ymax),
+            ("--oh-box-zmin", oh_box_zmin),
+            ("--oh-box-zmax", oh_box_zmax),
+        ):
+            if val is None:
+                _err.print(f"[red]Error:[/red] --topology oh requires {flag_name}.")
+                raise typer.Exit(1) from None
+        for axis, lo, hi in (
+            ("x", oh_box_xmin, oh_box_xmax),
+            ("y", oh_box_ymin, oh_box_ymax),
+            ("z", oh_box_zmin, oh_box_zmax),
+        ):
+            if lo >= hi:
+                _err.print(
+                    f"[red]Error:[/red] --oh-box-{axis}min must be strictly "
+                    f"less than --oh-box-{axis}max (got {lo} >= {hi})."
+                )
+                raise typer.Exit(1) from None
+        # OH pins theta_cap = pi/4 internally (cube-face planarity); a
+        # user-supplied --theta-cap / --theta-cap-deg is ignored.
+        if _is_commandline(ctx, "theta_cap") or _is_commandline(ctx, "theta_cap_deg"):
+            import warnings as _warn
+
+            _warn.warn(
+                "--theta-cap is ignored for --topology oh: the OH wrap pins "
+                "theta_cap to pi/4 so each sub-block maps onto one cube face.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     # theta_cap is special: CLI exposes two flags (--theta-cap and
     # --theta-cap-deg) but the config has a single resolved radian
@@ -764,21 +873,41 @@ def mesh(
 
     # --- build topology + march ---
     _theta_topo = theta if theta is not None else 0.05 * np.pi
-    topo: CubedSphereTopology | OGridTopology | CGridTopology | CHTopology
+    topo: CubedSphereTopology | OGridTopology | CGridTopology | CHTopology | OHTopology
     if topology == "cubed_sphere":
         topo = CubedSphereTopology()
     elif topology == "ogrid":
         topo = OGridTopology()
     elif topology == "cgrid":
         topo = CGridTopology()
-    else:  # ch
+    elif topology == "ch":
+        # Freestream is optional: pass it only if any component was given.
+        _fs = (ch_freestream_x, ch_freestream_y, ch_freestream_z)
+        _freestream = (
+            np.array([v if v is not None else 0.0 for v in _fs], dtype=float)
+            if any(v is not None for v in _fs)
+            else None
+        )
         topo = CHTopology(
             chord_min=ch_chord_min,
             chord_max=ch_chord_max,
             normal_min=ch_normal_min,
             normal_max=ch_normal_max,
             nk_channel=nk_channel,
+            freestream_world=_freestream,
             span_axis=span_axis,
+            k_law_channel=k_law_channel,
+            k_beta_channel=k_beta_channel,
+            i_split_body_upper=ch_i_split_body_upper,
+            i_split_body_lower=ch_i_split_body_lower,
+            ni_outflow=ch_ni_outflow,
+            c1_seam=c1_seam_channel,
+        )
+    else:  # oh
+        topo = OHTopology(
+            box_vmin=(oh_box_xmin, oh_box_ymin, oh_box_zmin),
+            box_vmax=(oh_box_xmax, oh_box_ymax, oh_box_zmax),
+            nk_channel=nk_channel,
             k_law_channel=k_law_channel,
             k_beta_channel=k_beta_channel,
             c1_seam=c1_seam_channel,

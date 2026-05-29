@@ -17,7 +17,7 @@ them.
 | [C-grid (sharp / blunt TE)](c-grid) | first-class | 3 (sharp, default) / 4 (blunt) / 1 (legacy) | `shore mesh --topology cgrid`; airfoils, hydrofoils, wings — wraps a sharp- or blunt-TE body with downstream wake branches |
 | [C-grid wing-tip cap](c-grid#tip-caps-closed-finite-wing) | first-class (chimera component) | 3 (sharp) / 4 (blunt) per tip | `shore cap-tip` (sharp) / `CGridTipCap` API (sharp + blunt); H-style closure of a C-grid wing's airfoil cross-section at one spanwise tip — composed against the body wrap as an overset chimera component |
 | [H-grid (rect / tube)](h-grid) | first-class (analytic primitives) | 1 single block | `shore primitive h-grid-rect` / `h-grid-tube`; prismatic ducts, internal flow without an internal body — the analytic baseline for SRM-style cavities |
-| [OH hybrid (cubed-sphere wrap + H-channel)](oh-hybrid) | Python API | 12 (6 wrap + 6 channel) | `shore.mesh.OHTopology`; contiguous near-body-to-box mesh in one piece — wrap marched from the STL out to a structured channel that fills the gap to a Cartesian bounding box |
+| [OH hybrid (cubed-sphere wrap + H-channel)](oh-hybrid) | first-class | 12 (6 wrap + 6 channel) | `shore mesh --topology oh`; contiguous near-body-to-box mesh in one piece — wrap marched from the STL out to a structured channel that fills the gap to a Cartesian bounding box |
 | [CH hybrid (C-grid wrap + H-channel)](ch-hybrid) | first-class | 12 (sharp TE) / 14 (blunt TE) | `shore mesh --topology ch`; airfoil/hydrofoil analogue of OH — C-grid wrap + 7 (sharp) / 8 (blunt) channel sub-blocks bridging the wrap to a chord/normal frame in the freestream-aligned plane |
 
 Future topologies that fit naturally into this framework:

@@ -119,9 +119,11 @@ pair, bit-exact with no copy.
 |---|---|
 | `visualize_oh_hybrid.py` | Build a 12-block OH hybrid mesh on a unit icosphere; CLI knobs for box extents, channel depth, and channel k-spacing law.  Writes 12 `oh_<label>.geo` blocks plus an `oh.vtm` MultiBlock. |
 
-`OHTopology` is Python-only at the moment; `shore mesh` does not
-yet accept ``--topology oh-hybrid``.  Drive it from Python via
-:class:`shore.mesh.OHTopology`.
+This script drives the :class:`shore.mesh.OHTopology` Python API
+directly.  The same mesh is available from the CLI via
+``shore mesh --topology oh`` (box extents as
+``--oh-box-{x,y,z}{min,max}``, channel depth/law via the shared
+``--nk-channel`` / ``--k-law-channel`` / ``--k-beta-channel`` flags).
 
 ## Adding a new example
 
