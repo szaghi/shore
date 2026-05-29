@@ -2086,9 +2086,7 @@ class OHTopology(Topology):
             # Write only the k>=1 interior; k=0 is the shared seam.
             c_blk.nodes[:, :, 1:, :] = frustum[:, :, 1:, :]
 
-    def _outer_quad_for_block(
-        self, inner_face: np.ndarray, body_centre: np.ndarray
-    ) -> np.ndarray:
+    def _outer_quad_for_block(self, inner_face: np.ndarray, body_centre: np.ndarray) -> np.ndarray:
         """Find the box face this wrap block points at; return its 4 corners.
 
         ``body_centre`` is the global wrap-envelope centroid (see
