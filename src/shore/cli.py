@@ -97,7 +97,17 @@ def _main(
 # from the wall.  The .grd binary header is the only place where cell
 # counts (= node count - 1) appear; the conversion is automatic.
 _NI = Annotated[int, typer.Option(help="Latitude node count (i-axis of the surface).")]
-_NJ = Annotated[int, typer.Option(help="Longitude node count (j-axis of the surface).")]
+_NJ = Annotated[
+    int,
+    typer.Option(
+        help="Longitude node count (j-axis of the surface).  For "
+        "'cubed_sphere' this is the full equator-ring node count and must "
+        "be a multiple of 4: it is split into 4 sub-blocks of nj//4 cells "
+        "each (nj//4 + 1 nodes per sub-block), and the polar caps are also "
+        "nj//4 cells per side.  E.g. --nj 128 -> 32 cells per sub-block.  "
+        "For 'ogrid' it is the single block's j-node count directly."
+    ),
+]
 _NK = Annotated[int, typer.Option(help="Wall-normal node count (includes the wall at k=0).")]
 _DS = Annotated[float, typer.Option(help="First-layer thickness (same units as the STL).")]
 _GROWTH = Annotated[float, typer.Option(help="Geometric growth ratio between successive layers.")]
@@ -675,12 +685,23 @@ def mesh(
 ) -> None:
     """Full pipeline: STL -> structured volume -> geo files.
 
-    Two topologies are supported:
+    Topologies (``--topology``): ``cubed_sphere`` (default), ``ogrid``,
+    ``cgrid``, ``ch``, ``oh``.
 
     - ``cubed_sphere`` (default): 6-block decomposition (4 equatorial
       sub-blocks + 2 polar caps); writes 6 ``<stem>_<label>.geo`` files.
     - ``ogrid``: single-block lat-lon grid, j-periodic; writes one
       ``<stem>.geo`` file.
+
+    Node vs cell counts: ``--ni``/``--nj``/``--nk`` are NODE counts; a
+    block has (nodes - 1) cells per axis.  The one exception is ``--nj``
+    under ``cubed_sphere``: it is the full equator-ring node count and is
+    consumed as ``nj // 4``, so each of the 4 sub-blocks (and the polar
+    caps) gets ``nj // 4`` cells, i.e. ``nj // 4 + 1`` nodes.  To land on
+    a target cell count C per axis: ``--ni C+1``, ``--nk C+1``, and
+    ``--nj 4*C`` (cubed_sphere) or ``--nj C+1`` (ogrid).  Example for
+    power-of-two cells: ``--ni 65 --nj 128 --nk 65`` yields 64x32x64-cell
+    sub-blocks and 32x32x64-cell caps.
 
     Parameter precedence (highest first): explicit CLI flag -> config file -> built-in default.
     """

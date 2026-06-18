@@ -76,13 +76,31 @@ class TestTanhTwoSided:
         c = tanh_two_sided(20, 0.0, 1.0, beta=3.0)
         assert np.all(np.diff(c) > 0)
 
-    def test_cluster_at_shifts_density(self):
-        # cluster toward 0.2 (near start): spacing before 0.2 should be finer
+    def test_cluster_at_interior_point(self):
+        # cluster_at=0.2 puts a dense band at the interior point 0.2: the
+        # finest cell sits at 0.2 and cells coarsen away from it on both sides.
         c = tanh_two_sided(40, 0.0, 1.0, beta=4.0, cluster_at=0.2)
         diffs = np.diff(c)
-        # index corresponding to 0.2 (approx)
-        idx = int(np.searchsorted(c, 0.2))
-        assert diffs[max(0, idx - 2)] < diffs[idx + 5]
+        assert np.all(diffs > 0)  # strictly monotone — no collapsed cells
+        assert np.isclose(c[0], 0.0) and np.isclose(c[-1], 1.0)  # spans interval
+        # the densest cell is located at the cluster point
+        x_min = c[diffs.argmin()]
+        assert abs(x_min - 0.2) < 0.05
+        # cells far from 0.2 (near the coarse ends) are coarser than at 0.2
+        assert diffs[diffs.argmin()] < diffs[0]
+        assert diffs[diffs.argmin()] < diffs[-1]
+
+    def test_cluster_at_endpoint_reduces_to_one_sided(self):
+        # cluster_at on an endpoint must not collapse cells; it becomes a
+        # one-sided clustering at that end.
+        c0 = tanh_two_sided(30, 0.0, 1.0, beta=3.0, cluster_at=0.0)
+        d0 = np.diff(c0)
+        assert np.all(d0 > 0)
+        assert d0[0] < d0[-1]  # dense at start
+        c1 = tanh_two_sided(30, 0.0, 1.0, beta=3.0, cluster_at=1.0)
+        d1 = np.diff(c1)
+        assert np.all(d1 > 0)
+        assert d1[-1] < d1[0]  # dense at stop
 
 
 # ---------------------------------------------------------------------------

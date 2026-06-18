@@ -90,26 +90,52 @@ def tanh_two_sided(
         Clustering strength (> 0).
     cluster_at :
         If None: symmetric clustering at both ``start`` and ``stop``.
-        If a value in ``[start, stop]``: asymmetric — the dense region is
-        shifted toward that value.  Used for j-direction longitude clustering
-        (e.g. leading-edge longitude on an airfoil).
+        If a value in ``[start, stop]``: clustering at that *interior* point
+        — cells are densest at ``cluster_at`` and coarsen monotonically away
+        from it on both sides (a single dense band, not the two-ended default).
+        Used for j-direction longitude clustering (e.g. leading-edge longitude
+        on an airfoil).  When ``cluster_at`` lands on an endpoint the result
+        reduces to one-sided clustering at that end.
 
     Returns
     -------
     numpy.ndarray, shape (n,)
     """
-    tau = np.linspace(0.0, 1.0, n)
-
     if cluster_at is None:
-        # Symmetric: cluster at both ends
+        # Symmetric: cluster at both ends.  At tau=0 this maps to 0 and at
+        # tau=1 to 1 exactly (frac=0.5 case), so the interval is spanned
+        # without clipping.
+        tau = np.linspace(0.0, 1.0, n)
         t = 0.5 * (1.0 + np.tanh(beta * (tau - 0.5)) / np.tanh(0.5 * beta))
-    else:
-        total = stop - start
-        frac = (cluster_at - start) / total  # map cluster_at → [0, 1]
-        t = 0.5 * (1.0 + np.tanh(beta * (tau - frac)) / np.tanh(0.5 * beta))
-        t = np.clip(t, 0.0, 1.0)
+        return start + (stop - start) * t
 
-    return start + (stop - start) * t
+    # Interior clustering at `cluster_at`.  Build two one-sided Roberts (tanh)
+    # segments that each cluster *toward* the split point and join them:
+    #   [start, c] dense at its right end (c), and [c, stop] dense at its
+    #   left end (c).  This produces a genuine dense band at c with no clipping
+    #   and no collapsed (zero-width) cells.  Node budget is split between the
+    #   two sides in proportion to their lengths (>= 2 nodes each).
+    total = stop - start
+    c = min(max(float(cluster_at), start), stop)
+    eps = total * 1e-9
+
+    if c - start <= eps:
+        # Degenerate left side -> one-sided clustering at `start`.
+        return tanh_one_sided(n, start, stop, beta)
+    if stop - c <= eps:
+        # Degenerate right side -> one-sided clustering at `stop`
+        # (mirror of dense-at-start).
+        return stop - tanh_one_sided(n, 0.0, total, beta)[::-1]
+
+    frac = (c - start) / total
+    n_left = max(2, round(frac * (n - 1)) + 1)  # nodes in [start, c] incl. c
+    n_right = n - n_left + 1  # nodes in [c, stop] incl. c (shared node)
+    if n_right < 2:
+        n_left, n_right = n - 1, 2
+
+    left = c - tanh_one_sided(n_left, 0.0, c - start, beta)[::-1]  # dense at c
+    right = c + tanh_one_sided(n_right, 0.0, stop - c, beta)  # dense at c
+    return np.concatenate([left[:-1], right])  # drop the duplicated split node
 
 
 # ---------------------------------------------------------------------------
