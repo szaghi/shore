@@ -7,27 +7,33 @@ STL reader: load a raw triangulated surface into a `trimesh.Trimesh`.
 ### `load_stl`
 
 ```python
-def load_stl(path: str | Path) -> trimesh.Trimesh
+def load_stl(path: str | Path, skip_hygiene: bool = False) -> trimesh.Trimesh
 ```
 
-Load an STL file and return a watertight-checked `Trimesh`.
+Load an STL file and return a hygiene-repaired `Trimesh`.
 
 **Parameters**
 
-| Name | Type | Description |
-|---|---|---|
-| `path` | `str \| Path` | Path to the `.stl` file (ASCII or binary) |
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `path` | `str \| Path` | — | Path to the `.stl` file (ASCII or binary) |
+| `skip_hygiene` | `bool` | `False` | When `True`, bypass the mesh-hygiene pass (`merge_vertices`, drop degenerate faces, `fix_normals`) and load the raw geometry. Preserves legacy behaviour for regression tests. |
+
+By default (`skip_hygiene=False`) the loader merges duplicate
+vertices, removes degenerate (zero-area) faces, and fixes face
+winding via `trimesh.repair.fix_normals`. If the result is still not
+watertight it emits a `UserWarning` (it does **not** raise) — ray
+casting may then miss rays.
 
 **Returns**
 
-`trimesh.Trimesh` — the loaded surface mesh.
+`trimesh.Trimesh` — the loaded (and, unless `skip_hygiene`, repaired) surface mesh.
 
 **Raises**
 
 | Exception | Condition |
 |---|---|
-| `FileNotFoundError` | `path` does not exist |
-| `ValueError` | The loaded geometry is not a single mesh (e.g. a scene with multiple components) |
+| `MeshInputError` | `path` does not exist, or the loaded geometry is not a single `Trimesh` (e.g. a scene with multiple components) |
 
 **Example**
 
@@ -43,4 +49,4 @@ print(mesh.is_watertight)    # True for a clean STL
 ## Notes
 
 - Uses `trimesh.load(..., force="mesh")` to coerce scene files to a single mesh.
-- The function does not repair the mesh (fill holes, remove degenerate faces). If `project_sphere_to_surface` fails with ray-miss errors, try `mesh.fill_holes()` or `trimesh.repair.fix_winding(mesh)` before projecting.
+- Default loading applies a hygiene pass (merge vertices, drop degenerate faces, fix winding). It does **not** fill holes. If `project_sphere_to_surface` still fails with ray-miss errors on a non-watertight body, try `mesh.fill_holes()` before projecting, or pass `skip_hygiene=True` to inspect the raw geometry.

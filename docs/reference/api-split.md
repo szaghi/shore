@@ -41,63 +41,77 @@ BlockSplit("background_center", "k", at=[10, 20, 30])
 def split_blocks(
     blocks: list[HexBlock],
     splits: list[BlockSplit],
+    *,
+    propagate_seams: bool = True,
 ) -> list[HexBlock]
 ```
 
-Apply every split directive and return a fresh list of new blocks.
-Blocks not named in `splits` pass through unchanged (deep-copied).
+Apply the split directives and return a fresh, fully-wired list of new blocks.
+Blocks not named in `splits` pass through unchanged. **Multiple directives may
+name the same block** (one per axis); their cuts are unioned per axis, so a
+block becomes an `ni × nj × nk` chunk grid in a single pass.
+
+| Parameter | Description |
+|---|---|
+| `blocks` | Input block list (not mutated; chunks alias node memory read-only). |
+| `splits` | `BlockSplit` directives; multiple per block allowed (multi-axis). |
+| `propagate_seams` | When `True` (default), a cut on an in-plane axis of a SHARED / DIRICHLET face is mirrored through the seam's `AxisMap` onto the partner block (to a fixpoint), so both sides stay conformal — callers need not author paired co-splits. Set `False` for the legacy "caller pre-pairs every co-split" behaviour. |
 
 **Adjacency rules:**
 
-- **Internal seams.** Each split block is replaced by `len(at) + 1`
-  chunks; consecutive chunks share a `FaceBC.SHARED` face along the
-  split axis with **bit-exact node coincidence** — the chunks alias
-  the same column from the source block via numpy views, no node
-  duplication.
-- **External faces** *not* perpendicular to the split axis appear on
-  every chunk, sliced into pieces along the perpendicular axis. The
-  original block's BC is inherited.
-- **Faces perpendicular** to the split axis appear only on the first
-  / last chunk respectively.
-- **Cross-block partner rewiring.** When the original block had a
-  `SHARED` face whose partner was *another* block in `blocks`, the
-  partner's face BC is updated to point at the right new chunk.
-  Cross-block splits along compatible axes must use **identical
-  indices**; perpendicular cross-block splits raise
-  `ParameterError`.
+- **Internal seams.** Adjacent chunks share a `FaceBC.SHARED` face with
+  **bit-exact node coincidence** (numpy-view aliased, no duplication) and an
+  identity `AxisMap`.
+- **External seams.** Each original face is inherited only by the chunks that
+  still expose it. An original inter-block SHARED / DIRICHLET seam is re-paired
+  chunk-sheet to chunk-sheet onto the matching partner chunks — each side keeps
+  its own BC (a DIRICHLET cap↔sub seam stays DIRICHLET). Per-face `bc_code`
+  overrides are carried through.
+- **Auto seam co-split.** With `propagate_seams=True`, a cut that subdivides a
+  seam induces the corresponding cut on the partner (mapped through the
+  `AxisMap`, with flip and partner extent); cut indices on the two sides need
+  not be equal. See
+  [Design decisions](/guide/design-decisions#splitting-auto-propagates-cuts-across-seams).
 
-**Block label format:** `<original_label>__<axis><k>` where `k`
-counts chunks in axis-ascending order. E.g. `sub0__k0`, `sub0__k1`.
+**Block label format:** `<original_label>__<axis><k>` per cut axis, e.g.
+`sub0__i0__k1`. Only the cut axes appear in the suffix.
 
 **Raises**
 
-- `ParameterError` — unknown block label, out-of-range cut index,
-  duplicate split of the same block in one call, or incompatible
-  cross-block splits across a SHARED seam.
+- `ParameterError` — unknown block label, out-of-range cut index, or a seam
+  whose two sides cannot be made conformal.
 
 ```python
 from shore.split import BlockSplit, split_blocks
-from shore.io.adjacency import write_adjacency_json
 
-new_blocks = split_blocks(
-    mesh.blocks,
-    [
-        BlockSplit("sub0", "k", at=[10]),
-        BlockSplit("sub1", "k", at=[10]),
-        BlockSplit("sub2", "k", at=[10]),
-        BlockSplit("sub3", "k", at=[10]),
-    ],
-)
-
-# Write the per-block .geo + the adjacency JSON sidecar
-for blk in new_blocks:
-    ...
-write_adjacency_json("mesh.adjacency.json", new_blocks)
+# Cut sub0 on k only — auto-propagates to the j-ring sub-blocks and the
+# DIRICHLET caps, so every cubed-sphere block ends up k-split conformally.
+new_blocks = split_blocks(mesh.blocks, [BlockSplit("sub0", "k", at=[10])])
 ```
 
-The CLI `shore split` writes the same adjacency sidecar that
-[`shore cc-par`](./cc-par) consumes; see the [`shore split` CLI](./split)
-for the TOML schema and the JSON sidecar format.
+## `propagate_cuts`
+
+```python
+def propagate_cuts(
+    blocks: list[HexBlock],
+    requested: dict[str, dict[str, set[int]]],
+) -> dict[str, dict[str, set[int]]]
+```
+
+Return `requested` (per-block per-axis vertex-cut sets) extended with every cut
+induced across SHARED / DIRICHLET seams — exactly the set `split_blocks` would
+execute. Pure helper for the balance planner, which uses it to floor-check the
+*propagated* chunking so its plan matches the split output block-for-block.
+
+## `chunk_axis_sizes`
+
+```python
+def chunk_axis_sizes(n_vertices: int, at: set[int]) -> list[int]
+```
+
+Cell counts of each chunk produced by cutting an axis of `n_vertices` vertices
+at the vertex indices `at`. Used with `propagate_cuts` to enforce the multigrid
+cell floor.
 
 ## See also
 

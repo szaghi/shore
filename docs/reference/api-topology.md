@@ -50,12 +50,15 @@ class CubedSphereTopology(Topology):
         ni: int | None = None,
         nj: int | None = None,
         spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
         projector: object | None = None,
         theta_cap: float = 0.05 * np.pi,
         i_spacing: str = "uniform",
         i_beta: float = 3.0,
         j_spacing: str = "uniform",
         j_beta: float = 3.0,
+        phi_offset: float = 0.0,
+        **kwargs,
     ) -> list[HexBlock]
 ```
 
@@ -87,12 +90,14 @@ class OGridTopology(Topology):
         ni: int | None = None,
         nj: int | None = None,
         spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
         projector: object | None = None,
         theta_cap: float = 0.05 * np.pi,
         i_spacing: str = "uniform",
         i_beta: float = 3.0,
         j_spacing: str = "uniform",
         j_beta: float = 3.0,
+        **kwargs,
     ) -> list[HexBlock]
 ```
 
@@ -212,7 +217,9 @@ class OHTopology(Topology):
         ni: int | None = None,
         nj: int | None = None,
         spacing_k: Spacing1D | None = None,
+        mesh: object | None = None,
         projector: object | None = None,
+        theta_cap: float = 0.05 * np.pi,
         i_spacing: str = "uniform",
         i_beta: float = 3.0,
         j_spacing: str = "uniform",
@@ -400,15 +407,24 @@ class Face:
     index:           int
     name:            FaceName        # 'i_lo' | 'i_hi' | 'j_lo' | 'j_hi' | 'k_lo' | 'k_hi'
     bc:              FaceBC
-    partner:         Face | None     # back-reference, None for WALL/FREE
-    axis_map:        AxisMap | None  # required when partner is set
-    body_projected:  bool            # True iff bc == WALL
+    partner:         Face | None = None     # back-reference, None for WALL/FREE
+    axis_map:        AxisMap | None = None   # required when partner is set
+    bc_code:         int | None = None       # per-FREE-face natural-BC override (None = per-block default)
+    body_projected:  bool = False            # True iff bc == WALL
 ```
 
 `Face.nodes(block)` returns a 2D numpy view of the face's node slab
 (read/write). `Face.partner` carries a back-reference to the
 partnered face on another block; for SHARED seams the two `nodes`
 views alias the same underlying memory.
+
+`Face.bc_code` is an optional per-`FREE`-face natural-BC override
+(an Xall code in `[1, 19]`): when set, the [`cc.par` writer](./cc-par)
+emits it for that single face instead of the per-block
+`free_face_bc` default, letting one block carry heterogeneous outer
+BCs (e.g. inflow on one face, extrapolation on the others). It is
+only valid on `FREE` faces. `body_projected` is `True` exactly when
+the face is the k=0 body wall (`bc == WALL`).
 
 ## `FaceBC`
 

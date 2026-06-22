@@ -198,8 +198,8 @@ Output:
 ```
 examples_out/
   sphere.stl                        # in-memory icosphere
-  wall_sub0..3.geo                  # 6 cubed-sphere blocks
-  wall_cap_north/south.geo
+  fuselage_sub0..3.geo              # 6 cubed-sphere blocks
+  fuselage_cap_north/south.geo
   background_center.geo             # 5 flat-caps blocks
   background_sub_e/n/w/s.geo
   assembly.vtm                      # 11-block ParaView MultiBlock

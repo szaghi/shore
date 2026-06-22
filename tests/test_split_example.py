@@ -2,10 +2,11 @@
 
 Imports the orchestrator's helpers directly (no subprocess) and verifies:
 - the cubed-sphere mesh builds and marches cleanly;
-- ``apply_splits`` produces 10 blocks (8 sub-block chunks + 2 caps);
+- ``apply_splits`` produces 12 blocks (8 sub-block chunks + 4 cap chunks —
+  the caps are co-split on k so the cap<->sub DIRICHLET seam stays matched);
 - the adjacency JSON sidecar lands on disk with the expected schema
-  (10 blocks, intact j-periodic equatorial ring across the cuts,
-  new k-seams between paired chunks, caps unchanged).
+  (12 blocks, intact j-periodic equatorial ring across the cuts,
+  new k-seams between paired chunks, cap<->sub DIRICHLET seams preserved).
 """
 
 from __future__ import annotations
@@ -38,13 +39,14 @@ class TestSplitExampleDefaults:
         mesh = m.build_cubed_sphere(stl)
         new_blocks = m.apply_splits(mesh.blocks)
         assert len(mesh.blocks) == 6
-        assert len(new_blocks) == 10
+        assert len(new_blocks) == 12
         labels = {b.label for b in new_blocks}
         for q in range(4):
             assert f"sub{q}__k0" in labels
             assert f"sub{q}__k1" in labels
-        assert "cap_north" in labels
-        assert "cap_south" in labels
+        for cap in ("cap_north", "cap_south"):
+            assert f"{cap}__k0" in labels
+            assert f"{cap}__k1" in labels
 
     def test_adjacency_json_round_trip(self, split_module, tmp_path):
         from shore.io.adjacency import read_adjacency_json
@@ -62,7 +64,7 @@ class TestSplitExampleDefaults:
         from shore.io.adjacency import ADJACENCY_VERSION
 
         assert payload["version"] == ADJACENCY_VERSION
-        assert len(payload["blocks"]) == 10
+        assert len(payload["blocks"]) == 12
 
         # j-periodic equatorial ring: every sub_q__k0 must share j_lo
         # with sub_(q-1)__k0.j_hi.  This is the cross-block adjacency
@@ -93,12 +95,14 @@ class TestSplitExampleDefaults:
                 "face": "k_hi",
             }
 
-        # Caps pass through unchanged: same shape as the input mesh.
+        # Caps are co-split on k: each cap chunk's k-extent is a piece of the
+        # original, and the two chunks share the cut vertex, summing to _NK.
         for cap in ("cap_north", "cap_south"):
-            shape = by_label[cap]["shape"]
-            # Cap blocks are (nc, nc, nk).  Doesn't matter what the
-            # exact numbers are; the point is they aren't split.
-            assert shape[2] == m._NK
+            k0 = by_label[f"{cap}__k0"]["shape"][2]
+            k1 = by_label[f"{cap}__k1"]["shape"][2]
+            assert k0 + k1 - 1 == m._NK  # shared cut vertex counted once
+            # cap chunk DIRICHLET seams to the sub chunks survive the split.
+            assert by_label[f"{cap}__k0"]["faces"]["i_lo"]["bc"] in ("DIRICHLET", "SHARED")
 
     def test_assembly_vtm_written(self, split_module, tmp_path):
         m = split_module
@@ -117,19 +121,20 @@ class TestSplitExampleDefaults:
         sister = tmp_path / "sphere"
         assert sister.is_dir()
         vts_files = list(sister.glob("*.vts"))
-        assert len(vts_files) == 10
+        assert len(vts_files) == 12
 
 
 class TestSplitExampleConfigDriven:
     def test_loads_canonical_config(self, split_module):
-        """The shipped TOML loads to the same 4 paired k-cuts the script
-        uses by default."""
+        """The shipped TOML loads to the 6 paired k-cuts the script uses by
+        default — all 4 subs plus both caps (caps co-split to keep the
+        cap<->sub DIRICHLET seam matched)."""
         directives = split_module._load_split_directives_from_toml(
             EXAMPLES / "04-split" / "config_split_cubed_sphere.toml"
         )
-        assert len(directives) == 4
+        assert len(directives) == 6
         labels = sorted(d.label for d in directives)
-        assert labels == ["sub0", "sub1", "sub2", "sub3"]
+        assert labels == ["cap_north", "cap_south", "sub0", "sub1", "sub2", "sub3"]
         for d in directives:
             assert d.axis == "k"
             assert d.at == (6,)

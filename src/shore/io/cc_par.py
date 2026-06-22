@@ -52,7 +52,12 @@ Mapping from SHORE's ``FaceBC`` enum to ``cc.par`` BC codes:
 - ``FREE``       → caller-chosen via :class:`BlockMeta.free_face_bc`,
   defaulting to ``40`` (``offgen``, chimera face cell-center).  Body-
   fitted and buffer meshes use ``40``; far-field background patches
-  use a natural BC (e.g. ``-9``, extrapolation).
+  use a natural BC, which MUST be a positive code in ``[1, nccnat=19]``
+  (e.g. ``9`` for free/far-field extrapolation, ``3``/``4`` for
+  inflow/outflow).  ``calface`` stores the code verbatim into ``icc``
+  and ``calspig2`` / ``calvert`` reject any face ``icc < 1`` ("Errore
+  in calspig: icc sulle facce deve essere > 0"), so a *negative* code
+  such as ``-9`` is invalid and fails where two natural faces meet.
 - ``SHARED`` / ``DIRICHLET`` → connection orientation code (``>= 100``)
   + ``family = partner patch index``.  The 3-digit orientation code
   ``lᵢ lⱼ lₖ`` is derived from this face's ``axis_map`` plus the
@@ -164,8 +169,11 @@ class BlockMeta:
     free_face_bc :
         BC code emitted for ``FREE`` faces of this block.  Default ``40``
         (``offgen``, chimera-cell-center) — appropriate for body-fitted /
-        buffer meshes.  Use a negative natural-BC code (e.g. ``-9`` for
-        extrapolation, ``-3`` for inflow) on far-field background blocks.
+        buffer meshes.  On far-field background blocks use a positive
+        natural-BC code in ``[1, nccnat=19]`` (e.g. ``9`` for free/far-field
+        extrapolation, ``3``/``4`` for inflow/outflow).  Negative codes
+        (``-9``, ``-3``) are invalid: overset stores the code verbatim and
+        rejects any face ``icc < 1`` at edge/vertex cells.
     """
 
     level: int = 1
@@ -422,7 +430,11 @@ def _resolve_patch(
     if bc_name == "WALL":
         return _Patch(block_idx, face_idx, _BC_WALL, 0, extents)
     if bc_name == "FREE":
-        return _Patch(block_idx, face_idx, free_face_bc, 0, extents)
+        # Per-face override (e.g. inflow on one outer face, extrapolation on
+        # the rest of the same block) wins over the per-block free_face_bc.
+        face_code = face_payload.get("bc_code")
+        bc = face_code if face_code is not None else free_face_bc
+        return _Patch(block_idx, face_idx, bc, 0, extents)
     if bc_name == "PERIODIC":
         warnings.warn(
             f"cc.par: PERIODIC BC on {block_label!r}.{face_name} not "

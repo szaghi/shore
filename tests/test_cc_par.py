@@ -37,13 +37,17 @@ def _face(
     bc: str,
     partner: tuple[str, str] | None = None,
     axis_map: list[list] | None = None,
+    bc_code: int | None = None,
 ) -> dict:
     """Build a face entry for a hand-crafted v2 adjacency payload."""
-    return {
+    entry = {
         "bc": bc,
         "partner": ({"label": partner[0], "face": partner[1]} if partner else None),
         "axis_map": axis_map,
     }
+    if bc_code is not None:
+        entry["bc_code"] = bc_code
+    return entry
 
 
 def _identity_map(face_name: str) -> list[list]:
@@ -232,16 +236,71 @@ class TestPatchBCMapping:
             tmp_path / "cc.par",
             grd_filename="x.grd",
             block_metadata={
-                "a": BlockMeta(comment="a", free_face_bc=-9),
+                "a": BlockMeta(comment="a", free_face_bc=9),
                 "b": BlockMeta(comment="b", free_face_bc=40),
             },
         )
         patches = _parse_patches(out.read_text())
-        # a's FREE faces -> -9, b's FREE faces -> 40.
+        # a's FREE faces -> 9 (natural far-field), b's FREE faces -> 40.
         a_free = next(p for p in patches if p["block"] == 1 and p["face"] == 2)
         b_free = next(p for p in patches if p["block"] == 2 and p["face"] == 4)
-        assert a_free["bc"] == -9
+        assert a_free["bc"] == 9
         assert b_free["bc"] == 40
+
+    def test_per_face_bc_code_overrides_free_default(self, tmp_path):
+        """A per-face ``bc_code`` on a FREE face wins over free_face_bc, so a
+        single block can carry inflow (3) on one outer face and extrapolation
+        (9) on the rest."""
+        payload = _two_block_shared_payload()
+        # block "a": i_lo is WALL; put inflow=3 on i_hi, leave the other FREE
+        # faces to the per-block default of 9.
+        payload["blocks"][0]["faces"]["i_hi"] = _face("FREE", bc_code=3)
+        out = write_cc_par(
+            payload,
+            tmp_path / "cc.par",
+            grd_filename="x.grd",
+            block_metadata={"a": BlockMeta(comment="a", free_face_bc=9)},
+        )
+        patches = _parse_patches(out.read_text())
+        a_inflow = next(p for p in patches if p["block"] == 1 and p["face"] == 2)  # i_hi
+        a_other = next(p for p in patches if p["block"] == 1 and p["face"] == 5)  # k_lo
+        assert a_inflow["bc"] == 3  # per-face override
+        assert a_other["bc"] == 9  # per-block default still applies
+
+    def test_per_face_bc_code_survives_sidecar_round_trip(self, tmp_path):
+        """A FREE face's bc_code set on a HexBlock survives write -> read."""
+        from shore.io.adjacency import read_adjacency_json
+        from shore.mesh.block import HexBlock
+        from shore.mesh.face import FaceBC
+
+        blk = HexBlock(label="bg", nodes=np.zeros((4, 4, 4, 3)), periodic_j=False)
+        blk._set_face_bc("i_lo", FaceBC.FREE, bc_code=3)  # inflow
+        path = write_adjacency_json([blk], tmp_path / "bg.adjacency.json")
+        data = read_adjacency_json(path)
+        face = data["blocks"][0]["faces"]["i_lo"]
+        assert face["bc"] == "FREE"
+        assert face["bc_code"] == 3
+        # a FREE face with no override emits no bc_code key
+        assert "bc_code" not in data["blocks"][0]["faces"]["i_hi"]
+
+    def test_bc_code_rejected_on_non_free_face(self):
+        from shore.mesh.block import HexBlock
+        from shore.mesh.face import FaceBC
+
+        blk = HexBlock(label="b", nodes=np.zeros((4, 4, 4, 3)), periodic_j=False)
+        with pytest.raises(ValueError, match="only valid on FREE"):
+            blk._set_face_bc("k_lo", FaceBC.WALL, bc_code=3)
+
+    def test_bc_code_out_of_range_rejected_by_reader(self, tmp_path):
+        payload = _two_block_shared_payload()
+        payload["blocks"][0]["faces"]["i_hi"] = _face("FREE", bc_code=99)
+        adj = tmp_path / "bad.adjacency.json"
+        adj.write_text(json.dumps(payload))
+        from shore.exceptions import MeshInputError
+        from shore.io.adjacency import read_adjacency_json
+
+        with pytest.raises(MeshInputError, match=r"natural-BC code in \[1, 19\]"):
+            read_adjacency_json(adj)
 
     def test_shared_emits_orientation_codes_with_paired_family(self, tmp_path):
         payload = _two_block_shared_payload()
@@ -643,7 +702,7 @@ class TestCLI:
         adj.write_text(json.dumps(_two_block_shared_payload()))
         ccpar = tmp_path / "two.cc.par"
 
-        meta = json.dumps({"a": {"free_face_bc": -9}, "b": {"free_face_bc": 40}})
+        meta = json.dumps({"a": {"free_face_bc": 9}, "b": {"free_face_bc": 40}})
         runner = CliRunner()
         r = runner.invoke(
             app,
@@ -651,8 +710,8 @@ class TestCLI:
         )
         assert r.exit_code == 0, r.output
         patches = _parse_patches(ccpar.read_text())
-        # Block 1 (a) FREE faces -> -9; block 2 (b) FREE faces -> 40.
-        a_free = [p for p in patches if p["block"] == 1 and p["bc"] == -9]
+        # Block 1 (a) FREE faces -> 9; block 2 (b) FREE faces -> 40.
+        a_free = [p for p in patches if p["block"] == 1 and p["bc"] == 9]
         b_free = [p for p in patches if p["block"] == 2 and p["bc"] == 40]
         assert len(a_free) == 4
         assert len(b_free) == 4
@@ -662,7 +721,7 @@ class TestCLI:
         adj = tmp_path / "two.adjacency.json"
         adj.write_text(json.dumps(_two_block_shared_payload()))
         meta_file = tmp_path / "meta.json"
-        meta_file.write_text(json.dumps({"a": {"free_face_bc": -9}, "b": {"free_face_bc": 40}}))
+        meta_file.write_text(json.dumps({"a": {"free_face_bc": 9}, "b": {"free_face_bc": 40}}))
         ccpar = tmp_path / "two.cc.par"
 
         runner = CliRunner()
@@ -672,7 +731,7 @@ class TestCLI:
         )
         assert r.exit_code == 0, r.output
         patches = _parse_patches(ccpar.read_text())
-        a_free = [p for p in patches if p["block"] == 1 and p["bc"] == -9]
+        a_free = [p for p in patches if p["block"] == 1 and p["bc"] == 9]
         b_free = [p for p in patches if p["block"] == 2 and p["bc"] == 40]
         assert len(a_free) == 4
         assert len(b_free) == 4

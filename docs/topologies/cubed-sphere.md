@@ -167,7 +167,7 @@ implementation and quantitative verification.
 
 | Parameter | Effect |
 |---|---|
-| `theta_cap` | Polar exclusion angle in radians. The 4 cap corners sit at colatitude `theta_cap` on a unit sphere; cap edges dip slightly poleward at midpoints. Default $\pi/6$ (30°). |
+| `theta_cap` | Polar exclusion angle in radians. The 4 cap corners sit at colatitude `theta_cap` on a unit sphere; cap edges dip slightly poleward at midpoints. Default $0.05\,\pi$ (9°). |
 | `j_spacing` | Cap-edge tangent-plane node distribution (`'uniform'` or `'tanh2'`). The equator inherits the same distribution at the seam by DIRICHLET binding. |
 | `j_beta` | Clustering strength for `tanh2` j-spacing. |
 

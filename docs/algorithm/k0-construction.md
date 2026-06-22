@@ -145,7 +145,7 @@ $$
 \quad n_c = \frac{n_j}{4} + 1.
 $$
 
-The defaults `--ni 40 --nj 60 --theta-cap π/6` land inside this window.
+The defaults `--ni 40 --nj 60` with the default `theta_cap` (0.05·π = 9°) land inside this window.
 
 ## Final 6-block layout
 

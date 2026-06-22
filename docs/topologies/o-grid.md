@@ -35,8 +35,9 @@ The output is one `<stem>.geo` file with shape `(ni, nj, nk, 3)` and
 j-periodic. All ``shore mesh`` flags apply equally — `--ni`, `--nj`,
 `--nk`, `--ds`, `--growth`, `--smooth`, `--smooth-iters`, the spacing
 laws, `--blend-normals-k`, `--theta-cap` / `--theta-cap-deg`. The
-cap-specific flags (`--cap-pull`, `--cap-squareness`, `--j-cluster-lon`)
-are deprecated for both topologies and silently ignored.
+legacy cap-shaping flags (`--cap-pull`, `--cap-squareness`) are
+deprecated for both topologies and silently ignored (the cap k=0 is now
+built by gnomonic flat-square projection).
 
 The Python API is the symmetric of the cubed sphere's:
 
@@ -118,8 +119,9 @@ $$\Delta s = \frac{\Delta y^+ \, \nu}{u_\tau}$$
 | **H-grid** | Rectangular with body cut-out | Bluff bodies, internal flows |
 
 SHORE implements the O-grid (this page) and the cubed sphere as
-peers. C-grid and H-grid topologies require different surface
-parametrisation strategies and are on the roadmap.
+peers, plus the [C-grid](c-grid) (`--topology cgrid`) for sharp-/blunt-TE
+bodies and the H-grid analytic primitives (`shore primitive h-grid-rect`
+/ `h-grid-tube`) for body-less ducts.
 
 ## Per-edge spacing
 

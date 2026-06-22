@@ -363,10 +363,35 @@ above for the full Xall BC vocabulary.
 | SHORE `FaceBC` | `cc.par` BC code | `family` field | Notes |
 |---|---|---|---|
 | `WALL` | `1` (`parete`, viscous wall) | `0` | Body wall. |
-| `FREE` | `--free-bc` (default `40`), or per-block `free_face_bc` via `--meta` | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a natural BC: `-3` inflow, `-4` inoutflow, `-9` extrapolation. Per-block overrides via `--meta` take precedence over `--free-bc`. |
+| `FREE` | `--free-bc` (default `40`), or per-block `free_face_bc` via `--meta`, or per-**face** `bc_code` | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a **positive** natural BC in `[1, 19]`: `3` inflow, `4` outflow, `9` extrapolation (see warning below). Per-block `--meta` overrides `--free-bc`; a per-face `bc_code` (see [per-face BC](#per-face-bc-codes)) overrides both. |
 | `SHARED` | orientation code (≥ 100) | partner patch index | Code derived from the face's `axis_map` plus the partner face name — see [orientation digits](#orientation-digits-in-detail). For a same-axis seam with no flips the codes are `135` / `145` per side. |
 | `DIRICHLET` | orientation code | partner patch index | Same derivation as `SHARED`; cross-axis seams (e.g. cubed-sphere cap-equator) are produced naturally from the `axis_map` without per-topology lookup tables. |
 | `PERIODIC` | `40` + `UserWarning` | `0` | `cc.par` has no first-class periodic BC; use Xall chimera boxes for periodic stitching. |
+
+::: warning Natural-BC codes for FREE faces must be POSITIVE
+The overset preprocessor stores a natural-BC code **verbatim** into its `icc`
+matrix and then rejects any face with `icc < 1`
+(`Errore in calspig: icc sulle facce deve essere > 0`). Use a **positive**
+code in `[1, 19]` — `9` for free/far-field extrapolation, `3`/`4` for
+inflow/outflow. A **negative** code such as `-9` is invalid and fails where two
+natural faces meet at an edge. (Earlier docs recommended `-9`; that was wrong.)
+:::
+
+### Per-face BC codes {#per-face-bc-codes}
+
+A single block sometimes needs *heterogeneous* outer BCs — e.g. inflow on one
+face and extrapolation on the others. A `FREE` [`Face`](/reference/api-mesh)
+can carry an explicit `bc_code` (positive, `[1, 19]`) that overrides the
+per-block `free_face_bc` for that face only:
+
+```python
+from shore.mesh.face import FaceBC
+# inflow (3) on the -X face; this block's other FREE faces stay default (9)
+blk._set_face_bc("i_lo", FaceBC.FREE, bc_code=3)
+```
+
+The code is carried through the adjacency sidecar and emitted by `cc-par`. See
+[Design decisions → per-face BC](/guide/design-decisions#per-face-natural-bc-codes).
 
 ## Cubed-sphere cap-equator codes
 
@@ -400,7 +425,7 @@ output, not as a writer input.
 |---|---|---|
 | `--grd TEXT` | *required* | Name of the `.grd` mesh file Xall pairs with this `cc.par` (header line 1). |
 | `--output-basename TEXT` | `"cc."` | Output basename Xall uses for derived files (header line 2). |
-| `--free-bc INT` | `40` | BC code for `FREE` faces on every block that has no entry in `--meta`. Use `-3`/`-4`/`-9` etc. for far-field background blocks. |
+| `--free-bc INT` | `40` | BC code for `FREE` faces on every block that has no entry in `--meta`. Use a **positive** natural BC (`3`/`4`/`9`) for far-field background blocks — see the warning above. |
 | `--meta TEXT` | `null` | Per-block `BlockMeta` overrides. Accepts an inline JSON object or a path to a JSON file (inline JSON is tried first). Keys are block labels; values are objects with any subset of `{level, group, priority, comment, free_face_bc}`. Missing keys inherit their defaults. Any block absent from the map uses `--free-bc` for its FREE faces. |
 | `--mgl INT INT` | `4 1` | Multigrid levels: total, finest active. |
 | `--boundary-layer-thickness FLOAT` | `-0.1` | Header line 9. |
@@ -420,7 +445,7 @@ The JSON value must be an **object** mapping block labels to partial
 ```json
 {
   "sub0":      { "level": 1, "group": 0, "priority": 1, "free_face_bc": 40 },
-  "cap_north": { "level": 2, "free_face_bc": -9 }
+  "cap_north": { "level": 2, "free_face_bc": 9 }
 }
 ```
 

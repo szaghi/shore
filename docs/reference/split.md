@@ -30,7 +30,15 @@ shore split [OPTIONS] -c CONFIG INPUTS...
 |---|---|
 | `-c` / `--config PATH` | TOML split config (`kind = "split"`) — required. |
 | `-o` / `--output PATH` | Output stem. Writes `<stem>_<label>.geo` per chunk plus `<stem>.adjacency.json`. Default: parent dir of the first input + the inferred base prefix. |
+| `--adjacency PATH` | Input `.adjacency.json` sidecar(s) describing the pre-existing inter-block seams of the input `.geo` files. **Repeatable** (one per component). Without it, `.geo` files carry only geometry, so every face defaults to FREE and the topology's SHARED/DIRICHLET seams are lost through the split. Pass each component's sidecar to seed and preserve its seams. |
 | `-v` / `--verbose` | Print every input block and every output file. |
+
+::: tip Always pass `--adjacency` for topology meshes
+A `.geo` file is geometry only. To split a cubed-sphere, C-grid, or any
+multi-block mesh and keep its SHARED/DIRICHLET seams, pass the sidecar that
+`shore mesh --adjacency-json` (or a previous `shore split`) wrote. The splitter
+seeds the input blocks' faces from it, then carries the seams onto the chunks.
+:::
 
 ## Output
 
@@ -93,28 +101,35 @@ block's BC for that face is inherited by every chunk.
 Faces perpendicular to the split axis (`<axis>_lo` and `<axis>_hi`)
 appear only on the first / last chunk respectively.
 
-### Cross-block partner rewiring
+### Cross-block partner rewiring (automatic seam co-split)
 
-When the original block had a `SHARED` face whose partner was
-*another* block in the input, the partner's face BC is updated to
-point at the right new chunk. Three cases:
+When a cut subdivides a `SHARED` / `DIRICHLET` seam, the cut is
+**automatically propagated to the partner block** (to a fixpoint),
+and the partner's face is re-paired to the matching chunk. You no
+longer author paired co-splits by hand.
 
-1. **Partner not split** + face along the split axis → only one chunk
-   (first or last) exposes that face; the partner's pointer is
-   updated to reference that chunk.
-2. **Partner not split** + face perpendicular to the split axis →
-   every chunk now exposes the face, but the partner has only one
-   face to share with. **Not reconstructible — the splitter raises.**
-   To proceed, also split the partner block at matching indices on
-   the same axis.
-3. **Both split on the same perpendicular axis with identical
-   cuts** → chunks pair up 1:1; partner pointers are wired between
-   matching chunks (e.g. `sub0__k0.j_hi` ↔ `sub1__k0.j_lo`).
+- A cut on a face *perpendicular* to a shared seam induces the
+  corresponding cut on the partner's mapped axis (through the seam's
+  `AxisMap`, with the flip and the partner's extent). Cut **indices
+  on the two sides need not be equal** — they are mapped.
+- Propagation runs to a fixpoint, so a cut can induce further cuts on
+  a third block, all kept conformal.
+- Each side keeps its own BC — a `DIRICHLET` cap↔sub seam stays
+  `DIRICHLET` after splitting.
 
-Case (2) is what catches you when splitting the cubed-sphere
-sub-blocks: the j-periodic ring shares each `sub_q.j_lo` with
-`sub_(q-1).j_hi`. To split any sub-block along i or k you must split
-*all four* sub-blocks at the same indices on that axis.
+Example: split `sub0` along `k` only. The k-cut auto-propagates to
+its j-ring partners (`sub1`, `sub3`) and to both polar caps
+(`DIRICHLET`), so every cubed-sphere block ends up k-split conformally
+— a single `[[splits]]` entry suffices.
+
+::: tip This replaces a former limitation
+Earlier versions rejected an unmatched perpendicular split on a shared
+seam ("split all four sub-blocks at the same indices"). That manual
+pairing is gone — see
+[Design decisions → auto-propagate cuts](/guide/design-decisions#splitting-auto-propagates-cuts-across-seams).
+Pass `propagate_seams=False` to the Python API to restore the legacy
+behaviour.
+:::
 
 ## Adjacency JSON
 
@@ -160,6 +175,13 @@ Each block carries:
 `bc` is one of `WALL`, `FREE`, `SHARED`, `DIRICHLET`, `PERIODIC`.
 `partner` is `null` for `WALL` / `FREE`, otherwise an object with
 `label` and `face`.
+
+A `FREE` face may additionally carry an optional `"bc_code": <int>` — an
+explicit Xall natural-BC code in `[1, 19]` (e.g. `3` inflow, `9`
+extrapolation) that overrides the per-block `free_face_bc` default in
+[cc.par](/reference/cc-par). The key is emitted only when set, so older
+sidecars round-trip unchanged. See
+[Design decisions → per-face BC codes](/guide/design-decisions#per-face-natural-bc-codes).
 
 `axis_map` is `null` for `WALL` / `FREE`, otherwise a 2-element list
 of `[partner_axis, flipped]` pairs. The order of the pairs matches
@@ -213,11 +235,12 @@ shore split box.geo -c split.toml -o box_split
 #   box_split.adjacency.json
 ```
 
-Split all cubed-sphere sub-blocks of a sphere mesh along k at the
-same index (required because of the j-periodic ring):
+Split a cubed-sphere mesh along k. A single `[[splits]]` entry on `sub0`
+is enough — the k-cut auto-propagates across the j-ring to the other
+sub-blocks and the DIRICHLET caps:
 
 ```bash
-shore mesh sphere.stl --ni 30 --nj 40 --nk 13 -o sphere
+shore mesh sphere.stl --ni 30 --nj 40 --nk 13 -o sphere --adjacency-json sphere.adjacency.json
 
 cat > split.toml <<EOF
 version = 1
@@ -227,46 +250,38 @@ kind    = "split"
 label = "sub0"
 axis  = "k"
 at    = [6]
-
-[[splits]]
-label = "sub1"
-axis  = "k"
-at    = [6]
-
-[[splits]]
-label = "sub2"
-axis  = "k"
-at    = [6]
-
-[[splits]]
-label = "sub3"
-axis  = "k"
-at    = [6]
 EOF
 
 shore split sphere_sub0.geo sphere_sub1.geo sphere_sub2.geo sphere_sub3.geo \
             sphere_cap_north.geo sphere_cap_south.geo \
-            -c split.toml -o sphere_split -v
-# → 8 sub-block chunks + 2 unchanged caps + adjacency JSON
+            -c split.toml -o sphere_split --adjacency sphere.adjacency.json -v
+# → all 6 blocks k-split (12 chunks) + adjacency JSON, fully conformal
 ```
 
-## Limitations (v1)
+::: warning Pass `--adjacency`
+Without the sidecar the input `.geo` blocks are seam-free, so the k-cut
+has no seams to propagate across and the caps/sub-blocks are NOT
+co-split. Always pass the mesh's `--adjacency` for topology meshes.
+:::
 
-- **Single-axis-per-block per call.** Compose by calling `shore split`
-  twice on the result of the first call (e.g. split along i, then
-  split each chunk along j).
-- **Vertex-aligned cuts only.** No interpolation between existing
-  nodes.
-- **Cross-block matching is required for perpendicular splits on
-  SHARED seams.** The splitter raises a clear error when this is
-  violated; add the corresponding `[[splits]]` entry to the partner
-  block.
+## Capabilities & limitations
+
+- **Multi-axis per block in one call.** List one `[[splits]]` entry per
+  axis for the same block; it becomes an `ni × nj × nk` chunk grid in a
+  single pass. (No need to chain calls as in earlier versions.)
+- **Automatic seam co-split.** Cuts propagate across SHARED / DIRICHLET
+  seams to the partner block — no manual paired entries.
+- **Vertex-aligned cuts only.** No interpolation between existing nodes.
+- **Periodic faces are not split.** The cubed-sphere sub-block ↔
+  sub-block j-ring is aliased numpy views; splitting it is rejected.
 
 ## See also
 
-- [`shore.split.split_blocks`](/reference/api-vtk) — the Python API
+- [`shore.split`](/reference/api-split) — the Python API
   (`from shore.split import BlockSplit, split_blocks`).
-- [`shore.io.adjacency`](/reference/api-vtk) — reading / writing the
-  JSON sidecar.
+- [`shore.io.adjacency`](/reference/api-adjacency) — reading / writing the
+  JSON sidecar (`wire_blocks_from_adjacency`, `propagate_cuts`).
+- [`shore balance`](balance) — plans the splits this command applies.
+- [Design decisions](/guide/design-decisions) — why splitting works this way.
 - [`shore export`](export) — bundling `.geo` files into a `.vtm`
   MultiBlock for ParaView; complementary to splitting.

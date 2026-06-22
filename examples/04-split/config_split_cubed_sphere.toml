@@ -1,17 +1,20 @@
 # SHORE split config — paired k-split across cubed-sphere sub-blocks
 # ===================================================================
 #
-# Used by ``examples/04-split/split_cubed_sphere.py`` to subdivide each of the
-# 4 equatorial sub-blocks (sub0, sub1, sub2, sub3) along the
-# wall-normal (k) axis at the same vertex index.  All four splits are
-# required because of the j-periodic equatorial ring: each sub_q
-# shares its j_lo with sub_(q-1)'s j_hi, so splitting only some of
-# the sub-blocks would break the ring.
+# Used by ``examples/04-split/split_cubed_sphere.py`` to subdivide ALL SIX
+# cubed-sphere blocks (4 equatorial sub-blocks + 2 polar caps) along the
+# wall-normal (k) axis at the same vertex index.
 #
-# The polar caps (cap_north, cap_south) are intentionally *not*
-# listed here — they pass through unchanged.  Splitting a cap along
-# any axis would create a multi-chunk-to-single-cap mismatch on the
-# DIRICHLET cap-equator seam, which the splitter rejects.
+# Why all six, on k, at the same index:
+#   * j-periodic ring: each sub_q shares its j_lo with sub_(q-1)'s j_hi, so
+#     splitting only some sub-blocks would break the SHARED ring.
+#   * cap<->sub DIRICHLET seam: the cap-equator seam is PERPENDICULAR to k, so
+#     a k-split of a sub-block multiplies its cap-facing face into N chunks.
+#     The cap MUST be co-split on k at the same index so each chunk pairs 1:1;
+#     otherwise the splitter rejects the unmatched DIRICHLET seam (a sub k-cut
+#     against a whole cap is a multi-chunk-to-single-cap mismatch).
+# k is the only safe split axis here: the i/j faces are the SHARED/DIRICHLET
+# topology seams, k is WALL (k_lo) / FREE (k_hi).
 #
 # Run with:
 #
@@ -46,5 +49,15 @@ at    = [6]
 
 [[splits]]
 label = "sub3"
+axis  = "k"
+at    = [6]
+
+[[splits]]
+label = "cap_north"
+axis  = "k"
+at    = [6]
+
+[[splits]]
+label = "cap_south"
 axis  = "k"
 at    = [6]

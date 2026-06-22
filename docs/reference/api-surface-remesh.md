@@ -24,6 +24,11 @@ def sphere_latlon_directions(
     theta_cap: float | None = None,
     theta_cap_deg: float | None = None,
     theta_margin: float | None = None,
+    i_spacing: str = "uniform",
+    i_beta: float = 3.0,
+    j_spacing: str = "uniform",
+    j_beta: float = 3.0,
+    j_cluster_lon: float | None = None,
 ) -> np.ndarray
 ```
 
@@ -41,6 +46,11 @@ The equatorial band spans `[theta_cap, pi - theta_cap]` in colatitude.
 | `theta_cap` | `float \| None` | `0.05*pi` | Polar exclusion angle in radians. Must be in `(0, pi/2)`. The cap boundary parallel has radius `sin(theta_cap)` on the unit sphere. |
 | `theta_cap_deg` | `float \| None` | None | Convenience alias for `theta_cap` in degrees. Mutually exclusive with `theta_cap`. |
 | `theta_margin` | `float \| None` | None | Deprecated alias for `theta_cap` (radians). |
+| `i_spacing` | `str` | `"uniform"` | Latitude spacing law: `"uniform"` / `"tanh"` / `"tanh2"`. |
+| `i_beta` | `float` | `3.0` | Clustering strength for tanh / tanh2 on i. |
+| `j_spacing` | `str` | `"uniform"` | Longitude spacing law: `"uniform"` or `"tanh2"`. |
+| `j_beta` | `float` | `3.0` | Clustering strength for tanh2 on j. |
+| `j_cluster_lon` | `float \| None` | None | Longitude (radians) the tanh2 j-distribution clusters toward. |
 
 **Returns**
 
@@ -64,6 +74,12 @@ def project_sphere_to_surface(
     theta_cap: float | None = None,
     theta_cap_deg: float | None = None,
     theta_margin: float | None = None,
+    i_spacing: str = "uniform",
+    i_beta: float = 3.0,
+    j_spacing: str = "uniform",
+    j_beta: float = 3.0,
+    j_cluster_lon: float | None = None,
+    projector: object | None = None,
 ) -> np.ndarray
 ```
 
@@ -85,6 +101,10 @@ Project a structured sphere grid onto a triangulated surface.
 | `theta_cap` | `float \| None` | `0.05*pi` | Polar exclusion angle in radians. Controls how far the equatorial band extends from the poles and therefore the physical size of the polar cap faces. Must be in `(0, pi/2)`. |
 | `theta_cap_deg` | `float \| None` | None | Convenience alias for `theta_cap` in degrees. Mutually exclusive with `theta_cap`. |
 | `theta_margin` | `float \| None` | None | Deprecated alias for `theta_cap` (radians). |
+| `i_spacing` / `i_beta` | `str` / `float` | `"uniform"` / `3.0` | Latitude spacing law and clustering strength. |
+| `j_spacing` / `j_beta` | `str` / `float` | `"uniform"` / `3.0` | Longitude spacing law (`"uniform"` / `"tanh2"`) and clustering strength. |
+| `j_cluster_lon` | `float \| None` | None | Longitude (radians) the tanh2 j-distribution clusters toward. |
+| `projector` | `object \| None` | None | A pre-built [`Projector`](./api-projector) with a cached BVH to reuse; when `None`, a fresh one is built from `mesh`. |
 
 **Returns**
 

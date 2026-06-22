@@ -131,15 +131,15 @@ class TestSplitErrorPaths:
         with pytest.raises(ParameterError, match="no block named"):
             split_blocks(_box(), [BlockSplit("missing", "i", [4])])
 
-    def test_duplicate_split_label_in_one_call(self):
-        with pytest.raises(ParameterError, match="appears in multiple"):
-            split_blocks(
-                _box(),
-                [
-                    BlockSplit("box", "i", [4]),
-                    BlockSplit("box", "j", [3]),
-                ],
-            )
+    def test_multi_axis_same_block_one_call(self):
+        """A block listed with two axes in one call is cut on both (a chunk
+        grid), unioning per-axis cuts — the refactor supports this directly."""
+        new = split_blocks(
+            _box(ni=12, nj=8, nk=6),
+            [BlockSplit("box", "i", [6]), BlockSplit("box", "j", [4])],
+        )
+        labels = sorted(b.label for b in new)
+        assert labels == ["box__i0__j0", "box__i0__j1", "box__i1__j0", "box__i1__j1"]
 
     def test_cut_index_out_of_range(self):
         with pytest.raises(ParameterError, match="out of range"):
@@ -152,10 +152,11 @@ class TestSplitErrorPaths:
 
 
 class TestSplitAdjacencyAcrossBlocks:
-    def test_unsplit_partner_rejects_perpendicular_split(self, sphere_stl):
-        """Splitting sub0 along k while leaving sub3 unsplit should fail
-        (the j-periodic seam between sub0 and sub3 crosses the k axis on
-        sub0's side only)."""
+    def test_lone_k_split_auto_propagates_across_seams(self, sphere_stl):
+        """Splitting only sub0 on k now AUTO-PROPAGATES the k-cut to every
+        block sharing a k-perpendicular seam with it (the j-periodic ring
+        sub1/sub3 and the DIRICHLET caps), so the result is conformal — no
+        manual paired directives, no rejection."""
         from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
 
         m = Mesh.from_stl(
@@ -166,13 +167,29 @@ class TestSplitAdjacencyAcrossBlocks:
             nk=4,
             spacing_k=Spacing1D(law="geometric", ds=0.05, growth=1.1),
         )
-        with pytest.raises(ParameterError, match="crosses a split axis"):
-            split_blocks(m.blocks, [BlockSplit("sub0", "k", [2])])
+        new = split_blocks(m.blocks, [BlockSplit("sub0", "k", [2])])
+        labels = {b.label for b in new}
+        # sub0's k-cut propagated to its j-ring partners and the caps:
+        # every cubed-sphere block ends up k-split into __k0 / __k1.
+        for base in ("sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south"):
+            assert f"{base}__k0" in labels, f"{base} not k-split"
+            assert f"{base}__k1" in labels
+        # and no connection face is left dangling.
+        chunks = {b.label: b for b in new}
+        for b in chunks.values():
+            for f in b.faces():
+                if f.bc.name in ("SHARED", "DIRICHLET"):
+                    assert f.partner is not None
 
     def test_paired_perpendicular_split_works(self, sphere_stl):
-        """Splitting all 4 sub-blocks along k at the same index produces
-        a coherent 8-chunk equatorial ring with all SHARED j-seams
-        rewired."""
+        """Splitting all 6 cubed-sphere blocks (4 subs + 2 caps) along k at
+        the same index produces a coherent ring with SHARED j-seams AND the
+        DIRICHLET cap<->sub seams rewired onto the matching k-chunks.
+
+        The caps MUST be co-split: the cap<->sub DIRICHLET seam is
+        perpendicular to k, so a k-split of the sub without a matching k-split
+        of the cap leaves that seam unmatched (split_blocks rejects it).
+        """
         from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
 
         m = Mesh.from_stl(
@@ -185,20 +202,23 @@ class TestSplitAdjacencyAcrossBlocks:
         )
         new = split_blocks(
             m.blocks,
-            [BlockSplit(f"sub{q}", "k", [2]) for q in range(4)],
+            [
+                BlockSplit(lbl, "k", [2])
+                for lbl in ("sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south")
+            ],
         )
-        # 8 sub-block chunks + 2 caps = 10 blocks.
-        assert len(new) == 10
+        # 8 sub chunks + 4 cap chunks = 12 blocks.
+        assert len(new) == 12
         labels = [b.label for b in new]
         for q in range(4):
             assert f"sub{q}__k0" in labels
             assert f"sub{q}__k1" in labels
-        assert "cap_north" in labels
-        assert "cap_south" in labels
+        for cap in ("cap_north", "cap_south"):
+            assert f"{cap}__k0" in labels
+            assert f"{cap}__k1" in labels
 
-        # Every sub-block chunk should have its j_lo SHARED with the
-        # previous sub's j_hi at the same k chunk.
         chunks = {b.label: b for b in new}
+        # SHARED j-seams: each sub chunk's j_lo SHARED with the previous sub.
         for q in range(4):
             for k in (0, 1):
                 blk = chunks[f"sub{q}__k{k}"]
@@ -206,6 +226,15 @@ class TestSplitAdjacencyAcrossBlocks:
                 expected_partner = chunks[f"sub{qprev}__k{k}"]
                 assert blk.face("j_lo").bc == FaceBC.SHARED
                 assert blk.face("j_lo").partner is expected_partner.face("j_hi")
+        # DIRICHLET cap<->sub seams: each sub chunk keeps DIRICHLET i-faces
+        # with a live partner on a matching cap chunk (regression: these used
+        # to silently drop to partner=None through the split).
+        for q in range(4):
+            for k in (0, 1):
+                blk = chunks[f"sub{q}__k{k}"]
+                for fn in ("i_lo", "i_hi"):
+                    assert blk.face(fn).bc == FaceBC.DIRICHLET
+                    assert blk.face(fn).partner is not None
 
 
 # ---------------------------------------------------------------------------
@@ -373,3 +402,152 @@ class TestSplitCLI:
         )
         assert r.exit_code == 1
         assert "no block named" in r.output
+
+    def _make_two_block_geo(self, tmp_path: Path) -> tuple[Path, Path, Path]:
+        """Two boxes sharing an i_hi/i_lo SHARED seam + their adjacency sidecar.
+
+        Returns (geo_a, geo_b, adjacency_json).
+        """
+        from shore.io.adjacency import write_adjacency_json
+        from shore.io.geo import write_geo
+        from shore.mesh.block import HexBlock
+        from shore.mesh.face import AxisMap
+
+        a = BoxMesh.build(vmin=(0, 0, 0), vmax=(8, 8, 8), ni=9, nj=9, nk=9)
+        b = BoxMesh.build(vmin=(8, 0, 0), vmax=(16, 8, 8), ni=9, nj=9, nk=9)
+        ba = HexBlock(label="a", nodes=a.blocks[0].nodes)
+        bb = HexBlock(label="b", nodes=b.blocks[0].nodes)
+        ba._set_face_bc(
+            "i_hi", FaceBC.SHARED, partner=bb.face("i_lo"), axis_map=AxisMap.identity("i_hi")
+        )
+        bb._set_face_bc(
+            "i_lo", FaceBC.SHARED, partner=ba.face("i_hi"), axis_map=AxisMap.identity("i_lo")
+        )
+        ga = tmp_path / "bg_a.geo"
+        gb = tmp_path / "bg_b.geo"
+        write_geo(ga, ba.nodes)
+        write_geo(gb, bb.nodes)
+        adj = write_adjacency_json([ba, bb], tmp_path / "bg.adjacency.json")
+        return ga, gb, adj
+
+    def test_adjacency_preserves_seam_through_split(self, tmp_path):
+        """--adjacency wires the input a<->b SHARED seam so it survives the
+        split (without it, the .geo blocks are FREE and the seam is lost).
+
+        Co-split both blocks on k (perpendicular to the a.i_hi<->b.i_lo seam)
+        with matching indices -- split_blocks then re-pairs the matching
+        k-chunks across the seam.
+        """
+        ga, gb, adj = self._make_two_block_geo(tmp_path)
+        cfg = tmp_path / "split.toml"
+        cfg.write_text(
+            'version = 1\nkind = "split"\n\n'
+            '[[splits]]\nlabel = "a"\naxis = "k"\nat = [4]\n'
+            '[[splits]]\nlabel = "b"\naxis = "k"\nat = [4]\n'
+        )
+        out = tmp_path / "out"
+        r = runner.invoke(
+            app,
+            ["split", str(ga), str(gb), "-c", str(cfg), "-o", str(out), "--adjacency", str(adj)],
+        )
+        assert r.exit_code == 0, r.output
+        payload = read_adjacency_json(tmp_path / "out.adjacency.json")
+        faces = {blk["label"]: blk["faces"] for blk in payload["blocks"]}
+        # each b k-chunk's i_lo stays SHARED with the matching a k-chunk.
+        b0 = faces["b__k0"]["i_lo"]
+        assert b0["bc"] == "SHARED"
+        assert b0["partner"]["label"] == "a__k0"
+
+    def test_adjacency_omitted_loses_seam(self, tmp_path):
+        """Control: without --adjacency the same co-split leaves b's i_lo FREE."""
+        ga, gb, _ = self._make_two_block_geo(tmp_path)
+        cfg = tmp_path / "split.toml"
+        cfg.write_text(
+            'version = 1\nkind = "split"\n\n'
+            '[[splits]]\nlabel = "a"\naxis = "k"\nat = [4]\n'
+            '[[splits]]\nlabel = "b"\naxis = "k"\nat = [4]\n'
+        )
+        out = tmp_path / "out"
+        r = runner.invoke(app, ["split", str(ga), str(gb), "-c", str(cfg), "-o", str(out)])
+        assert r.exit_code == 0, r.output
+        payload = read_adjacency_json(tmp_path / "out.adjacency.json")
+        faces = {blk["label"]: blk["faces"] for blk in payload["blocks"]}
+        assert faces["b__k0"]["i_lo"]["bc"] == "FREE"
+
+    def test_adjacency_suffix_label_match(self):
+        """A sidecar label ('sub0') resolves to a full-stem block label
+        ('sphere_o_sub0') via unique suffix match -- the combined multi-
+        component split case where shore split keeps full stems."""
+        import numpy as np
+
+        from shore.io.adjacency import wire_blocks_from_adjacency
+        from shore.mesh.block import HexBlock
+        from shore.mesh.face import AxisMap, FaceBC
+
+        a = HexBlock(label="sphere_o_sub0", nodes=np.zeros((5, 5, 5, 3)))
+        b = HexBlock(label="sphere_o_sub1", nodes=np.zeros((5, 5, 5, 3)))
+
+        def _shared(partner_label, partner_face, along):
+            return {
+                "bc": "SHARED",
+                "partner": {"label": partner_label, "face": partner_face},
+                "axis_map": [[along[0], False], [along[1], False]],
+            }
+
+        payload = {
+            "version": ADJACENCY_VERSION,
+            "blocks": [
+                {  # sidecar uses topology labels, not full stems
+                    "label": "sub0",
+                    "shape": [5, 5, 5],
+                    "faces": {"j_hi": _shared("sub1", "j_lo", ("i", "k"))},
+                },
+                {
+                    "label": "sub1",
+                    "shape": [5, 5, 5],
+                    "faces": {"j_lo": _shared("sub0", "j_hi", ("i", "k"))},
+                },
+            ],
+        }
+        wire_blocks_from_adjacency([a, b], payload, source="t")
+        assert a.face("j_hi").bc is FaceBC.SHARED
+        assert a.face("j_hi").partner is b.face("j_lo")
+        assert a.face("j_hi").axis_map == AxisMap.identity("j_hi")
+
+    def test_adjacency_unmatched_label_errors(self):
+        """A sidecar block matching no input block is a hard error (not a
+        silent skip -- the regression that lost the cubed-sphere seams)."""
+        import numpy as np
+
+        from shore.exceptions import MeshInputError
+        from shore.io.adjacency import wire_blocks_from_adjacency
+        from shore.mesh.block import HexBlock
+
+        blk = HexBlock(label="bg_000", nodes=np.zeros((5, 5, 5, 3)))
+        payload = {
+            "version": ADJACENCY_VERSION,
+            "blocks": [{"label": "nonexistent", "shape": [5, 5, 5], "faces": {}}],
+        }
+        with pytest.raises(MeshInputError, match="matches no input block"):
+            wire_blocks_from_adjacency([blk], payload, source="t")
+
+    def test_multi_axis_split_one_block(self, tmp_path):
+        """A block listed with two axes is cut on both (iterative rounds)."""
+        from shore.io.geo import write_geo
+
+        box = BoxMesh.build(vmin=(0, 0, 0), vmax=(8, 8, 8), ni=9, nj=9, nk=9)
+        geo = tmp_path / "bg_box.geo"
+        write_geo(geo, box.blocks[0].nodes)
+        cfg = tmp_path / "split.toml"
+        cfg.write_text(
+            'version = 1\nkind = "split"\n\n'
+            '[[splits]]\nlabel = "box"\naxis = "i"\nat = [4]\n'
+            '[[splits]]\nlabel = "box"\naxis = "k"\nat = [4]\n'
+        )
+        out = tmp_path / "out"
+        r = runner.invoke(app, ["split", str(geo), "-c", str(cfg), "-o", str(out)])
+        assert r.exit_code == 0, r.output
+        # i-cut then k-cut => 2x2 = 4 chunks, labelled __i{0,1}__k{0,1}.
+        payload = read_adjacency_json(tmp_path / "out.adjacency.json")
+        labels = sorted(blk["label"] for blk in payload["blocks"])
+        assert labels == ["box__i0__k0", "box__i0__k1", "box__i1__k0", "box__i1__k1"]

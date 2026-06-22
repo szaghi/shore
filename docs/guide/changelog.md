@@ -2,6 +2,24 @@
 title: Changelog
 ---
 
+## [Unreleased]
+### Added
+- **split**: Multi-axis splitting in one pass — a block can be cut on i/j/k together (an `ni×nj×nk` chunk grid).
+- **split**: Automatic seam co-split — cuts propagate across SHARED/DIRICHLET seams to the partner block; no manual paired directives.
+- **split**: `shore split --adjacency` seeds the input blocks' seam graph so a combined multi-component split preserves topology seams.
+- **balance**: Multi-way equal-partition planner replacing bisection-of-heaviest (issue #6) — `--blocks-per-rank`, `--ngr`, `--min-coarse-cells`; multigrid cell floor, seam-aligned cuts.
+- **balance**: `--format bsplit-par` emits a `bsplit.par` for the external `bsplit` tool (after-overset splitting).
+- **cc-par / mesh**: Per-face natural-BC codes — a FREE `Face` can carry `bc_code` (positive `[1,19]`) overriding the per-block `free_face_bc`.
+- **adjacency**: `wire_blocks_from_adjacency` + `propagate_cuts` / `chunk_axis_sizes` helpers.
+- **docs**: New guide pages — [Design decisions](/guide/design-decisions), [After-overset splitting](/guide/after-overset-bsplit).
+
+### Changed
+- **proc-input**: Deterministic move/swap local-search refinement after the greedy LPT seed (issue #7).
+
+### Fixed
+- **cc-par**: FREE-face natural BCs are **positive** codes (`9`/`3`/`4`); the former `-9` recommendation is rejected by the overset preprocessor.
+- **split**: Preserve DIRICHLET partner pointers and per-face `bc_code` through a split.
+
 ## [0.1.1] — 2026-06-18
 ### Added
 - **cli**: Add curl|bash installer + shore --version flag

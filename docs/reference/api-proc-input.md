@@ -52,19 +52,22 @@ and write the `proc.input` file.
 - `ParameterError` — `np < 1`, an assignment dict references an unknown block index, or `proc_assignment` references a rank outside `range(np)`.
 - `FileNotFoundError`, `ValueError` — forwarded from `read_grd_metadata`.
 
-### Greedy weight-balanced assignment
+### Cell-weighted assignment with local-search refinement
 
-When some or all blocks have no explicit `proc_assignment`, the
-unassigned blocks are placed via greedy descent: sort by weight
-(`ni * nj * nk`, descending), iteratively place each block on the
-currently-least-loaded rank. The pinned blocks' weights are
-counted toward their rank's running load before the greedy fill
-begins, so the algorithm respects the user's overrides without
-re-balancing them.
+Blocks are weighted by **interior cell count** `(ni-1)(nj-1)(nk-1)`
+(`read_grd_metadata` returns cell counts, so this is the FV per-iteration
+work). Assignment is two-stage:
 
-The greedy algorithm is the same one LoadBalance and overset-exploded
-use; for typical SHORE assemblies it converges to within ~5% of
-optimal.
+1. **Greedy LPT seed** — sort unassigned blocks by descending weight, place each
+   on the least-loaded rank. Pinned (`proc_assignment`) blocks' weights are
+   counted first and are never moved.
+2. **Local-search refinement** — repeatedly apply the single move/swap that most
+   reduces the peak-to-trough span, to a local optimum. This recovers the few
+   percent the greedy seed leaves ([issue #7](https://github.com/szaghi/shore/issues/7);
+   see [Design decisions](/guide/design-decisions#cell-weighted-rank-assignment-with-local-search-issue-7)).
+
+The refinement is deterministic (stable tie-breaking), so results are
+reproducible.
 
 ## `merge_proc_input`
 

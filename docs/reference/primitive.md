@@ -1,19 +1,24 @@
 # shore primitive
 
 Build a parametric structured-grid primitive: a Cartesian box, an
-annular cylinder, or a 5-block flat-caps cylinder.
+annular cylinder, a 5-block flat-caps cylinder, or a rectangular /
+circular-bore H-grid duct.
 
-`shore primitive` is a sub-app with three commands:
+`shore primitive` is a sub-app with five commands:
 
 ```
 shore primitive box [OPTIONS]
 shore primitive annulus [OPTIONS]
 shore primitive flat-caps [OPTIONS]
+shore primitive h-grid-rect [OPTIONS]
+shore primitive h-grid-tube [OPTIONS]
 ```
 
-Every command accepts the same `-c / --config` flag for TOML-driven
-invocation and follows the same precedence rule as `shore mesh`:
-**explicit CLI flag → config-file value → built-in default**.
+The `box`, `annulus`, and `flat-caps` commands accept a `-c / --config`
+flag for TOML-driven invocation and follow the same precedence rule as
+`shore mesh`: **explicit CLI flag → config-file value → built-in
+default**. The `h-grid-rect` and `h-grid-tube` commands are CLI-only
+(no `--config`).
 
 See [Primitives](/topologies/primitives) for the conceptual overview
 and use cases.

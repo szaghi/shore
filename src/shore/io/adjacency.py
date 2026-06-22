@@ -131,11 +131,16 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
                 if p_lookup is not None:
                     partner_obj = {"label": p_lookup[0], "face": p_lookup[1]}
             axis_map_obj = _axis_map_to_json(f.axis_map)
-            face_payload[f.name] = {
+            face_obj: dict[str, Any] = {
                 "bc": f.bc.name,
                 "partner": partner_obj,
                 "axis_map": axis_map_obj,
             }
+            # Optional per-face natural-BC override (FREE faces only).  Emit
+            # only when set so existing sidecars round-trip byte-for-byte.
+            if f.bc_code is not None:
+                face_obj["bc_code"] = f.bc_code
+            face_payload[f.name] = face_obj
         payload["blocks"].append(
             {
                 "label": blk.label,
@@ -233,7 +238,28 @@ def read_adjacency_json(path: str | Path) -> dict[str, Any]:
                 face.get("axis_map"),
                 source=f"{p} ({label}.{face_name})",
             )
+            _validate_bc_code(face, source=f"{p} ({label}.{face_name})")
     return data
+
+
+def _validate_bc_code(face: Any, *, source: str) -> None:
+    """Validate an optional per-face ``bc_code`` override.
+
+    A ``bc_code`` is only meaningful on a ``FREE`` face and must be a
+    positive Xall natural-BC code in ``[1, 19]`` (``nccnat``).  Absent is
+    fine (the cc.par writer falls back to the per-block default).
+    """
+    code = face.get("bc_code")
+    if code is None:
+        return
+    if face.get("bc") != "FREE":
+        raise MeshInputError(
+            f"{source}: bc_code is only valid on FREE faces, got bc={face.get('bc')!r}"
+        )
+    if not isinstance(code, int) or isinstance(code, bool):
+        raise MeshInputError(f"{source}: bc_code must be an integer, got {code!r}")
+    if not 1 <= code <= 19:
+        raise MeshInputError(f"{source}: bc_code must be a natural-BC code in [1, 19], got {code}")
 
 
 def summarise_adjacency(payload: dict[str, Any]) -> str:
@@ -257,6 +283,92 @@ def summarise_adjacency(payload: dict[str, Any]) -> str:
                 bc_summary.append(f"{face_name}={bc}->{partner['label']}.{partner['face']}")
         lines.append(f"{label:24s} {tuple(shape)!s:>20s}   " + "  ".join(bc_summary))
     return "\n".join(lines)
+
+
+def _resolve_label(sidecar_label: str, blocks: list[HexBlock], *, source: str) -> HexBlock:
+    """Map a sidecar block label onto exactly one input :class:`HexBlock`.
+
+    The sidecar carries the *topology* labels (``sub0``, ``cap_north``),
+    but ``shore split`` derives a block's label from its ``.geo`` filename
+    stem, stripping only the common prefix shared by *all* inputs.  In a
+    multi-component split (e.g. sphere + background) there is no common
+    prefix, so the sphere blocks keep their full stem ``sphere_o_sub0``
+    while the sidecar still says ``sub0``.  Match exact first, then the
+    unique block whose label ends with ``_<sidecar_label>`` (the unstripped
+    prefix).  Zero or multiple matches is a hard error — a silent skip here
+    is exactly what let the cubed-sphere's seams vanish in a combined split.
+    """
+    exact = [b for b in blocks if b.label == sidecar_label]
+    if len(exact) == 1:
+        return exact[0]
+    suffix = [b for b in blocks if b.label.endswith("_" + sidecar_label)]
+    if len(suffix) == 1:
+        return suffix[0]
+    candidates = exact + suffix
+    if not candidates:
+        raise MeshInputError(
+            f"{source}: sidecar block {sidecar_label!r} matches no input block "
+            f"(have {sorted(b.label for b in blocks)!r}).  The sidecar labels must "
+            f"match the .geo stems shore split derives; check the input set."
+        )
+    raise MeshInputError(
+        f"{source}: sidecar block {sidecar_label!r} is ambiguous — matches "
+        f"{sorted(b.label for b in candidates)!r}.  Disambiguate the .geo filenames."
+    )
+
+
+def wire_blocks_from_adjacency(
+    blocks: list[HexBlock],
+    payload: dict[str, Any],
+    *,
+    source: str = "<adjacency>",
+) -> None:
+    """Wire the face BCs of *blocks* in place from a parsed adjacency *payload*.
+
+    ``.geo`` files carry only geometry, so :class:`HexBlock`\\ s built from
+    them default every face to WALL (k_lo) / FREE.  This restores the real
+    boundary graph (SHARED / DIRICHLET / PERIODIC seams with their partner
+    pointers and axis_maps, plus any per-face ``bc_code`` overrides) onto
+    those blocks, so a subsequent :func:`shore.split.split_blocks` can
+    preserve the pre-existing inter-block seams instead of losing them.
+
+    Every block in *payload* must resolve to exactly one block in *blocks*
+    via :func:`_resolve_label` (exact label, else unique ``_<label>``
+    suffix).  A sidecar block that matches zero or several input blocks is a
+    hard :class:`MeshInputError` — silently skipping a mismatch is what let
+    a cubed-sphere's DIRICHLET/SHARED seams silently vanish in a combined
+    multi-component split.
+
+    Raises :class:`MeshInputError` on an unknown FaceBC name, a malformed
+    axis_map, or an unresolved / ambiguous block or partner label.
+    """
+    for blk_payload in payload.get("blocks", []):
+        label = blk_payload.get("label")
+        blk = _resolve_label(label, blocks, source=source)
+        for face_name, face in blk_payload.get("faces", {}).items():
+            bc_name = face["bc"]
+            try:
+                bc = FaceBC[bc_name]
+            except KeyError as exc:
+                raise MeshInputError(
+                    f"{source} ({label}.{face_name}): unknown FaceBC {bc_name!r}"
+                ) from exc
+            partner_ref = face.get("partner")
+            if bc in (FaceBC.SHARED, FaceBC.DIRICHLET, FaceBC.PERIODIC):
+                if partner_ref is None:
+                    raise MeshInputError(
+                        f"{source} ({label}.{face_name}): bc={bc_name} requires a partner"
+                    )
+                partner_blk = _resolve_label(
+                    partner_ref["label"], blocks, source=f"{source} ({label}.{face_name} partner)"
+                )
+                partner_face = partner_blk.face(partner_ref["face"])
+                axis_map = _axis_map_from_json(
+                    face.get("axis_map"), source=f"{source} ({label}.{face_name})"
+                )
+                blk._set_face_bc(face_name, bc, partner=partner_face, axis_map=axis_map)
+            else:
+                blk._set_face_bc(face_name, bc, bc_code=face.get("bc_code"))
 
 
 # ---------------------------------------------------------------------------

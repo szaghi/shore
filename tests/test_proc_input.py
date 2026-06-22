@@ -119,12 +119,131 @@ class TestGreedyAssignment:
         assert summary.per_rank_cells[1] == 2 * 3**3
 
     def test_three_blocks_two_ranks(self, tmp_path):
-        # Reproduces the smoke-test case: weights 105, 847, 27.
+        # Reproduces the smoke-test case: cell weights 105, 847, 27.
         grd = _make_grd(tmp_path, [(8, 6, 4), (12, 12, 8), (4, 4, 4)])
         _, summary = write_proc_input(grd, tmp_path / "p.input", np=2)
         # Heaviest (block 2) goes to one rank; the other two to the other.
+        # No move/swap can improve the 847-vs-132 span, so the local
+        # search leaves the greedy seed untouched.
         sorted_loads = sorted(summary.per_rank_cells)
         assert sorted_loads == [27 + 105, 847]
+
+
+# ---------------------------------------------------------------------------
+# write_proc_input — weighting metric (interior cells, not nodes)
+# ---------------------------------------------------------------------------
+
+
+class TestCellWeighting:
+    def test_per_rank_cells_are_interior_cells(self, tmp_path):
+        # read_grd_metadata returns node-1 per axis, so the per-block
+        # weight ni*nj*nk is the interior-cell count, not the node count.
+        node_shapes = [(8, 6, 4), (12, 12, 8), (4, 4, 4)]
+        grd = _make_grd(tmp_path, node_shapes)
+        _, summary = write_proc_input(grd, tmp_path / "p.input", np=1)
+        # Serial: all cells land on rank 0; total must equal sum of
+        # interior cells (node-1 product), NOT node products.
+        total_cells = sum(_expected_cells(s) for s in node_shapes)
+        total_nodes = sum(ni * nj * nk for ni, nj, nk in node_shapes)
+        assert summary.per_rank_cells[0] == total_cells
+        assert summary.per_rank_cells[0] != total_nodes
+
+    def test_thin_slabs_balanced_by_cells_not_nodes(self, tmp_path):
+        # Thin slabs vs a cube: node-count and cell-count weightings give
+        # a different node/cell ratio per block, so balancing the wrong
+        # metric mis-distributes work.  We assert the CELL loads balance.
+        #
+        #   slab 160x81x4 (nodes) -> 159*80*3   = 38160 cells
+        #   slab 160x81x4 (nodes) -> 159*80*3   = 38160 cells
+        #   cube  40x40x40 (nodes) -> 39*39*39  = 59319 cells
+        #   cube  40x40x40 (nodes) -> 39*39*39  = 59319 cells
+        node_shapes = [(160, 81, 4), (160, 81, 4), (40, 40, 40), (40, 40, 40)]
+        grd = _make_grd(tmp_path, node_shapes)
+        _, summary = write_proc_input(grd, tmp_path / "p.input", np=2)
+
+        cells = [_expected_cells(s) for s in node_shapes]
+        # The summary cell loads must be the real interior-cell loads.
+        assert sum(summary.per_rank_cells) == sum(cells)
+        # Balanced on cells: one cube + one slab per rank -> 59319+38160.
+        assert sorted(summary.per_rank_cells) == [59319 + 38160, 59319 + 38160]
+        # Sanity: the per-block node/cell ratio is in the 1.07-1.36 band
+        # the issue cites, i.e. node-weighting would NOT be equivalent.
+        ratios = [(ni * nj * nk) / c for (ni, nj, nk), c in zip(node_shapes, cells, strict=True)]
+        assert any(r > 1.3 for r in ratios)  # the thin slabs
+        assert any(r < 1.1 for r in ratios)  # the cubes
+
+
+# ---------------------------------------------------------------------------
+# write_proc_input — local-search refinement
+# ---------------------------------------------------------------------------
+
+
+class TestLocalSearchRefinement:
+    def _greedy_only_span(self, weights: list[int], np: int) -> int:
+        """Peak-to-trough span of a pure greedy-LPT pass (no refinement)."""
+        rank = [0] * np
+        order = sorted(((weights[i], i) for i in range(len(weights))), key=lambda x: (-x[0], x[1]))
+        for w, _i in order:
+            r = min(range(np), key=lambda r: (rank[r], r))
+            rank[r] += w
+        return max(rank) - min(rank)
+
+    def test_refinement_never_worse_than_greedy(self, tmp_path):
+        # A spread of block sizes; refined span must be <= greedy-only span.
+        node_shapes = [(9, 9, 9), (8, 8, 8), (7, 7, 7), (6, 6, 6), (5, 5, 5)]
+        grd = _make_grd(tmp_path, node_shapes)
+        _, summary = write_proc_input(grd, tmp_path / "p.input", np=2)
+        cells = [_expected_cells(s) for s in node_shapes]
+        refined_span = max(summary.per_rank_cells) - min(summary.per_rank_cells)
+        greedy_span = self._greedy_only_span(cells, 2)
+        assert refined_span <= greedy_span
+
+    def test_refinement_strictly_beats_greedy_on_crafted_case(self):
+        # weights [8,7,6,5,4] over 2 ranks: greedy LPT -> [17,13] (span 4);
+        # a single swap reaches [15,15] (span 0).  Drive the private path
+        # directly so the case is exact and independent of .grd plumbing.
+        from shore.io.proc_input import _build_summary, _resolve_proc_assignment
+
+        weights = [8, 7, 6, 5, 4]
+        greedy_span = self._greedy_only_span(weights, 2)
+        assert greedy_span == 4  # guard the premise
+
+        procs = _resolve_proc_assignment(weights, 2, None, len(weights))
+        summary = _build_summary(weights, procs, 2)
+        refined_span = max(summary.per_rank_cells) - min(summary.per_rank_cells)
+        assert refined_span < greedy_span
+        assert refined_span == 0  # perfect 15/15 split
+
+    def test_refinement_is_deterministic(self):
+        from shore.io.proc_input import _resolve_proc_assignment
+
+        weights = [8, 7, 6, 5, 4, 9, 3, 11]
+        runs = [_resolve_proc_assignment(weights, 3, None, len(weights)) for _ in range(5)]
+        assert all(r == runs[0] for r in runs)
+
+    def test_pinned_blocks_never_moved_by_refinement(self):
+        from shore.io.proc_input import _resolve_proc_assignment
+
+        # Pin two blocks to rank 0; the refinement must leave them there
+        # even though moving them off would balance better.
+        weights = [100, 1, 1, 1]
+        procs = _resolve_proc_assignment(weights, 2, {1: 0, 2: 0}, len(weights))
+        assert procs[0] == 0  # pinned
+        assert procs[1] == 0  # pinned
+
+    def test_pinned_block_seeds_load_but_movables_refine_around_it(self):
+        from shore.io.proc_input import _resolve_proc_assignment
+
+        # Pin the single heavy block to rank 0; the light movable blocks
+        # should pile onto rank 1 to balance — and the heavy one stays put.
+        weights = [50, 10, 10, 10, 10, 10]
+        procs = _resolve_proc_assignment(weights, 2, {1: 0}, len(weights))
+        assert procs[0] == 0  # pinned heavy block unmoved
+        loads = [0, 0]
+        for w, p in zip(weights, procs, strict=True):
+            loads[p] += w
+        # rank 0 = 50 + maybe one 10; rank 1 = the rest.  Span small.
+        assert max(loads) - min(loads) <= 10
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +475,21 @@ class TestBalanceSummary:
             imbalance=0.0,
         )
         assert "1.84M cells" in s.format()
+
+    def test_build_summary_cells_and_imbalance_hand_computed(self):
+        # Hand-computed: blocks of cell-weights distributed so the loads
+        # are deliberately uneven, then check per_rank_cells and the
+        # (max-min)/mean imbalance match by hand.
+        from shore.io.proc_input import _build_summary
+
+        weights = [1000, 600, 400]
+        procs = [0, 0, 1]  # rank0 = 1600, rank1 = 400
+        s = _build_summary(weights, procs, 2)
+        assert s.per_rank_cells == [1600, 400]
+        assert s.per_rank_blocks == [2, 1]
+        # mean = 2000/2 = 1000; imbalance = (1600-400)/1000 = 1.2.
+        assert s.imbalance == pytest.approx(1.2)
+        assert s.cells_known is True
 
 
 # ---------------------------------------------------------------------------

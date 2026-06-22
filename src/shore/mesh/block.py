@@ -212,6 +212,7 @@ class HexBlock(Block):
         bc: FaceBC,
         partner: Face | None = None,
         axis_map: AxisMap | None = None,
+        bc_code: int | None = None,
     ) -> None:
         """Set this block's face BC and (for connection BCs) partner + axis_map.
 
@@ -231,6 +232,11 @@ class HexBlock(Block):
             ``partner.name`` here so any topology builder that wires a
             seam without an axis_map fails loudly at construction
             rather than silently producing a wrong cc.par downstream.
+        bc_code :
+            Optional explicit natural-BC code for a ``FREE`` face (see
+            :class:`shore.mesh.face.Face`).  Only valid when ``bc`` is
+            FREE; rejected otherwise so a mis-wired seam can't silently
+            carry a stray code.
         """
         connection = bc in (FaceBC.SHARED, FaceBC.DIRICHLET, FaceBC.PERIODIC)
         if connection:
@@ -254,10 +260,16 @@ class HexBlock(Block):
                 raise ValueError(
                     f"Block {self.label!r}.{name}: bc={bc.name} must not have an axis_map"
                 )
+        if bc_code is not None and bc is not FaceBC.FREE:
+            raise ValueError(
+                f"Block {self.label!r}.{name}: bc_code is only valid on FREE faces, "
+                f"got bc={bc.name}"
+            )
         f = self.face(name)
         f.bc = bc
         f.partner = partner
         f.axis_map = axis_map
+        f.bc_code = bc_code
 
     @property
     def periodic(self) -> tuple[bool, bool]:

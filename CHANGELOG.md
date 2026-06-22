@@ -4,6 +4,24 @@ All notable changes to SHORE are documented here.
 Versions follow [Semantic Versioning](https://semver.org/).
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+### Added
+- **split**: Multi-axis splitting in one pass — a block can be cut on i/j/k together (an `ni×nj×nk` chunk grid).
+- **split**: Automatic seam co-split — cuts propagate across SHARED/DIRICHLET seams to the partner block (to a fixpoint); no manual paired directives. `propagate_seams=False` restores legacy behaviour.
+- **split**: `shore split --adjacency` seeds the input blocks' seam graph from a sidecar so a combined multi-component split preserves topology seams.
+- **balance**: Multi-way equal-partition planner replacing bisection-of-heaviest (issue #6) — `--blocks-per-rank`, `--ngr`, `--min-coarse-cells`; multigrid cell floor, seam-aligned per-axis cuts, best-effort with reported imbalance.
+- **balance**: `--format bsplit-par` emits a `bsplit.par` for the external `bsplit` tool (after-overset splitting); `BalancePlan.to_bsplit_par()`.
+- **cc-par / mesh**: Per-face natural-BC codes — a FREE `Face` can carry `bc_code` (positive `[1,19]`) overriding the per-block `free_face_bc`, so one block can mix inflow/outflow/extrapolation faces.
+- **adjacency**: `wire_blocks_from_adjacency` (inverse of `write_adjacency_json`) + `propagate_cuts` / `chunk_axis_sizes` helpers.
+- **docs**: New guide pages — Design decisions, After-overset splitting.
+
+### Changed
+- **proc-input**: Add deterministic move/swap local-search refinement after the greedy LPT seed (issue #7), improving achieved cell imbalance.
+
+### Fixed
+- **cc-par**: Document/emit FREE-face natural BCs as **positive** codes (`9` extrapolation, `3`/`4` inflow/outflow); the previously recommended negative `-9` is rejected by the overset preprocessor.
+- **split**: Preserve DIRICHLET partner pointers and per-face `bc_code` through a split (were dropped).
+
 ## [0.1.1] — 2026-06-18
 ### Added
 - **cli**: Add curl|bash installer + shore --version flag

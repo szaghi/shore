@@ -26,6 +26,7 @@ def build_cap_k0(
     projector: object,
     j_spacing: str = "uniform",
     j_beta: float = 3.0,
+    phi_offset: float = 0.0,
 ) -> np.ndarray
 ```
 
@@ -45,6 +46,7 @@ the STL.
 | `projector` | A [`Projector`](./api-projector) with cached BVH and the body's anchor. |
 | `j_spacing` | Tangent-plane node distribution along cap edges: `"uniform"` (default) or `"tanh2"`. Inherited by the equator seam. |
 | `j_beta` | Clustering strength for `"tanh2"`. |
+| `phi_offset` | Azimuthal rotation (radians) of the gnomonic diamond about the polar axis. Default `0.0` places cap corners at world azimuths `{0, pi/2, pi, 3*pi/2}` (the `CubedSphereTopology` convention). `OHTopology` passes `pi/4` so the four sub-block *centres* face the world cardinal axes — what makes the 1:1 sub-block-to-box-face mapping possible for the wrap-channel hybrid. |
 
 **Returns** `numpy.ndarray (nc, nc, 3)` — cap k=0 layer with nodes
 on the body surface.

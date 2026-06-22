@@ -43,6 +43,13 @@ export default defineConfig({
           ],
         },
         {
+          text: 'Load balancing & splitting',
+          items: [
+            { text: 'Design decisions',        link: '/guide/design-decisions' },
+            { text: 'After-overset splitting', link: '/guide/after-overset-bsplit' },
+          ],
+        },
+        {
           text: 'Running examples and tests',
           link: '/guide/running',
         },

@@ -108,9 +108,9 @@ $$
 \quad n_c = \tfrac{n_j}{4} + 1
 $$
 
-The defaults `--ni 40 --nj 60 --theta-cap` (= $\pi/6$) land in the
-compatibility window. If you push `theta_cap` very small with a coarse
-`ni`, SHORE falls back to unpinned spacing and emits one
+The default `theta_cap` ($0.05\,\pi$ = 9°) with `--ni 40 --nj 60` lands
+in the compatibility window. If you push `theta_cap` very small with a
+coarse `ni`, SHORE falls back to unpinned spacing and emits one
 `UserWarning` per build with guidance.
 
 ## Controlling cell distribution with spacing laws

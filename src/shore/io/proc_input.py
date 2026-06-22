@@ -73,9 +73,11 @@ class BalanceSummary:
     per_rank_blocks :
         Block count per rank, indexed by 0-based rank.
     per_rank_cells :
-        Cell-count (work) per rank, indexed by 0-based rank.  Set to
-        all-zero by :func:`merge_proc_input`, which has no access to
-        per-block weights (``proc.input`` doesn't store them).
+        Interior-cell-count (FV work) per rank, indexed by 0-based
+        rank.  Each block contributes ``ni * nj * nk`` cells, where the
+        ``.grd`` header already stores those as node-1 per axis.  Set to
+        all-zero by :func:`merge_proc_input` when no ``.grd`` is given,
+        since ``proc.input`` doesn't store per-block weights.
     imbalance :
         ``(max - min) / mean`` of ``per_rank_cells``, in fractional
         units.  0.0 = perfect balance.  Computed only when ``np > 1``
@@ -146,11 +148,15 @@ def write_proc_input(
     """Write a ``proc.input`` file from a SHORE-generated ``.grd``.
 
     Block ordering and weights come from ``grd_path`` — block 1 in the
-    output is block 1 in the ``.grd``, with weight ``ni * nj * nk``
-    (cell count).  When ``proc_assignment`` is omitted and ``np > 1``,
-    blocks are distributed across ``range(np)`` by greedy
-    weight-balanced assignment (descending block weight; place each
-    on the least-loaded rank).
+    output is block 1 in the ``.grd``, with weight ``ni * nj * nk``.
+    :func:`shore.io.grd.read_grd_metadata` already returns per-block
+    **interior-cell** counts (the ``.grd`` header stores node-1 per
+    axis), so ``ni * nj * nk`` is the cell-work weight a cell-centred FV
+    solver actually balances — not a node count.  When
+    ``proc_assignment`` is omitted and ``np > 1``, blocks are
+    distributed across ``range(np)`` by a greedy LPT seed (descending
+    weight onto the least-loaded rank) followed by a local-search
+    refinement (move/swap steps that shrink the peak-to-trough span).
 
     Parameters
     ----------
@@ -354,8 +360,11 @@ def _resolve_proc_assignment(
 ) -> list[int]:
     """Return the final per-block ``proc`` (0-based) list, length ``n``.
 
-    Explicit assignments win; remaining blocks fill in by greedy
-    weight-balanced assignment among the unassigned weight pool.
+    Explicit assignments win and are *pinned* — they seed the rank
+    loads and are never touched by the refinement.  Remaining blocks
+    fill in by a greedy LPT seed, after which :func:`_refine_assignment`
+    runs a deterministic move/swap local search over the movable blocks
+    to drive down the peak-to-trough load span.
     """
     explicit = explicit or {}
     for k, v in explicit.items():
@@ -369,29 +378,140 @@ def _resolve_proc_assignment(
             )
 
     procs: list[int | None] = [None] * n
+    pinned = {k - 1 for k in explicit}  # 0-based indices that must not move
     for k, v in explicit.items():
         procs[k - 1] = v
 
     if all(p is not None for p in procs):
         return [int(p) for p in procs]  # type: ignore[arg-type]
 
-    # Greedy: rank loads start with the explicit assignments' contributions.
+    # Greedy LPT seed: rank loads start with the explicit assignments'
+    # contributions, then place remaining blocks heaviest-first on the
+    # least-loaded rank.  Tie-break on rank index for determinism.
     rank_load = [0] * np
     for i, p in enumerate(procs):
         if p is not None:
             rank_load[p] += weights[i]
 
-    # Place remaining blocks heaviest-first on the least-loaded rank.
     unassigned = sorted(
         ((weights[i], i) for i in range(n) if procs[i] is None),
-        key=lambda wb: -wb[0],
+        key=lambda wb: (-wb[0], wb[1]),
     )
     for w, i in unassigned:
-        r = min(range(np), key=lambda r: rank_load[r])
+        r = min(range(np), key=lambda r: (rank_load[r], r))
         procs[i] = r
         rank_load[r] += w
 
-    return [int(p) for p in procs]  # type: ignore[arg-type]
+    assignment = [int(p) for p in procs]  # type: ignore[arg-type]
+    _refine_assignment(assignment, weights, np, pinned)
+    return assignment
+
+
+def _refine_assignment(
+    procs: list[int],
+    weights: list[int],
+    np: int,
+    pinned: set[int],
+) -> None:
+    """Local-search refinement of a greedy LPT seed (in place).
+
+    Repeatedly applies the single best improving step — either a *move*
+    (reassign one movable block to another rank) or a *swap* (exchange
+    two movable blocks sitting on different ranks) — that most reduces
+    the peak-to-trough load span ``max(load) - min(load)``, until no
+    improving step remains (a local optimum).
+
+    Pinned blocks (those fixed by an explicit ``--meta`` / assignment)
+    are never moved or swapped.  All candidate enumeration is in sorted
+    index order, so ties resolve deterministically and the result is
+    reproducible.
+
+    A step is only accepted when it *strictly* reduces the span; this
+    guarantees termination (the span is a non-negative integer that
+    decreases monotonically).
+    """
+    if np < 2:
+        return
+
+    rank_load = [0] * np
+    for i, p in enumerate(procs):
+        rank_load[p] += weights[i]
+
+    movable = [i for i in range(len(procs)) if i not in pinned]
+
+    def span(load: list[int]) -> int:
+        return max(load) - min(load)
+
+    improved = True
+    while improved:
+        improved = False
+        cur_span = span(rank_load)
+        # (delta_span, kind, a, b) — delta_span < 0 means improvement.
+        # Deterministic: smallest delta wins, ties broken by the tuple.
+        best: tuple[int, str, int, int] | None = None
+
+        # Single moves: block i (rank r) -> rank t.
+        for i in movable:
+            r = procs[i]
+            w = weights[i]
+            for t in range(np):
+                if t == r:
+                    continue
+                new_r = rank_load[r] - w
+                new_t = rank_load[t] + w
+                new_span = _span_after_two(rank_load, r, new_r, t, new_t)
+                delta = new_span - cur_span
+                cand = (delta, "move", i, t)
+                if delta < 0 and (best is None or cand < best):
+                    best = cand
+
+        # Swaps: exchange block i and block j on different ranks.
+        for ia in range(len(movable)):
+            i = movable[ia]
+            ri = procs[i]
+            wi = weights[i]
+            for jb in range(ia + 1, len(movable)):
+                j = movable[jb]
+                rj = procs[j]
+                if ri == rj:
+                    continue
+                wj = weights[j]
+                new_ri = rank_load[ri] - wi + wj
+                new_rj = rank_load[rj] - wj + wi
+                new_span = _span_after_two(rank_load, ri, new_ri, rj, new_rj)
+                delta = new_span - cur_span
+                cand = (delta, "swap", i, j)
+                if delta < 0 and (best is None or cand < best):
+                    best = cand
+
+        if best is not None:
+            _delta, kind, a, b = best
+            if kind == "move":
+                r = procs[a]
+                procs[a] = b
+                rank_load[r] -= weights[a]
+                rank_load[b] += weights[a]
+            else:  # swap
+                ra, rb = procs[a], procs[b]
+                procs[a], procs[b] = rb, ra
+                rank_load[ra] += weights[b] - weights[a]
+                rank_load[rb] += weights[a] - weights[b]
+            improved = True
+
+
+def _span_after_two(load: list[int], r: int, new_r: int, t: int, new_t: int) -> int:
+    """Span ``max - min`` of ``load`` with entries ``r`` and ``t`` overridden.
+
+    Avoids rebuilding the whole load list for each candidate step.
+    """
+    hi = lo = None
+    for idx, val in enumerate(load):
+        v = new_r if idx == r else new_t if idx == t else val
+        if hi is None or v > hi:
+            hi = v
+        if lo is None or v < lo:
+            lo = v
+    return hi - lo  # type: ignore[operator]
 
 
 def _resolve_int_assignment(

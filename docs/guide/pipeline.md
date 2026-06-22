@@ -34,7 +34,7 @@ CLI-selectable topologies are the single-block
 [C-grid](/topologies/c-grid) (`--topology cgrid`, 3-/4-block sharp /
 blunt TE), and the airfoil [CH hybrid](/topologies/ch-hybrid)
 (`--topology ch`, C-grid wrap + far-field channel, 12-/14-block).
-The Python-only [OH hybrid](/topologies/oh-hybrid) extends the
+The [OH hybrid](/topologies/oh-hybrid) (`--topology oh`) extends the
 cubed-sphere wrap with a 6-face H-channel. The full catalogue lives
 in the [Topologies](/topologies/) section.
 
@@ -44,7 +44,7 @@ in the [Topologies](/topologies/) section.
 |---|---|
 | **STL** | A single watertight `trimesh.Trimesh`. The body must be **star-shaped from the anchor** (default centroid). See [Surface projection](/algorithm/projection#failure-modes) for the failure modes. |
 | **Resolution** | `ni` (equator meridional), `nj` (longitude), `nk` (wall-normal layers including k=0). |
-| **Cap angle** | `theta_cap` (default $\pi/6$) — the colatitude of the cap-equator junction parallel. |
+| **Cap angle** | `theta_cap` (default $0.05\,\pi$ = 9°) — the colatitude of the cap-equator junction parallel. |
 | **Spacing laws** | `i_spacing`, `j_spacing`, `volume_k_spacing` — see [Spacing laws](/algorithm/spacing-laws). |
 
 ## Outputs

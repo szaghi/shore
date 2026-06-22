@@ -1,18 +1,18 @@
 # shore.balance
 
-Python API for the iterative split planner.  The CLI wrapper
-[`shore balance`](./balance) is a thin adapter around
-`plan_balance`.
+Python API for the **multi-way equal-partition** split planner. The CLI wrapper
+[`shore balance`](./balance) is a thin adapter around `plan_balance`.
 
-The algorithm and limitations are documented at
-[`shore balance`](./balance).
+The algorithm, the multigrid floor, and the design rationale are documented at
+[`shore balance`](./balance) and
+[Design decisions](/guide/design-decisions#multi-way-equal-partition-not-bisection-issue-6).
 
 ## Public exports
 
 | Name | Role |
 |---|---|
-| `plan_balance` | The planner.  Reads a `.grd` (and optionally an `.adjacency.json`) and returns a `BalancePlan`. |
-| `BalancePlan` | Dataclass holding the planned splits + before/after summaries.  `to_toml()` renders a `shore split`-compatible config. |
+| `plan_balance` | The planner. Reads a `.grd` (optionally `.adjacency.json` + wired blocks) and returns a `BalancePlan`. |
+| `BalancePlan` | Dataclass holding the planned splits + before/after summaries. `to_toml()` renders a `shore split` config; `to_bsplit_par()` renders a `bsplit.par`. |
 
 ## `plan_balance`
 
@@ -21,28 +21,37 @@ def plan_balance(
     grd_path: str | Path,
     *,
     np: int,
+    blocks_per_rank: float = 1.0,
+    ngr: int = 1,
+    min_coarse_cells: int = 8,
     tolerance: float = 0.05,
-    max_iterations: int = 100,
     adjacency_path: str | Path | None = None,
+    blocks: list | None = None,
 ) -> BalancePlan
 ```
 
-Plan the splits needed to bring the load imbalance below
-`tolerance`.
+Partition every block into roughly equal, roughly cubic chunks toward
+`np * blocks_per_rank`, keeping every chunk axis above the multigrid floor.
 
 | Parameter | Description |
 |---|---|
-| `grd_path` | Path to the input `.grd`. |
+| `grd_path` | Path to the input `.grd` (block ordering + cell counts). |
 | `np` | Total MPI rank count (>= 1). |
-| `tolerance` | Target fractional imbalance `(max - min) / mean`. Default `0.05` (5%). |
-| `max_iterations` | Cap on planning iterations. Default `100` for the Python API; the CLI defaults to `200`. |
-| `adjacency_path` | Optional path to a `.adjacency.json` sidecar. When supplied, the planner refuses to break SHARED / DIRICHLET seams without paired co-splits and prefers axes free of seam coupling. |
+| `blocks_per_rank` | Target average blocks per rank (default `1.0`). Higher → finer granularity / better balance, more blocks. |
+| `ngr` | Multigrid levels the mesh must support (default `1`). Chunk axes are kept divisible by `2^(ngr-1)`. |
+| `min_coarse_cells` | Minimum cells per axis on the coarsest (level-`ngr`) grid (default `8`). Chunk axes are kept `>= min_coarse_cells * 2^(ngr-1)` fine cells. |
+| `tolerance` | Target fractional imbalance `(max - min) / mean` for the `converged` flag (default `0.05`). Never causes a failure. |
+| `adjacency_path` | Optional `.adjacency.json` sidecar — used for labels / block-count validation. |
+| `blocks` | Optional list of wired `HexBlock`s. When given, the planner floor-checks against **seam-propagated** cuts (via [`shore.split.propagate_cuts`](./api-split)) so the plan matches the split output. Without it, the floor is checked per block in isolation, and the plan uses synthetic `block_<n>` labels (required for `to_bsplit_par`). |
 
-**Returns** a `BalancePlan`.
+**Returns** a `BalancePlan`. Best-effort: when the floor prevents reaching
+`tolerance`, it warns (`UserWarning`) and returns the best plan with
+`converged=False`.
 
 **Raises**
 
-- `ParameterError` — `np < 1`, `tolerance <= 0`, or `max_iterations < 1`.
+- `ParameterError` — `np < 1`, `ngr < 1`, `min_coarse_cells < 1`,
+  `tolerance <= 0`, or `blocks_per_rank <= 0`.
 - `FileNotFoundError`, `ValueError` — forwarded from `read_grd_metadata` and the adjacency reader.
 
 ## `BalancePlan`
@@ -77,6 +86,30 @@ Render the plan as a `shore split` config TOML (`version = 1`,
 `kind = "split"`, one `[[splits]]` per `(label, axis)` pair with a
 sorted `at = [...]` list).  Same schema as the example in the
 [`shore split`](./split) reference.
+
+### `BalancePlan.to_bsplit_par`
+
+```python
+def to_bsplit_par(
+    self, *,
+    ngr: int = 1,
+    sol_root: str = "sol",
+    grd_root: str = "cc",
+    icc_root: str = "cc",
+    varn: int = 0,
+    varo: int = 0,
+    debug: int = 0,
+) -> str
+```
+
+Render the plan as a `bsplit.par` for the external `bsplit` tool, which splits
+the **framed overset outputs** *after* an overset run (the post-overset
+analogue of `to_toml` + `shore split`). See
+[After-overset splitting](/guide/after-overset-bsplit).
+
+Requires a **grd-only** plan (no `adjacency_path`/`blocks`): its synthetic
+`block_<n>` labels carry the 1-based grd block order, which is exactly bsplit's
+block number. Raises `ParameterError` if any split label is not `block_<n>`.
 
 ## Example
 

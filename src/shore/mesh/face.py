@@ -203,6 +203,15 @@ class Face:
         Mapping from this face's along-axes onto the partner's
         along-axes.  Required when ``partner`` is set; ``None``
         otherwise.  See :class:`AxisMap`.
+    bc_code :
+        Optional explicit downstream natural-BC code for a ``FREE``
+        face, overriding the per-block default the cc.par writer would
+        otherwise apply (``BlockMeta.free_face_bc`` / ``--free-bc``).
+        ``None`` means "use the per-block default".  Only meaningful on
+        ``FREE`` faces; must be a positive Xall natural-BC code in
+        ``[1, nccnat=19]`` (e.g. ``9`` free/far-field, ``3``/``4``
+        inflow/outflow).  Lets a single block carry heterogeneous outer
+        BCs — inflow on one face, extrapolation on the others.
     body_projected :
         True when all nodes of this face lie on the k=0 body wall (i.e.
         bc == WALL).
@@ -217,6 +226,7 @@ class Face:
     # comparison anyway: faces are owned by blocks, not values).
     partner: Face | None = field(default=None, repr=False, compare=False)
     axis_map: AxisMap | None = field(default=None, repr=False)
+    bc_code: int | None = None
     body_projected: bool = False
 
     def nodes(self, block: Block) -> np.ndarray:

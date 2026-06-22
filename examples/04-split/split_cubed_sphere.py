@@ -117,16 +117,21 @@ def build_cubed_sphere(stl_path: Path):
 
 
 def apply_splits(blocks: list, splits: list | None = None) -> list:
-    """Apply paired k-splits across the 4 equatorial sub-blocks.
+    """Apply paired k-splits across all 6 cubed-sphere blocks.
 
-    When *splits* is None, builds the canonical "split each sub at
-    k=_K_CUT" directive list.  When passed (typically loaded from a
-    TOML config), uses it verbatim.
+    When *splits* is None, builds the canonical "split every block at
+    k=_K_CUT" directive list — the 4 equatorial sub-blocks AND the 2
+    polar caps.  The caps must be co-split: the cap<->sub DIRICHLET seam
+    is perpendicular to k, so a sub k-cut against a whole cap is an
+    unmatched multi-chunk-to-single-cap seam (the splitter rejects it).
+    When *splits* is passed (typically loaded from a TOML config), uses
+    it verbatim.
     """
     from shore.split import BlockSplit, split_blocks
 
     if splits is None:
-        splits = [BlockSplit(label=f"sub{q}", axis="k", at=[_K_CUT]) for q in range(4)]
+        labels = [f"sub{q}" for q in range(4)] + ["cap_north", "cap_south"]
+        splits = [BlockSplit(label=lbl, axis="k", at=[_K_CUT]) for lbl in labels]
 
     print(f"Applying {len(splits)} split directive(s):")
     for sp in splits:

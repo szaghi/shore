@@ -1,7 +1,8 @@
 # shore.primitive
 
 Parametric structured-grid primitives — `BoxMesh`,
-`AnnularCylinderMesh`, `FlatCapsCylinder`. Each is a `PrimitiveMesh`
+`AnnularCylinderMesh`, `FlatCapsCylinder`, `HGridRectMesh`, and
+`HGridTubeMesh`. Each is a `PrimitiveMesh`
 subclass: it owns a list of [`HexBlock`](./api-topology#hexblock)
 instances and inherits `write_geo` / `write_vtk` from the base.
 Construction is driven by a single `build(...)` classmethod per
@@ -206,6 +207,113 @@ fc = FlatCapsCylinder.build(
 
 fc.write_geo("background")    # background_center.geo, background_sub_e.geo, ...
 fc.write_vtk("background")    # background.vtm
+```
+
+## `HGridRectMesh`
+
+Single-block rectangular-duct H-grid for internal flow. Default
+face BCs: the two i-faces are `FREE` (streamwise inflow / outflow),
+the four cross-section faces (`j_lo`, `j_hi`, `k_lo`, `k_hi`) are
+`WALL`.
+
+```python
+class HGridRectMesh(PrimitiveMesh):
+    label_default = "h_grid_rect"
+
+    @classmethod
+    def build(
+        cls,
+        length: float,
+        width: float,
+        height: float,
+        ni: int,
+        nj: int,
+        nk: int,
+        streamwise_axis: str = "x",
+        i_law: str = "uniform",
+        j_law: str = "uniform",
+        k_law: str = "uniform",
+        i_beta: float = 3.0,
+        j_beta: float = 3.0,
+        k_beta: float = 3.0,
+        edge_pins: dict[str, Spacing1D] | None = None,
+        label: str = "h_grid_rect",
+    ) -> HGridRectMesh
+```
+
+| Parameter | Description |
+|---|---|
+| `length` | Duct length along the streamwise axis. |
+| `width`, `height` | Cross-section extents along block j and k. |
+| `ni` | Streamwise node count (`>= 2`). |
+| `nj`, `nk` | Cross-section node counts (`>= 2`). |
+| `streamwise_axis` | World axis the duct aligns with: `"x"` (default), `"y"`, `"z"`. |
+| `i_law` / `j_law` / `k_law`, `*_beta` | Per-axis spacing laws and strengths. |
+| `edge_pins` | Per-edge override (Box-style). |
+
+```python
+from shore.primitive import HGridRectMesh
+
+duct = HGridRectMesh.build(
+    length=1.0, width=0.1, height=0.1,
+    ni=40, nj=20, nk=20,
+    i_law="tanh", i_beta=4.0,
+)
+duct.write_geo("duct.geo")
+```
+
+## `HGridTubeMesh`
+
+Single-block circular-bore H-grid (j-periodic). The cross-section
+is a 2D polar grid: `j` circumferential (periodic), `k` radial from
+the centerline (`k=0`, polar singular axis) to the outer wall
+(`k=n_radial-1`). Default face BCs: i-faces `FREE`, `k_lo` and
+`k_hi` `WALL`.
+
+```python
+class HGridTubeMesh(PrimitiveMesh):
+    label_default = "h_grid_tube"
+
+    @classmethod
+    def build(
+        cls,
+        length: float,
+        radius: float,
+        n_axial: int,
+        n_circ: int,
+        n_radial: int,
+        streamwise_axis: str = "x",
+        i_law: str = "uniform",
+        k_law: str = "uniform",
+        i_beta: float = 3.0,
+        k_beta: float = 3.0,
+        label: str = "h_grid_tube",
+    ) -> HGridTubeMesh
+```
+
+| Parameter | Description |
+|---|---|
+| `length` | Tube length along the streamwise axis. |
+| `radius` | Outer-wall radius. |
+| `n_axial` | Streamwise node count (i-axis). |
+| `n_circ` | Circumferential node count (j-axis, periodic). |
+| `n_radial` | Radial node count (k-axis: `0` = centerline, last = wall). |
+| `streamwise_axis` | World axis the tube aligns with: `"x"` (default), `"y"`, `"z"`. |
+| `i_law` / `k_law`, `i_beta` / `k_beta` | Streamwise / radial spacing laws and strengths. There is no j-law: the periodic azimuthal axis is always uniform. |
+
+The `k=0` polar axis collapses every angular node to a single
+point — accept the singularity (Xall handles it) or use
+`HGridRectMesh` for a non-singular cross-section.
+
+```python
+from shore.primitive import HGridTubeMesh
+
+tube = HGridTubeMesh.build(
+    length=1.0, radius=0.05,
+    n_axial=40, n_circ=32, n_radial=8,
+    k_law="tanh", k_beta=4.0,        # cluster near the wall
+)
+tube.write_geo("tube.geo")
 ```
 
 ## See also

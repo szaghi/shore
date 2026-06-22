@@ -177,7 +177,7 @@ shore grd background_*.geo -o background.grd
 # Generate the chimera descriptor (consumed by overset preprocessor)
 shore boxes-from-stl fuselage.stl --block sub0 --max-outward-gap 0.10 -o boxes.json
 shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd --boxes boxes.json
-shore cc-par background.adjacency.json background.cc.par --grd background.grd --free-bc -9
+shore cc-par background.adjacency.json background.cc.par --grd background.grd --free-bc 9
 
 # Generate the runtime work-distribution descriptor (consumed by Xall)
 shore proc-input wall.grd       wall.proc.input       --np 16
@@ -199,13 +199,25 @@ Twenty-one commands, grouped by purpose:
 |---|---|
 | **Mesh generation** | `shore mesh`, `shore primitive`, `shore project` |
 | **Body generation** | `shore profile`, `shore body` |
-| **Adjacency / parallelism** | `shore split`, `shore balance` |
+| **Adjacency / parallelism** | `shore split` (multi-axis, auto seam co-split), `shore balance` (multi-way equal partition; `--format toml\|bsplit-par`) |
 | **Xall pipeline** | `shore grd`, `shore grd-merge`, `shore cc-par`, `shore cc-par-merge`, `shore proc-input`, `shore proc-input-merge`, `shore boxes-from-stl` |
 | **Inspection** | `shore info`, `shore check` |
 | **Visualisation** | `shore export`, `shore view`, `shore boxes-export` |
 | **Configuration** | `shore config` |
 
 All commands accept `--help` for full option lists. See the [CLI reference](https://szaghi.github.io/shore/reference/mesh) for full documentation.
+
+### Load balancing & splitting
+
+`shore balance` plans a **multi-way equal-partition** split (each block into
+roughly equal, cubic chunks toward `--np × --blocks-per-rank`) with a multigrid
+cell floor (`--ngr` / `--min-coarse-cells`); `shore split` applies it and
+**auto-propagates cuts across SHARED/DIRICHLET seams** (no manual co-splits).
+When splitting before the overset solver would break its chimera donor search,
+`shore balance --format bsplit-par` emits a plan for the external `bsplit` tool
+to split the overset outputs *afterward*. The reasoning behind these choices is
+documented in [Design decisions](https://szaghi.github.io/shore/guide/design-decisions)
+and [After-overset splitting](https://szaghi.github.io/shore/guide/after-overset-bsplit).
 
 ### Key options for `shore mesh`
 

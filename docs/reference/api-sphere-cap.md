@@ -180,5 +180,5 @@ under names `sub0`, `sub1`, `sub2`, `sub3`, `cap_north`, `cap_south`.
 - [`shore.volume.hyperbolic`](api-hyperbolic) — `_compute_normals`,
   `_laplacian_smooth`, `_stl_normals` (with `ghost_rows` support)
 - [`shore.volume.jacobian`](api-jacobian) — `jacobian_field`,
-  `_jacobian_field_open`, `min_jacobian_two_layers`
+  `_jacobian_field_open`
 - [`shore.io.vtk`](api-vtk) — VTK export including `write_caps_vtm`

@@ -16,6 +16,7 @@ For the JSON schema and version semantics, see the
 |---|---|
 | `write_adjacency_json` | Serialise a list of `HexBlock` to JSON. |
 | `read_adjacency_json` | Parse + version-check; returns the raw payload dict. |
+| `wire_blocks_from_adjacency` | Wire the face BCs of in-memory `HexBlock`s *from* a parsed payload (the inverse of `write_*`). |
 | `summarise_adjacency` | Format a one-screen summary of an adjacency payload (used by `shore split -v`). |
 | `ADJACENCY_VERSION` | Current schema version (`2`). |
 
@@ -83,6 +84,41 @@ not a soft fallback, because the v1 schema lacked `axis_map` and
 the orientation cannot be recovered from labels alone. Sidecars
 are derived artefacts (re-run the topology / split that produced
 them).
+
+::: tip `bc_code` (per-face natural BC)
+A `FREE` face entry may carry an optional `"bc_code": <int>` (a positive Xall
+natural-BC code in `[1, 19]`) overriding the per-block default in cc.par. The key
+is emitted only when set, so older sidecars round-trip unchanged. See
+[Design decisions → per-face BC](/guide/design-decisions#per-face-natural-bc-codes).
+:::
+
+## `wire_blocks_from_adjacency`
+
+```python
+def wire_blocks_from_adjacency(
+    blocks: list[HexBlock],
+    payload: dict[str, Any],
+    *,
+    source: str = "<adjacency>",
+) -> None
+```
+
+Wire the face BCs of *blocks* **in place** from a parsed adjacency `payload` —
+the inverse of `write_adjacency_json`. `.geo` files carry only geometry, so
+`HexBlock`s built from them default every face to WALL/FREE; this restores the
+real SHARED / DIRICHLET / PERIODIC seam graph (partner pointers, `AxisMap`s, and
+per-face `bc_code`s). It is what lets [`shore split`](./split) preserve a
+topology's pre-existing seams (see its `--adjacency` flag), and what the balance
+planner uses to build wired blocks for floor-checking.
+
+Each payload block must resolve to exactly one block in *blocks* — by exact
+label, else a unique `_<label>` suffix match (so the sidecar's `sub0` matches a
+prefix-stripped `sphere_o_sub0` in a combined split). A sidecar block matching
+zero or several input blocks is a **hard `MeshInputError`** (a silent skip once
+let a cubed-sphere's seams vanish in a combined split — this guards against it).
+
+**Raises** `MeshInputError` — unknown FaceBC name, malformed `axis_map`, or an
+unresolved / ambiguous block or partner label.
 
 ## `summarise_adjacency`
 

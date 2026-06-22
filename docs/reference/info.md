@@ -1,6 +1,6 @@
 # shore info
 
-Print metadata of a structured `.geo` file: dimensions, point and cell counts, and axis-aligned bounding box.
+Print metadata of a structured `.geo` block or an `.npz` surface file: dimensions, point and cell counts, and axis-aligned bounding box.
 
 ## Synopsis
 
@@ -12,7 +12,7 @@ shore info [OPTIONS] INPUT
 
 | Argument | Description |
 |---|---|
-| `INPUT` | Path to a `.geo` file |
+| `INPUT` | Path to a `.geo` block file or an `.npz` surface file |
 
 ## Options
 

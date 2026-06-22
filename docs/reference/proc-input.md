@@ -70,9 +70,21 @@ tools (LoadBalance, overset-exploded) do.
 
 `shore proc-input` reads only the `.grd` header (cheap — costs
 O(n_blocks) bytes regardless of mesh size) via
-[`shore.io.grd.read_grd_metadata`](./api-grd), then assigns ranks
-by **greedy weight-balanced** distribution: sort blocks by descending
-weight, place each on the least-loaded rank.
+[`shore.io.grd.read_grd_metadata`](./api-grd), then assigns ranks in
+two stages:
+
+1. **Greedy LPT seed** — sort blocks by descending weight, place each on
+   the least-loaded rank.
+2. **Local-search refinement** — repeatedly apply the single move (a
+   block to another rank) or swap (two blocks between ranks) that most
+   reduces the peak-to-trough span, until no improving step exists. This
+   recovers the few percent of imbalance the greedy seed leaves
+   ([issue #7](https://github.com/szaghi/shore/issues/7); see
+   [Design decisions](/guide/design-decisions#cell-weighted-rank-assignment-with-local-search-issue-7)).
+
+The refinement is deterministic (stable tie-breaking), so results are
+reproducible. Blocks pinned via `--meta` (`proc`) are held fixed and
+never moved by the local search.
 
 `group` and `body` default to 0 for every block. To override, use
 `--meta`.

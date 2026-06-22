@@ -47,7 +47,7 @@ The most impactful contributions, in rough priority order:
 
 2. **Steger–Sorenson orthogonality source term** — the current marching kernel uses pure normal extrusion. At high curvature the normals drift; the Steger–Sorenson correction keeps cells orthogonal. See: Steger & Sorenson (1979), *Automatic mesh-point clustering near a boundary in grid generation with elliptic partial differential equations*.
 
-3. **`shore view` command** — pyvista-based visualisation of geo files. Should display the structured grid as a wireframe with a colourmap of the Jacobian.
+3. **Elliptic volume smoothing** — a post-marching Sorenson / Thompson–Thames–Mastin smoother for production-quality far-field cells. The hyperbolic marcher gives good near-wall orthogonality; an optional elliptic pass would improve outer-layer smoothness.
 
 4. **Multi-block surface decomposition** — decompose non-star-shaped bodies into structured patches. This is the hardest item and requires block topology reasoning.
 

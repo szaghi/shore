@@ -1,211 +1,173 @@
 # `shore balance`
 
-Plan splits to bring a multi-block mesh's MPI load imbalance below
-tolerance.  Reads a `.grd` (and optionally an `.adjacency.json`),
-iteratively schedules cuts on the heaviest block, and emits a
-`split.toml` in the [`shore split`](./split) schema.
+Plan a **multi-way equal-partition** split for MPI load balancing. Reads a
+`.grd` (and optionally an `.adjacency.json`), partitions every block into
+roughly equal, roughly cubic chunks sized toward `np * blocks-per-rank`, and
+emits either a `split.toml` for [`shore split`](./split) (pre-overset) or a
+`bsplit.par` for the external `bsplit` tool (post-overset).
 
 ```bash
 shore balance MESH.grd -o splits.toml --np N \
-              [--tolerance 0.05] [--max-iterations 200] \
-              [--adjacency MESH.adjacency.json]
+              [--blocks-per-rank 1.0] [--ngr 1] [--min-coarse-cells 8] \
+              [--tolerance 0.05] [--adjacency MESH.adjacency.json] \
+              [--format toml|bsplit-par]
 ```
 
 ## Why this exists
 
-[`shore proc-input`](./proc-input)'s greedy weight-balanced
-assignment is optimal **for the block list it is given**.  When the
-imbalance still exceeds the user's tolerance, the only way to do
-better is to subdivide the heaviest block(s).  `shore balance`
-plans that subdivision: it iteratively cuts the heaviest block at
-its cell-count midpoint until the predicted post-split imbalance
-drops below the target.
+[`shore proc-input`](./proc-input)'s assignment is optimal **for the block list
+it is given**. When the imbalance still exceeds the target, the only way to do
+better is to subdivide blocks. `shore balance` plans that subdivision.
 
-The result is a plan, not an executed split.  The user reviews the
-plan, runs `shore split` to apply it, and re-runs `shore proc-input`
-on the now-larger block list.
+The planner replaces an earlier bisection-of-heaviest design that either stalled
+(heavy blocks left whole) or over-fragmented (single-cell sheets) — see
+[Design decisions → multi-way partition](/guide/design-decisions#multi-way-equal-partition-not-bisection-issue-6)
+for the motivation and evidence ([issue #6](https://github.com/szaghi/shore/issues/6)).
 
-## Workflow
-
-```bash
-# 1. Plan the splits
-shore balance wall.grd -o splits.toml --np 16 --adjacency wall.adjacency.json
-
-# 2. Apply the plan
-shore split -c splits.toml wall_*.geo
-
-# 3. Repack the now-larger block list
-shore grd wall_split_*.geo -o wall.grd
-
-# 4. Final balance
-shore proc-input wall.grd wall.proc.input --np 16
-```
-
-The reason the plan-then-execute split is preferred over a single
-"do everything" command: each step is reviewable on its own. You
-can `cat splits.toml` before mutating the mesh; you can `shore info`
-or `shore check` between steps; you can manually edit the plan.
+The result is a *plan*, not an executed split: review it, run `shore split` (or
+`bsplit`) to apply it, then `shore proc-input` on the larger block list.
 
 ## Arguments and options
 
 | Argument / Option | Default | Description |
 |---|---|---|
-| `GRD` | *required* | Path to the input `.grd` (block ordering and weights). |
-| `-o` / `--output` | *required* | Output `split.toml` path. |
-| `--np INTEGER` | *required* | Number of MPI ranks the plan targets (>= 1). |
-| `--tolerance FLOAT` | `0.05` | Target fractional imbalance `(max - min) / mean`. Default 5%. |
-| `--max-iterations INTEGER` | `200` | Cap on planning iterations. Each iteration adds one cut, possibly with paired co-splits across SHARED / DIRICHLET seams. Raise for high `--np` runs on small block counts. |
-| `--adjacency PATH` | — | Optional path to a `.adjacency.json` sidecar. **Strongly recommended** — without it the planner uses longest-axis-first with no seam awareness, and the resulting plan may be rejected by `shore split` on a topology with k-coupled SHARED seams. |
+| `GRD` | *required* | Path to the input `.grd` (block ordering and cell counts). |
+| `-o` / `--output` | *required* | Output path (`split.toml` or `bsplit.par`). |
+| `--np INTEGER` | *required* | MPI rank count the plan targets (>= 1). |
+| `--blocks-per-rank FLOAT` | `1.0` | Target average blocks per rank. Higher → finer granularity and better balance, at more blocks. |
+| `--ngr INTEGER` | `1` | Multigrid levels the mesh must support. Every chunk axis is kept divisible by `2^(ngr-1)`. |
+| `--min-coarse-cells INTEGER` | `8` | Minimum cells per axis on the coarsest (level-`ngr`) grid. Every chunk axis is kept `>= min-coarse-cells * 2^(ngr-1)` fine cells. |
+| `--tolerance FLOAT` | `0.05` | Target fractional imbalance `(max - min) / mean` for the *converged* report. The planner reports achieved imbalance regardless and never fails on an unreachable tolerance. |
+| `--adjacency PATH` | — | Path to a `.adjacency.json` sidecar. **Strongly recommended**: lets the planner floor-check against seam-*propagated* cuts (`shore split` mirrors cuts across SHARED / DIRICHLET seams). Without it the floor is only checked per block in isolation. |
+| `--format {toml,bsplit-par}` | `toml` | Output dialect. `toml` for the pre-overset [`shore split`](./split); `bsplit-par` for the post-overset external `bsplit` (see [After-overset splitting](/guide/after-overset-bsplit)). `bsplit-par` requires a **grd-only** plan (do not pass `--adjacency`). |
 
 ## Algorithm
 
-1. Read `.grd` metadata: per-block `(ni, nj, nk)` cell counts.
-   Initial weight = `ni * nj * nk`.
-2. Greedy weight-balanced rank assignment across `--np` ranks.
-3. While imbalance > tolerance and iterations < `--max-iterations`:
+1. Read `.grd` cell counts. Target chunk volume = `total_cells / round(np * blocks-per-rank)`;
+   target chunk **edge** = `target_volume^(1/3)` (keeps chunks roughly cubic).
+2. For each block, choose per-axis chunk counts as a **pure function of that
+   axis's extent** (not the 3-D volume), `round(extent / target_edge)`, capped so
+   every chunk keeps `>= floor` cells where `floor = min-coarse-cells * 2^(ngr-1)`.
+   Keying the count to the axis extent makes seam-linked blocks (which always have
+   equal extent on the shared axis) choose **identical** cuts — conformal by
+   construction.
+   See [Design decisions → per-axis cut counts](/guide/design-decisions#per-axis-cut-counts-not-per-block-volume).
+3. Propagate the candidate cuts across SHARED / DIRICHLET seams (exactly as
+   `shore split` will), then floor-check the **propagated** chunk set and back off
+   any cut that would create a sub-floor sliver. Iterate to a fixpoint so the plan
+   matches the split output block-for-block.
+4. Group cuts on the same `(label, axis)` into one `[[splits]]` TOML entry (or one
+   line per cut in `bsplit.par`).
 
-   a. Pick the heaviest block `b`.
+The planner does **not** emit paired co-splits — [`shore split`](./split)
+propagates cuts across seams automatically. The planner only chooses per-block
+cuts and verifies the floor survives propagation.
 
-   b. Pick a topology-safe split axis for `b`.  Two-level priority:
-      first, axes free of perpendicular SHARED / DIRICHLET partners
-      (no co-splits needed); second, longest extent.  This means
-      **k is preferred on body-fitted topologies** because
-      `k_lo` / `k_hi` are typically WALL / FREE.
+## Best-effort: the floor wins over the tolerance
 
-   c. **One axis per original block.**  `shore split` v1 supports
-      only one axis per block per call.  Once an axis is chosen for
-      a block, later iterations can add more cuts on that same axis
-      but cannot switch.
+The multigrid floor is a hard constraint; the tolerance is a target. When the
+floor prevents reaching the tolerance — e.g. an input block already smaller than
+the floor, so no split can help — the planner **warns, does its best, and
+reports the achieved imbalance** rather than failing:
 
-   d. Cut at the cell-count midpoint along the chosen axis.  If the
-      axis has perpendicular SHARED / DIRICHLET partners, schedule
-      paired co-splits on each partner at the matching index.
+```
+shore balance: 33 blocks (imbalance 235.3%) → 192 blocks (imbalance 1.94%) via 83 cut(s) across 29 block(s)
+Note: achieved imbalance 1.94% > tolerance 5.0% ...   # only when not converged
+```
 
-   e. Re-balance, recompute imbalance.
+This honesty is deliberate: some geometries cannot meet a requested tolerance
+within the floor, and you need the real number.
 
-4. Group cuts on the same `(label, axis)` into one `[[splits]]`
-   TOML entry with a sorted `at = [...]` list.
+## Workflow (pre-overset)
 
-## Output schema
+```bash
+# 1. plan the splits (TOML)
+shore balance wall.grd --np 16 --ngr 3 --min-coarse-cells 8 \
+  --blocks-per-rank 8 --adjacency wall.adjacency.json -o split.toml
 
-The TOML follows [`shore split`](./split)'s `kind = "split"` schema.
-A typical 4-rank cubed-sphere plan:
+# 2. apply (cuts auto-propagate across seams)
+shore split -c split.toml wall_*.geo --adjacency wall.adjacency.json
+
+# 3. repack the larger block list
+shore grd wall_split_*.geo -o wall.grd
+
+# 4. final rank assignment
+shore proc-input wall.grd wall.proc.input --np 16
+```
+
+## Workflow (post-overset, `bsplit-par`)
+
+When pre-overset splitting breaks the chimera donor search, emit a `bsplit.par`
+instead and split the overset outputs after the solver's donor search — see
+[After-overset splitting](/guide/after-overset-bsplit):
+
+```bash
+shore balance raw.grd --np 16 --ngr 3 --min-coarse-cells 8 \
+  --blocks-per-rank 8 --format bsplit-par -o bsplit.par
+```
+
+## Output schema (TOML)
+
+The TOML follows [`shore split`](./split)'s `kind = "split"` schema:
 
 ```toml
 version = 1
 kind    = "split"
 
-# Generated by shore balance: target tolerance 5.0%, final imbalance 4.8% after 6 iteration(s).
+# Generated by shore balance: target tolerance 5.0%, final imbalance 1.9% after 83 iteration(s).
 
 [[splits]]
-label = "sub0"
-axis  = "k"
-at    = [9]
-
-[[splits]]
-label = "sub1"
-axis  = "k"
-at    = [9]
-
-[[splits]]
-label = "sub2"
-axis  = "k"
-at    = [9]
-
-[[splits]]
-label = "sub3"
-axis  = "k"
-at    = [9]
-
-[[splits]]
-label = "cap_north"
-axis  = "k"
-at    = [9]
-
-[[splits]]
-label = "cap_south"
-axis  = "k"
-at    = [9]
+label = "background_111"
+axis  = "i"
+at    = [60, 120]
+# ... one [[splits]] per (label, axis)
 ```
 
-## Topology awareness
+## Output schema (`bsplit.par`)
 
-Without `--adjacency`, the planner trusts the user — every axis
-with extent ≥ 2 is a valid candidate.  This is fine on
-single-block meshes and on multi-block meshes where the user
-confirmed by inspection that the chosen axis is safe.  It is
-**not** safe by default on the cubed sphere: cutting along i
-without a paired cut on the cap-equator partner produces a plan
-`shore split` will reject.
-
-With `--adjacency`, the planner walks the seam graph: for every
-axis it considers, it checks the perpendicular faces and (a)
-refuses PERIODIC seams (the j-ring on cubed-sphere sub-blocks),
-(b) emits paired co-splits for SHARED / DIRICHLET partners.  The
-output is then guaranteed to pass `shore split`'s validation.
-
-## Convergence and capping
-
-When the planner can't reach the tolerance — typically because
-the heaviest block has too few cells along the only safe axis —
-it returns the best-found plan and emits a warning:
+Seven header lines then one cut per line — `<block_number> <direction 1|2|3>
+<fine_index>`:
 
 ```
-shore balance: initial imbalance 671.0% → final 8.2% after 200 iteration(s) (200 cut(s) across 6 block(s))
-Warning: planner did not reach the tolerance (8.2% > 5.0%).  Increase --max-iterations or accept the best-found plan.
+sol
+cc
+cc
+3
+0
+0
+0
+20 1 60
+20 1 120
+20 2 60
+...
 ```
 
-Common reasons:
-
-- **Too few cells on the safe axis.**  For body-fitted meshes the
-  planner prefers `k`.  If `nk` is small (say 10 cells) the plan
-  caps at 9 cuts per block.  Increase the original mesh's `nk`.
-- **Too many ranks for the block budget.**  Distributing 6 blocks
-  across 256 ranks needs each block subdivided into ~43 chunks —
-  feasible only with very large blocks.
+The block number is the 1-based `.grd` block order (the grd-only plan's synthetic
+`block_<n>` labels carry it). bsplit rescales the fine-level cut index per
+multigrid level internally.
 
 ## Examples
 
 ```bash
-# Cubed-sphere wall mesh, 16 MPI ranks, default 5% tolerance
-shore balance wall.grd -o wall.splits.toml --np 16 \
-              --adjacency wall.adjacency.json
+# 16 ranks, 3 multigrid levels, ~8 blocks/rank, seam-aware floor check
+shore balance wall.grd --np 16 --ngr 3 --min-coarse-cells 8 \
+  --blocks-per-rank 8 --adjacency wall.adjacency.json -o split.toml
 
-# Looser tolerance, fewer splits
-shore balance wall.grd -o wall.splits.toml --np 8 \
-              --adjacency wall.adjacency.json --tolerance 0.10
+# finer granularity (better balance, more blocks)
+shore balance wall.grd --np 16 --blocks-per-rank 16 --adjacency wall.adjacency.json -o split.toml
 
-# More aggressive — high rank count, raise the iteration cap
-shore balance wall.grd -o wall.splits.toml --np 64 \
-              --adjacency wall.adjacency.json --max-iterations 500
+# post-overset: emit a bsplit.par (grd-only, no --adjacency)
+shore balance raw.grd --np 16 --ngr 3 --format bsplit-par -o bsplit.par
 ```
 
 ## Python API
 
-See [`shore.balance`](./api-balance) for the `plan_balance(...)`
-function, the `BalancePlan` dataclass, and the `BalancePlan.to_toml()`
-helper.
-
-## Limitations
-
-- **One axis per original block.**  Inherited from `shore split` v1.
-  A block subdivided along k cannot also be subdivided along j in
-  the same plan.  Compose by running `shore balance` → `shore split`
-  → `shore balance` if multi-axis is needed.
-- **Cell-count midpoint cuts only.**  The planner has no access to
-  per-cell volumes (it reads only the `.grd` header).  Stretched
-  grids therefore see midpoint-by-cell-count, not midpoint-by-volume.
-  For uniform spacing the two coincide; for highly stretched grids
-  the result is approximate.
-- **Greedy, not optimal.**  The planner is a hill-climber; it
-  doesn't search for globally-minimal splits.  For most assemblies
-  the greedy result is within a few percent of optimal.
+See [`shore.balance`](./api-balance) for `plan_balance(...)`, the `BalancePlan`
+dataclass, and the `to_toml()` / `to_bsplit_par()` serializers.
 
 ## See also
 
-- [`shore split`](./split) — applies the plan.
-- [`shore proc-input`](./proc-input) — final rank assignment after
-  splits.
-- [`shore.balance`](./api-balance) — Python API.
-- [Algorithm — overset-exploded](https://github.com/szaghi/overset-exploded) —
-  the Fortran tool that inspired this design.
+- [`shore split`](./split) — applies a `split.toml` plan (auto-propagates seam cuts).
+- [`shore proc-input`](./proc-input) — final cell-weighted rank assignment.
+- [After-overset splitting](/guide/after-overset-bsplit) — the `bsplit` workflow.
+- [Design decisions](/guide/design-decisions) — why the planner works this way.

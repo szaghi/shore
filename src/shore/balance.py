@@ -1,51 +1,38 @@
-"""Iterative split planner for Xall MPI load balancing.
+"""Multi-way equal-partition split planner for Xall MPI load balancing.
 
-When :func:`shore.io.proc_input.write_proc_input`'s greedy assignment
-exceeds the user's tolerance, the typical fix is to subdivide the
-heaviest block(s) so the per-rank load can be distributed more
-evenly.  This module plans those splits — without mutating any
-files — and emits a ``split.toml`` that :func:`shore.split.split_blocks`
-can then execute.
+Plans the splits that subdivide a multi-block assembly so its per-rank
+load can be balanced — without mutating files — and emits a ``split.toml``
+that :func:`shore.split.split_blocks` executes.
 
-Algorithm
----------
-1. Read ``.grd`` metadata to get the per-block ``(ni, nj, nk)`` cell
-   counts.  Initial weight = ``ni * nj * nk``.
-2. Greedy weight-balanced assignment across ``np`` ranks.
-3. While imbalance > tolerance and iter < max_iterations:
-     a. Pick the heaviest block ``b``.
-     b. Pick a topology-safe split axis: longest extent first, but
-        only an axis whose perpendicular faces don't break SHARED /
-        DIRICHLET seams without paired splits on the partner block.
-     c. Simulate the split at the cell-count midpoint of axis A.
-        Record the cut on the original block label (or its already
-        split parent), at the original-block-relative vertex index.
-     d. Recompute weights and re-balance.
-4. Group cuts on the same (label, axis) into one ``[[splits]]`` TOML
-   entry with a sorted ``at = [...]`` list.
+Algorithm (replaces the old bisection planner; see GitHub issue #6)
+-------------------------------------------------------------------
+1. Read ``.grd`` cell counts.  Target chunk volume = total_cells /
+   round(np * blocks_per_rank).
+2. For each block, choose per-axis chunk counts (:func:`_chunk_counts`)
+   that drive the chunk volume toward the target while keeping every
+   chunk roughly cubic and every axis ``>= floor`` cells, where
+   ``floor = min_coarse_cells * 2**(ngr-1)`` (the multigrid coarse-cell
+   floor) and cuts are snapped to multiples of ``2**(ngr-1)``.
+3. Propagate the candidate cuts across SHARED/DIRICHLET seams (exactly
+   as :func:`shore.split.split_blocks` will), then floor-check the
+   *propagated* chunk set and back off any cut that — combined with a
+   neighbour's propagated cut — would create a sub-floor sliver.  Iterate
+   to a fixpoint so the plan matches the split output block-for-block.
+4. Group cuts per ``(label, axis)`` into one ``[[splits]]`` TOML entry.
 
-Key choices
------------
-- **Midpoint cut by cell count.**  Block weight tracks cells, so the
-  midpoint along the cut axis is the cell-count midpoint, not vertex
-  midpoint.  For uniform spacing they're the same; for stretched
-  spacing the planner doesn't know the spacing law (it only has the
-  ``.grd`` header).  Cell-count midpoint is the honest choice.
-- **Co-splits across SHARED/DIRICHLET seams** are emitted as separate
-  ``[[splits]]`` entries on each affected block.  ``shore split``
-  validates compatibility.
-- **k-axis is preferred** because for typical body-fitted topologies
-  ``k_lo`` / ``k_hi`` are WALL / FREE (never SHARED), so k-cuts need
-  no paired splits.  When it isn't safe (an exotic topology with
-  k-coupled SHARED seams), the planner falls back to j or i with
-  paired splits.
+Why this design
+---------------
+The old planner bisected the current-heaviest block repeatedly; with no
+target block count it either stalled (heavy blocks left whole) or shredded
+blocks into single-cell sheets (issue #6).  Equal multi-way partition with
+a fixed target count avoids both.  Seam conformance is no longer the
+planner's job to pre-pair: :func:`shore.split.split_blocks` propagates cuts
+across seams automatically, so the planner only chooses per-block cuts and
+verifies the floor survives propagation.
 
-References
-----------
-Inspired by ``LoadBalance/src/Lib_Balance.F90`` and
-``overset-exploded/src/lib/overset_exploded_library.F90``.  Both
-those tools physically split block data while iterating; SHORE's
-planner only schedules cuts and lets ``shore split`` execute them.
+Best-effort: when the floor cannot be met (e.g. an input block already
+smaller than ``floor``, so no split can help), the planner warns, does what
+it can, and returns ``converged=False`` with the achieved imbalance.
 """
 
 from __future__ import annotations
@@ -152,6 +139,61 @@ class BalancePlan:
             lines.append("")
         return "\n".join(lines)
 
+    def to_bsplit_par(
+        self,
+        *,
+        ngr: int = 1,
+        sol_root: str = "sol",
+        grd_root: str = "cc",
+        icc_root: str = "cc",
+        varn: int = 0,
+        varo: int = 0,
+        debug: int = 0,
+    ) -> str:
+        """Render the plan as a ``bsplit.par`` for the external ``bsplit`` tool.
+
+        ``bsplit`` splits the framed **overset outputs** (``cc.0N`` / ``cc.0N.grd``)
+        *after* an overset run, remapping the donor pool by index — the
+        post-overset analogue of pre-overset :func:`to_toml` + ``shore split``.
+        Use this when splitting before overset is impossible (e.g. the chimera
+        donor search degenerates on a split overlap block).
+
+        The plan must come from a **grd-only** :func:`plan_balance` (no
+        ``adjacency_path``), whose synthetic ``block_<n>`` labels carry the
+        1-based grd block order — which is exactly ``bsplit``'s block number.
+        Cut indices are fine-level vertex indices; ``bsplit`` rescales them per
+        multigrid level internally.
+
+        Format (see ``bsplit/src/readpar.f90``)::
+
+            <sol_root>
+            <grd_root>
+            <icc_root>
+            <ngr>
+            <varn>
+            <varo>
+            <debug>
+            <block_number> <direction 1|2|3> <fine_vertex_index>   (one per cut)
+
+        Raises
+        ------
+        ParameterError
+            If any split label is not a synthetic ``block_<n>`` label (a labeled
+            plan cannot be mapped to bsplit block numbers without a number map).
+        """
+        axis_num = {"i": 1, "j": 2, "k": 3}
+        lines = [sol_root, grd_root, icc_root, str(ngr), str(varn), str(varo), str(debug)]
+        for label, axis, at in self.splits:
+            if not label.startswith("block_"):
+                raise ParameterError(
+                    f"to_bsplit_par: split label {label!r} is not a synthetic "
+                    "'block_<n>' label; bsplit needs the grd block number.  "
+                    "Generate the plan from a grd-only plan_balance (no adjacency_path)."
+                )
+            n = int(label.split("_")[1])
+            lines.append(f"{n} {axis_num[axis]} {at}")
+        return "\n".join(lines) + "\n"
+
 
 # ---------------------------------------------------------------------------
 # Public planner
@@ -162,189 +204,193 @@ def plan_balance(
     grd_path: str | Path,
     *,
     np: int,
+    blocks_per_rank: float = 1.0,
+    ngr: int = 1,
+    min_coarse_cells: int = 8,
     tolerance: float = 0.05,
-    max_iterations: int = 100,
     adjacency_path: str | Path | None = None,
+    blocks: list | None = None,
 ) -> BalancePlan:
-    """Plan the splits needed to bring a multi-block mesh's load imbalance
-    below ``tolerance``.
+    """Plan a multi-way equal-partition split for MPI load balancing.
 
-    Reads the ``.grd``'s per-block cell counts and (optionally) the
-    adjacency JSON's seam graph; iteratively schedules cuts on the
-    heaviest block until imbalance ≤ tolerance or iter = max_iterations.
+    Replaces the old bisection-of-heaviest planner (issue #6), which
+    stalled (caps left whole) or over-fragmented (single-cell sheets).
+    This planner instead partitions **every** block into roughly equal,
+    roughly cubic chunks sized so the total lands near
+    ``np * blocks_per_rank`` blocks, then lets a greedy cell-weighted
+    assignment (and :func:`shore.io.proc_input`) place them.  ``shore
+    split`` auto-propagates the cuts across SHARED/DIRICHLET seams, so the
+    planner does **not** emit paired co-splits — it just chooses per-block
+    per-axis cuts.
+
+    Multigrid floor: every resulting chunk axis is kept ``>=
+    min_coarse_cells * 2**(ngr - 1)`` fine cells and divisible by
+    ``2**(ngr - 1)``, so the block survives ``ngr`` multigrid levels with
+    at least ``min_coarse_cells`` cells on the coarsest level.  When this
+    floor prevents reaching ``tolerance`` (e.g. a block too small to cut
+    further but still heavy), the planner does its best and returns
+    ``converged=False`` with the achieved imbalance — it never fails.
 
     Parameters
     ----------
     grd_path :
-        Path to the input ``.grd``.  Block ordering and shapes are
-        derived from this file.
+        Input ``.grd`` (block ordering + cell shapes).
     np :
-        Total MPI rank count (>= 1).
+        MPI rank count (>= 1).
+    blocks_per_rank :
+        Target average blocks per rank.  ``1.0`` aims for ~``np`` blocks;
+        higher values give finer granularity / better balance at the cost
+        of more blocks (and more overset donor-search work).
+    ngr :
+        Multigrid level count the mesh must support (>= 1).
+    min_coarse_cells :
+        Minimum cells per axis at the coarsest (level-``ngr``) grid (>= 1).
     tolerance :
-        Target fractional imbalance ``(max - min) / mean``.  Default
-        ``0.05`` (5%).
-    max_iterations :
-        Maximum split iterations.  Each iteration adds one cut to one
-        block (with paired co-splits when topology requires).  Default
-        ``100``.
+        Target fractional imbalance ``(max - min) / mean`` for the
+        converged flag.  The planner reports achieved imbalance regardless.
     adjacency_path :
-        Optional path to a ``.adjacency.json`` sidecar.  When supplied,
-        the planner refuses to cut along axes that would break
-        SHARED / DIRICHLET seams without paired co-splits (and emits
-        co-splits when an axis is chosen).  When ``None``, the planner
-        uses longest-axis-first with no seam awareness — the resulting
-        plan may then be rejected by ``shore split`` on a topology
-        with k-coupled seams; a warning notes this.
+        Optional ``.adjacency.json``; used only for block labels (so the
+        plan's ``[[splits]]`` entries name real blocks).  Seam conformance
+        is handled at split time by cut propagation, not here.
 
     Returns
     -------
     BalancePlan
-        ``plan.converged`` is True iff the final imbalance is within
-        tolerance.  ``plan.splits`` lists the cuts in decision order.
-
-    Raises
-    ------
-    ParameterError
-        If ``np < 1``, ``tolerance <= 0``, or ``max_iterations < 1``.
-    FileNotFoundError, ValueError
-        Forwarded from :func:`shore.io.grd.read_grd_metadata` and the
-        adjacency reader.
     """
     if np < 1:
         raise ParameterError(f"plan_balance: np must be >= 1, got {np}")
+    if ngr < 1:
+        raise ParameterError(f"plan_balance: ngr must be >= 1, got {ngr}")
+    if min_coarse_cells < 1:
+        raise ParameterError(f"plan_balance: min_coarse_cells must be >= 1, got {min_coarse_cells}")
     if tolerance <= 0:
         raise ParameterError(f"plan_balance: tolerance must be > 0, got {tolerance}")
-    if max_iterations < 1:
-        raise ParameterError(f"plan_balance: max_iterations must be >= 1, got {max_iterations}")
+    if blocks_per_rank <= 0:
+        raise ParameterError(f"plan_balance: blocks_per_rank must be > 0, got {blocks_per_rank}")
 
     shapes = read_grd_metadata(grd_path)
     n_orig = len(shapes)
 
     if adjacency_path is None:
-        warnings.warn(
-            "plan_balance: no adjacency provided; falling back to longest-axis-first "
-            "without seam awareness.  The resulting plan may be rejected by "
-            "`shore split` on topologies with k-coupled SHARED seams.  Pass "
-            "adjacency_path=<adj.json> for a topology-safe plan.",
-            UserWarning,
-            stacklevel=2,
-        )
-        seam_graph = {}
-        # Default block labels — synthetic indices.
         labels = [f"block_{i + 1}" for i in range(n_orig)]
     else:
-        seam_graph, labels = _load_adjacency(adjacency_path)
+        _seam_graph, labels = _load_adjacency(adjacency_path)
         if len(labels) != n_orig:
             raise ParameterError(
                 f"plan_balance: .grd has {n_orig} blocks but adjacency JSON has "
                 f"{len(labels)}; the two inputs disagree on block count."
             )
 
-    # Initial simulated blocks, indexed by their position in the active list.
+    mg = 2 ** (ngr - 1)  # multigrid coarsening factor
+    floor = max(min_coarse_cells * mg, mg)  # min fine cells per chunk axis
+
     sim: list[_SimBlock] = [
         _SimBlock(
-            label=labels[i],
-            shape=list(shapes[i]),  # cell counts
-            parent=i + 1,
-            origin={"i": 0, "j": 0, "k": 0},
+            label=labels[i], shape=list(shapes[i]), parent=i + 1, origin={"i": 0, "j": 0, "k": 0}
         )
         for i in range(n_orig)
     ]
-
     initial_summary = _balance_summary(sim, np)
-    splits: list[tuple[str, str, int]] = []
-    # `shore split` v1 supports one axis per block per call.  Once we
-    # commit to an axis for an original block, later iterations can
-    # add more cuts on that same axis but cannot switch to another.
-    locked_axis: dict[int, str] = {}  # parent (1-based block idx) -> axis
 
-    if initial_summary.imbalance <= tolerance:
-        # Already balanced — no plan needed.
-        return BalancePlan(
-            splits=splits,
-            iterations=0,
-            converged=True,
-            initial_summary=initial_summary,
-            final_summary=initial_summary,
-            tolerance=tolerance,
+    # Warn about input blocks that already violate the floor (the planner
+    # cannot manufacture cells that are not there — best-effort policy).
+    too_small = [
+        (b.label, tuple(b.shape))
+        for b in sim
+        if min(b.shape) < floor or any(s % mg for s in b.shape)
+    ]
+    if too_small:
+        warnings.warn(
+            f"plan_balance: {len(too_small)} input block(s) already below the "
+            f"multigrid floor (>= {floor} cells/axis, divisible by {mg}) for "
+            f"ngr={ngr}, min_coarse_cells={min_coarse_cells} — they cannot be "
+            f"made conformal at this level count.  First few: {too_small[:5]}.  "
+            f"Reduce --ngr or coarsen less.",
+            UserWarning,
+            stacklevel=2,
         )
 
-    # Map original block label → parent index for the seam-group walk.
-    label_to_parent: dict[str, int] = {labels[i]: i + 1 for i in range(n_orig)}
+    total_cells = sum(_weight(b) for b in sim)
+    target_chunk = total_cells / max(1, round(np * blocks_per_rank))
+    # Target chunk EDGE length (keeps chunks ~cubic); cut counts are chosen
+    # per-axis as a pure function of that axis's extent + this target.
+    target_edge = max(float(floor), target_chunk ** (1.0 / 3.0))
 
-    for iter_idx in range(1, max_iterations + 1):
-        # Heaviest sim-leaf first.
-        weights = [_weight(b) for b in sim]
-        ordered = sorted(range(len(sim)), key=lambda i: -weights[i])
-        progressed = False
-        for b_idx in ordered:
-            block = sim[b_idx]
-            forced = locked_axis.get(block.parent)
-            axis = _pick_split_axis(block, seam_graph, forced=forced)
-            if axis is None:
-                continue
-            # Co-splits: walk the seam graph by *parent label* (not leaf
-            # index).  All leaves of every parent in the group must be
-            # cut at the same original-block vertex.
-            group_parents = _seam_group_parents(block.label, axis, seam_graph, label_to_parent)
-            if any(locked_axis.get(p) not in (None, axis) for p in group_parents):
-                continue  # group conflicts with a previously-locked axis
-            ax_idx = _axis_idx(axis)
-            cell_mid_local = block.shape[ax_idx] // 2
-            if cell_mid_local < 1:
-                continue
-            cut_vertex = block.origin[axis] + cell_mid_local
+    # 1. Candidate cuts.  Each axis's chunk count is a deterministic function
+    #    of (axis extent, target_edge, floor) ALONE — never the 3-D volume —
+    #    so two blocks that share a seam on an axis (which a conformal tiling
+    #    guarantees have *equal* extent on that axis) get IDENTICAL cuts.
+    #    Propagation across the seam is then idempotent: no interleaved cuts,
+    #    no sub-floor slivers.
+    cand: dict[str, dict[str, set[int]]] = {b.label: {} for b in sim}
+    for b in sim:
+        for axis in ("i", "j", "k"):
+            extent = b.shape[_axis_idx(axis)]
+            cnt = _axis_chunk_count(extent, target_edge, floor)
+            if cnt > 1:
+                cand[b.label][axis] = set(_even_cuts(extent, cnt, mg))
 
-            # For every parent in the group, the cut at original-vertex
-            # `cut_vertex` may already be present (idempotent), and may
-            # exceed some leaves' ranges (skip those).  We require that
-            # *some* leaf of each parent contains the cut.
-            group_leaves = _leaves_containing_cut(sim, group_parents, axis, cut_vertex)
-            covered_parents = {sim[idx].parent for idx in group_leaves}
-            if not group_parents.issubset(covered_parents):
-                # Not every parent has a leaf to receive the cut.  Try
-                # a different leaf as the heaviest candidate.
-                continue
-            if not group_leaves:
-                continue
+    # 2. Propagate across seams (matching split_blocks), then back off any
+    #    cut that — combined with propagated neighbour cuts — makes a chunk
+    #    fall below the floor.  Iterate to a fixpoint so plan == split output.
+    if blocks is not None:
+        from shore.split import chunk_axis_sizes, propagate_cuts
 
-            # Apply: for each leaf, split at its local midpoint along `axis`
-            # such that the original-vertex matches `cut_vertex`.
-            cut_applied_for_parent: set[int] = set()
-            for leaf_idx in sorted(group_leaves, reverse=True):
-                # reverse so later sim.append doesn't disturb earlier indices
-                leaf = sim[leaf_idx]
-                local_cut = cut_vertex - leaf.origin[axis]
-                if not (0 < local_cut < leaf.shape[ax_idx]):
-                    continue
-                _apply_split(sim, leaf_idx, axis, local_cut)
-                if leaf.parent not in cut_applied_for_parent:
-                    splits.append((leaf.label, axis, cut_vertex))
-                    cut_applied_for_parent.add(leaf.parent)
-                progressed = True
-            for p in group_parents:
-                locked_axis[p] = axis
-            if progressed:
+        n_vert = {b.label: tuple(b.nodes.shape[:3]) for b in blocks}
+        while True:
+            prop = propagate_cuts(blocks, cand)
+            violating: list[tuple[str, str]] = []  # (label, axis) producing a sub-floor chunk
+            for label, axes in prop.items():
+                for axis in ("i", "j", "k"):
+                    sizes = chunk_axis_sizes(n_vert[label][_axis_idx(axis)], axes.get(axis, set()))
+                    if any(s < floor for s in sizes):
+                        violating.append((label, axis))
+            if not violating:
+                cand = prop
                 break
-        if not progressed:
-            break
-        new_summary = _balance_summary(sim, np)
-        if new_summary.imbalance <= tolerance:
-            return BalancePlan(
-                splits=splits,
-                iterations=iter_idx,
-                converged=True,
-                initial_summary=initial_summary,
-                final_summary=new_summary,
-                tolerance=tolerance,
-            )
+            # Drop the *requested* cuts on each violating (label, axis) that we
+            # control; if a violation is purely from a too-small input block
+            # (no requested cuts on it), it is unfixable — stop to avoid a loop.
+            progressed = False
+            for label, axis in violating:
+                if cand.get(label, {}).get(axis):
+                    cand[label][axis] = set()
+                    progressed = True
+            if not progressed:
+                cand = prop
+                break
+        final_cuts = cand
+    else:
+        # No blocks given: cannot propagate; assume seam-free (grd-only).
+        final_cuts = cand
 
-    # Loop exited without converging — return the best-found plan.
-    final_summary = _balance_summary(sim, np)
+    # 3. Emit splits + compute the summary on the *propagated* chunk shapes.
+    splits = []
+    for label in (b.label for b in sim):
+        for axis in ("i", "j", "k"):
+            for v in sorted(final_cuts.get(label, {}).get(axis, set())):
+                splits.append((label, axis, v))
+
+    chunk_blocks = []
+    for b in sim:
+        axes_cuts = final_cuts.get(b.label, {})
+        edges = {
+            ax: chunk_axis_sizes_local(b.shape[_axis_idx(ax)] + 1, axes_cuts.get(ax, set()))
+            for ax in ("i", "j", "k")
+        }
+        for ci in edges["i"]:
+            for cj in edges["j"]:
+                for ck in edges["k"]:
+                    chunk_blocks.append(
+                        _SimBlock(label=b.label, shape=[ci, cj, ck], parent=b.parent, origin={})
+                    )
+
+    final_summary = _balance_summary(chunk_blocks, np)
+    converged = final_summary.imbalance <= tolerance and not too_small
     return BalancePlan(
         splits=splits,
-        iterations=len(splits),  # number of single-block cuts decided
-        converged=False,
+        iterations=len(splits),
+        converged=converged,
         initial_summary=initial_summary,
         final_summary=final_summary,
         tolerance=tolerance,
@@ -352,8 +398,76 @@ def plan_balance(
 
 
 # ---------------------------------------------------------------------------
-# Internals
+# Multi-way partition internals
 # ---------------------------------------------------------------------------
+
+
+def _axis_chunk_count(extent: int, target_edge: float, floor: int) -> int:
+    """Chunk count for one axis — a pure function of its *extent*.
+
+    ``round(extent / target_edge)`` chunks, but capped so every chunk keeps
+    ``>= floor`` cells (``extent // floor``).  Depending only on the axis's
+    own cell count (not the block's 3-D volume) is what makes the choice
+    *seam-aligned*: two blocks sharing a face on this axis have equal extent
+    (conformal tiling), so they get the same count and the same cuts.
+    """
+    n = max(1, round(extent / target_edge))
+    return min(n, max(1, extent // floor))
+
+
+def _chunk_counts(
+    shape: list[int], target_chunk: float, floor: int, mg: int
+) -> tuple[int, int, int]:
+    """Per-axis chunk counts (legacy 3-D helper, retained for tests).
+
+    Greedily bisects the longest *cuttable* axis until the block's chunk
+    volume is near ``target_chunk``.  The planner itself now uses
+    :func:`_axis_chunk_count` (pure per-axis) for seam alignment; this
+    volume-based variant is kept only for direct unit tests.
+    """
+    cells = [shape[0], shape[1], shape[2]]
+    counts = [1, 1, 1]
+
+    def chunk_volume() -> float:
+        return (cells[0] / counts[0]) * (cells[1] / counts[1]) * (cells[2] / counts[2])
+
+    def can_cut(ax: int) -> bool:
+        # Going from counts[ax] to counts[ax]+1 must leave every piece >= floor.
+        return cells[ax] // (counts[ax] + 1) >= floor
+
+    while chunk_volume() > target_chunk:
+        # longest current chunk-edge among cuttable axes
+        candidates = [ax for ax in range(3) if can_cut(ax)]
+        if not candidates:
+            break
+        ax = max(candidates, key=lambda a: cells[a] / counts[a])
+        counts[ax] += 1
+    return (counts[0], counts[1], counts[2])
+
+
+def _even_cuts(n_cells: int, n_chunks: int, mg: int) -> list[int]:
+    """Interior vertex cut indices splitting *n_cells* into *n_chunks* pieces.
+
+    Cuts are snapped to multiples of *mg* (multigrid coarsenability) and
+    deduplicated; boundary hits (0 / n_cells) are dropped.  Returned values
+    are vertex indices (a cut at cell boundary c is vertex c).
+    """
+    raw = (round(n_cells * m / n_chunks) for m in range(1, n_chunks))
+    snapped = (round(c / mg) * mg for c in raw)
+    return sorted({c for c in snapped if 0 < c < n_cells})
+
+
+# ---------------------------------------------------------------------------
+# Reused helpers
+# ---------------------------------------------------------------------------
+
+
+def chunk_axis_sizes_local(n_vertices: int, at: set[int]) -> list[int]:
+    """Cell counts of each chunk when an axis of *n_vertices* is cut at *at*."""
+    cut = sorted(at)
+    starts = [0, *cut]
+    stops = [*cut, n_vertices - 1]
+    return [e - s for s, e in zip(starts, stops, strict=True)]
 
 
 def _axis_idx(axis: str) -> int:
@@ -365,7 +479,7 @@ def _weight(b: _SimBlock) -> int:
 
 
 def _greedy_assign(weights: list[int], np: int) -> list[int]:
-    """Greedy descending weight-balanced assignment across `np` ranks."""
+    """Greedy descending weight-balanced (LPT) assignment across `np` ranks."""
     n = len(weights)
     procs = [0] * n
     rank_load = [0] * np
@@ -396,255 +510,6 @@ def _balance_summary(sim: list[_SimBlock], np: int) -> BalanceSummary:
         per_rank_blocks=per_rank_blocks,
         per_rank_cells=per_rank_cells,
         imbalance=imbalance,
-    )
-
-
-def _pick_split_axis(
-    block: _SimBlock,
-    seam_graph: dict,
-    *,
-    forced: str | None = None,
-) -> str | None:
-    """Return the longest-extent topology-safe axis to split ``block``,
-    or None if none is available.
-
-    ``forced``: when set (because the block's parent is already locked
-    to one axis by an earlier split), only that axis is considered.
-
-    "Safe" means: the axis perpendicular face is not PERIODIC (the
-    j-ring on cubed-sphere sub-blocks falls there) and has at least 2
-    cells.  SHARED / DIRICHLET partners trigger co-splits, not
-    rejection.  Without an adjacency graph the planner trusts the
-    user — every axis with extent >= 2 is safe.
-    """
-    if forced is not None:
-        if block.shape[_axis_idx(forced)] < 2:
-            return None
-        if not _axis_safe(block, forced, seam_graph):
-            return None
-        return forced
-    candidates = []
-    for axis in ("k", "j", "i"):
-        if block.shape[_axis_idx(axis)] < 2:
-            continue
-        if not _axis_safe(block, axis, seam_graph):
-            continue
-        candidates.append(axis)
-    if not candidates:
-        return None
-
-    # Two-level sort:
-    #   1. Axes with no parallel SHARED / DIRICHLET partners win (they
-    #      can be split without dragging a co-split group along —
-    #      a single cut on one block, not N cuts on N blocks).
-    #   2. Among ties, longest extent.
-    def _seam_cost(axis: str) -> int:
-        return _axis_parallel_partner_count(block, axis, seam_graph)
-
-    candidates.sort(key=lambda a: (_seam_cost(a), -block.shape[_axis_idx(a)]))
-    return candidates[0]
-
-
-def _axis_parallel_partner_count(block: _SimBlock, axis: str, seam_graph: dict) -> int:
-    """Number of SHARED / DIRICHLET partners on faces *parallel* to axis.
-
-    A face is "parallel to axis" iff its perpendicular axis is not the
-    split axis — equivalently, the face contains ``axis`` as one of
-    its two along-axes.  Splitting the block along ``axis`` cuts
-    these faces into pieces along ``axis``, so each partner block
-    must also be split at the matching index for the seam to remain
-    valid.
-    """
-    if not seam_graph:
-        return 0
-    info = seam_graph.get(block.label, {})
-    return sum(
-        1
-        for face_name, face_info in info.items()
-        if not _face_perpendicular_to(face_name, axis)
-        and face_info.get("bc") in ("SHARED", "DIRICHLET")
-    )
-
-
-def _axis_safe(block: _SimBlock, axis: str, seam_graph: dict) -> bool:
-    """Check whether splitting `block` along `axis` is topology-safe.
-
-    Without an adjacency graph the planner trusts the user (every
-    axis is safe).  With one, an axis is unsafe when:
-
-    - any face *parallel* to the split axis (i.e. containing it as
-      an along-axis) is PERIODIC.  Splitting that face would break
-      the periodic loop on the partner block, which has no matching
-      "first" / "last" cell.
-    """
-    if not seam_graph:
-        return True
-    info = seam_graph.get(block.label, {})
-    for face_name, face_info in info.items():
-        if _face_perpendicular_to(face_name, axis):
-            continue
-        if face_info.get("bc") == "PERIODIC":
-            return False
-    return True
-
-
-def _face_perpendicular_to(face_name: str, axis: str) -> bool:
-    """True iff face_name (e.g. 'i_lo') is perpendicular to axis ('i')."""
-    return face_name.startswith(axis + "_")
-
-
-def _seam_group_parents(
-    start_label: str,
-    axis: str,
-    seam_graph: dict,
-    label_to_parent: dict[str, int],
-) -> set[int]:
-    """Set of parent block indices that must be co-split with start_label
-    along ``axis``.
-
-    Walk SHARED / DIRICHLET partners on faces *parallel* to ``axis``
-    (i.e. faces whose along-axes include ``axis``).  These are the
-    seams that get cut along ``axis`` when the block is split, and
-    each partner needs to mirror the cut.
-
-    The walk is by *original block label*, so it returns parent
-    indices.  An empty seam_graph yields {start parent} only.
-    """
-    if not seam_graph:
-        return {label_to_parent[start_label]}
-
-    visited_labels = {start_label}
-    queue = [start_label]
-    while queue:
-        cur = queue.pop()
-        info = seam_graph.get(cur, {})
-        for face_name, face_info in info.items():
-            if _face_perpendicular_to(face_name, axis):
-                continue
-            if face_info.get("bc") not in ("SHARED", "DIRICHLET"):
-                continue
-            partner = face_info.get("partner") or {}
-            p_label = partner.get("label")
-            if not p_label or p_label in visited_labels:
-                continue
-            if p_label not in label_to_parent:
-                continue
-            visited_labels.add(p_label)
-            queue.append(p_label)
-
-    return {label_to_parent[label] for label in visited_labels}
-
-
-def _leaves_containing_cut(
-    sim: list[_SimBlock],
-    parents: set[int],
-    axis: str,
-    cut_vertex: int,
-) -> list[int]:
-    """Return sim-list indices of leaves of ``parents`` whose extent along
-    ``axis`` strictly contains ``cut_vertex``.
-
-    A leaf with ``origin[axis] = O`` and ``shape[axis] = N`` covers
-    original vertices ``[O, O + N]``.  The cut at ``cut_vertex`` is
-    interior iff ``O < cut_vertex < O + N``.
-    """
-    out = []
-    ax_idx = _axis_idx(axis)
-    for i, leaf in enumerate(sim):
-        if leaf.parent not in parents:
-            continue
-        lo = leaf.origin[axis]
-        hi = lo + leaf.shape[ax_idx]
-        if lo < cut_vertex < hi:
-            out.append(i)
-    return out
-
-
-def _seam_group(
-    b_idx: int,
-    axis: str,
-    sim: list[_SimBlock],
-    seam_graph: dict,
-) -> list[int]:
-    """Return the set of sim-list indices that must be co-split with b_idx
-    along `axis` so every SHARED / DIRICHLET seam stays intact.
-
-    When splitting block X along ``axis``, every face *parallel* to
-    ``axis`` (i.e. containing ``axis`` as an along-axis) gets cut
-    into pieces along ``axis``.  If that face is SHARED / DIRICHLET
-    with a partner block, the partner's matching face must also be
-    split at the same parametric index — and the partner's *other*
-    parallel faces propagate the requirement transitively.
-
-    Without an adjacency graph the group is just {b_idx}.
-    """
-    if not seam_graph:
-        return [b_idx]
-    label_to_idx = {b.label: i for i, b in enumerate(sim)}
-
-    visited = {b_idx}
-    queue = [b_idx]
-    while queue:
-        cur = queue.pop()
-        cur_label = sim[cur].label
-        info = seam_graph.get(cur_label, {})
-        for face_name, face_info in info.items():
-            # Only faces *parallel* to the split axis are affected.
-            if _face_perpendicular_to(face_name, axis):
-                continue
-            if face_info.get("bc") not in ("SHARED", "DIRICHLET"):
-                continue
-            partner = face_info.get("partner")
-            if not partner:
-                continue
-            p_label = partner.get("label")
-            p_idx = label_to_idx.get(p_label)
-            if p_idx is None or p_idx in visited:
-                continue
-            visited.add(p_idx)
-            queue.append(p_idx)
-    return sorted(visited)
-
-
-def _apply_split(
-    sim: list[_SimBlock],
-    b_idx: int,
-    axis: str,
-    cell_mid: int,
-) -> None:
-    """Split sim[b_idx] along ``axis`` at local cell index ``cell_mid``.
-
-    The block in place becomes the lower chunk (its shape shrinks
-    along ``axis``; its origin is unchanged).  A new ``_SimBlock``
-    for the upper chunk is appended to ``sim`` with origin shifted
-    by ``cell_mid`` along ``axis``.
-
-    Labels: chunks keep the **original** label.  ``shore split``
-    works from the ``[[splits]]`` TOML which lists cuts per original
-    block, so the planner's job is to record cuts against the
-    original label, not synthetic chunk labels.
-    """
-    parent = sim[b_idx]
-    ax_idx = _axis_idx(axis)
-    full = parent.shape[ax_idx]
-
-    # Lower chunk: in place — origin unchanged, shape[axis] = cell_mid.
-    lower_shape = list(parent.shape)
-    lower_shape[ax_idx] = cell_mid
-    parent.shape = lower_shape
-
-    # Upper chunk: new leaf at origin + cell_mid, length (full - cell_mid).
-    upper_shape = list(parent.shape)
-    upper_shape[ax_idx] = full - cell_mid
-    upper_origin = dict(parent.origin)
-    upper_origin[axis] = parent.origin[axis] + cell_mid
-    sim.append(
-        _SimBlock(
-            label=parent.label,
-            shape=upper_shape,
-            parent=parent.parent,
-            origin=upper_origin,
-        )
     )
 
 

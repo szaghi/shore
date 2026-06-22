@@ -2305,6 +2305,49 @@ def cap_tip(
 # ---------------------------------------------------------------------------
 
 
+def _blocks_from_adjacency_shapes(adjacency_path):
+    """Build lightweight wired HexBlocks from an adjacency sidecar.
+
+    Nodes are zero-filled at the sidecar's shape (only extents matter for
+    cut propagation / floor checking — coordinates are irrelevant here), and
+    faces are wired from the sidecar.  Used by `shore balance` to floor-check
+    seam-propagated cuts without reading the (large) .geo node data.
+    """
+    import numpy as np
+
+    from shore.io.adjacency import read_adjacency_json, wire_blocks_from_adjacency
+    from shore.mesh.block import HexBlock
+
+    payload = read_adjacency_json(adjacency_path)
+    blocks = []
+    for b in payload["blocks"]:
+        ni, nj, nk = b["shape"]
+        blocks.append(HexBlock(label=b["label"], nodes=np.zeros((ni, nj, nk, 3))))
+    wire_blocks_from_adjacency(blocks, payload, source=str(adjacency_path))
+    return blocks
+
+
+def _apply_split_rounds(blocks, directives):
+    """Apply BlockSplit *directives* to *blocks* in one ``split_blocks`` pass.
+
+    ``split_blocks`` now natively handles multi-axis-per-block and
+    auto-propagates cuts across SHARED/DIRICHLET seams, so no per-axis
+    rounds or manual co-split expansion are needed — directives go straight
+    through.  (Name kept for the call site; it is now a thin validating
+    wrapper.)
+    """
+    from shore.exceptions import ParameterError
+    from shore.split import split_blocks
+
+    input_labels = {blk.label for blk in blocks}
+    for d in directives:
+        if d.label not in input_labels:
+            raise ParameterError(
+                f"split: no block named {d.label!r} in the input (have {sorted(input_labels)!r})"
+            )
+    return split_blocks(blocks, directives)
+
+
 @app.command()
 def split(
     inputs: Annotated[
@@ -2335,6 +2378,21 @@ def split(
             ),
         ),
     ] = None,
+    adjacency: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--adjacency",
+            help=(
+                "Input .adjacency.json sidecar(s) describing the pre-existing "
+                "inter-block seams of the input .geo files.  Repeatable (one per "
+                "component).  Without this, .geo files carry only geometry, so "
+                "every face defaults to FREE and the topology's SHARED/DIRICHLET "
+                "seams are LOST through the split (they become FREE -> chimera in "
+                "cc.par -> overset hunts donors across a 1-to-1 seam).  Pass each "
+                "component's sidecar to preserve its seams onto the right chunks."
+            ),
+        ),
+    ] = None,
     verbose: _VERBOSE = False,
 ) -> None:
     """Split structured blocks along ijk vertex indices, preserving adjacency.
@@ -2342,6 +2400,11 @@ def split(
     Reads existing ``.geo`` files, applies the splits described in the
     TOML config (one ``[[splits]]`` entry per block), writes new
     ``.geo`` files and a JSON sidecar with the adjacency graph.
+
+    Pass ``--adjacency`` with each input component's sidecar so the
+    pre-existing inter-block seams (SHARED / DIRICHLET) are wired onto
+    the input blocks before splitting and thus preserved on the output
+    chunks; otherwise they are lost (the .geo files are geometry only).
     """
     if not inputs:
         _err.print("[red]Error:[/red] no input .geo files given.")
@@ -2365,7 +2428,7 @@ def split(
     from shore.io.adjacency import write_adjacency_json
     from shore.io.geo import read_geo, write_geo
     from shore.mesh.block import HexBlock
-    from shore.split import BlockSplit, split_blocks
+    from shore.split import BlockSplit
 
     # Determine block labels.  When all inputs share a common
     # ``<base>_`` prefix, strip it so the labels match the topology
@@ -2403,9 +2466,40 @@ def split(
         for blk in blocks:
             _console.print(f"  {blk.label:24s} {blk.nodes.shape}")
 
+    # Wire pre-existing inter-block seams from the input sidecar(s) so the
+    # split preserves them (otherwise the geometry-only .geo blocks are all
+    # FREE and the SHARED/DIRICHLET graph is lost).
+    if adjacency:
+        from shore.io.adjacency import read_adjacency_json, wire_blocks_from_adjacency
+
+        for adj_path in adjacency:
+            try:
+                payload = read_adjacency_json(adj_path)
+                wire_blocks_from_adjacency(blocks, payload, source=str(adj_path))
+            except Exception as exc:
+                _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+                raise typer.Exit(1) from None
+        if verbose:
+            n_seam = sum(
+                1
+                for blk in blocks
+                for f in blk.faces()
+                if f.bc.name in ("SHARED", "DIRICHLET", "PERIODIC")
+            )
+            _console.print(f"Wired {n_seam} connection face(s) from {len(adjacency)} sidecar(s).")
+
     directives = [BlockSplit(label=d.label, axis=d.axis, at=d.at) for d in cfg.splits]
+    # split_blocks applies at most one axis per block per call.  A plan may
+    # cut a block on several axes (e.g. a background brick on i, j and k); apply
+    # those in rounds, one axis-set per round, feeding each round's chunks into
+    # the next.  Each round preserves the previous round's seams (split_blocks
+    # carries SHARED/DIRICHLET partners through), so the result is the full
+    # multi-axis decomposition.  Between rounds a later directive for an
+    # already-split block is expanded onto every chunk derived from it (chunk
+    # labels are ``<orig>__<axis><k>``), since the original label no longer
+    # exists.
     try:
-        new_blocks = split_blocks(blocks, directives)
+        new_blocks = _apply_split_rounds(blocks, directives)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
@@ -3050,58 +3144,104 @@ def balance(
             help="Number of MPI ranks (>= 1).  The planner balances against this rank count.",
         ),
     ],
+    blocks_per_rank: Annotated[
+        float,
+        typer.Option(
+            "--blocks-per-rank",
+            help=(
+                "Target average blocks per rank (default 1.0).  Higher values give "
+                "finer granularity and better balance, at more blocks (and more "
+                "overset donor-search work)."
+            ),
+        ),
+    ] = 1.0,
+    ngr: Annotated[
+        int,
+        typer.Option(
+            "--ngr",
+            help=(
+                "Multigrid level count the mesh must support (default 1).  Every "
+                "chunk axis is kept divisible by 2^(ngr-1)."
+            ),
+        ),
+    ] = 1,
+    min_coarse_cells: Annotated[
+        int,
+        typer.Option(
+            "--min-coarse-cells",
+            help=(
+                "Minimum cells per axis on the coarsest (level-ngr) grid (default 8).  "
+                "Every chunk axis is kept >= min_coarse_cells * 2^(ngr-1) fine cells."
+            ),
+        ),
+    ] = 8,
     tolerance: Annotated[
         float,
         typer.Option(
             "--tolerance",
             help=(
-                "Target fractional imbalance (max-min)/mean.  Default 0.05 (5%).  "
-                "When the initial balance is already within tolerance, the plan is empty."
+                "Target fractional imbalance (max-min)/mean for the 'converged' "
+                "report (default 0.05).  The planner reports achieved imbalance "
+                "regardless; it never fails on an unreachable tolerance."
             ),
         ),
     ] = 0.05,
-    max_iterations: Annotated[
-        int,
-        typer.Option(
-            "--max-iterations",
-            help=(
-                "Cap on planning iterations (each iteration adds one cut, possibly "
-                "with paired co-splits across SHARED / DIRICHLET seams).  Default 200."
-            ),
-        ),
-    ] = 200,
     adjacency: Annotated[
         Path | None,
         typer.Option(
             "--adjacency",
             help=(
-                "Optional path to a .adjacency.json sidecar.  When supplied, the "
-                "planner refuses to break SHARED / DIRICHLET seams without paired "
-                "co-splits and prefers axes free of seam coupling.  Without it, the "
-                "planner uses longest-axis-first with no seam awareness, and the "
-                "resulting plan may be rejected by `shore split`."
+                "Path to a .adjacency.json sidecar.  STRONGLY recommended: it lets "
+                "the planner enforce the multigrid floor against seam-PROPAGATED "
+                "cuts (shore split mirrors cuts across SHARED/DIRICHLET seams).  "
+                "Without it the floor is only checked per block in isolation."
             ),
         ),
     ] = None,
+    plan_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help=(
+                "Output format: 'toml' (default, for the PRE-overset `shore split`) "
+                "or 'bsplit-par' (for the POST-overset external `bsplit`, which "
+                "splits framed overset outputs cc.0N/cc.0N.grd).  'bsplit-par' "
+                "requires a grd-only plan (do not pass --adjacency)."
+            ),
+        ),
+    ] = "toml",
 ) -> None:
-    """Plan splits to bring a multi-block mesh's MPI load imbalance below tolerance.
+    """Plan a multi-way equal-partition split for MPI load balancing.
 
-    Reads the .grd's per-block cell counts and (optionally) the adjacency JSON's
-    seam graph; iteratively schedules cuts on the heaviest block until imbalance
-    is within tolerance or max-iterations is hit.  Writes a split.toml in the
-    `shore split` schema.
+    Partitions every block into ~equal, ~cubic chunks sized so the total
+    lands near np*blocks-per-rank, keeping every chunk axis >=
+    min-coarse-cells * 2^(ngr-1) cells (divisible by 2^(ngr-1)).  Cut counts
+    are chosen per-axis so seam-linked blocks (equal extent) get identical
+    cuts — conformal by construction; `shore split` then propagates and
+    executes them.  Writes a split.toml in the `shore split` schema.
 
     Typical use:
 
-        shore balance wall.grd -o splits.toml --np 16 --adjacency wall.adjacency.json
-        shore split -c splits.toml wall_*.geo                  # apply the plan
-        shore grd wall_split_*.geo -o wall.grd                 # repack
-        shore proc-input wall.grd wall.proc.input --np 16      # final balance
+        shore balance wall.grd -o splits.toml --np 16 --ngr 3 \\
+            --blocks-per-rank 8 --adjacency wall.adjacency.json
+        shore split -c splits.toml wall_*.geo --adjacency wall.adjacency.json
+        shore grd wall_split_*.geo -o wall.grd
+        shore proc-input wall.grd wall.proc.input --np 16
 
-    The cap at --max-iterations is a safety belt; raise it for high --np runs
-    on small block counts.  When the planner can't reach the tolerance, it
-    emits the best-found plan and a warning.
+    Best-effort: when the floor cannot be met (e.g. an input block already
+    below the floor), it warns and emits the best plan.
     """
+    if plan_format not in ("toml", "bsplit-par"):
+        _err.print(
+            f"[red]Error:[/red] --format must be 'toml' or 'bsplit-par', got {plan_format!r}"
+        )
+        raise typer.Exit(1) from None
+    if plan_format == "bsplit-par" and adjacency is not None:
+        _err.print(
+            "[red]Error:[/red] --format bsplit-par needs a grd-only plan; "
+            "do not pass --adjacency (bsplit needs grd block numbers)."
+        )
+        raise typer.Exit(1) from None
     if not grd.exists():
         _err.print(f"[red]Error:[/red] .grd file not found: {grd}")
         raise typer.Exit(1) from None
@@ -3111,33 +3251,56 @@ def balance(
 
     from shore.balance import plan_balance
 
+    # Build lightweight wired blocks from the sidecar so the planner can
+    # floor-check seam-propagated cuts (no .geo node data needed — only
+    # shapes + the seam graph).
+    sim_blocks = None
+    if adjacency is not None:
+        try:
+            sim_blocks = _blocks_from_adjacency_shapes(adjacency)
+        except Exception as exc:
+            _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+            raise typer.Exit(1) from None
+
     try:
         plan = plan_balance(
             grd,
             np=np,
+            blocks_per_rank=blocks_per_rank,
+            ngr=ngr,
+            min_coarse_cells=min_coarse_cells,
             tolerance=tolerance,
-            max_iterations=max_iterations,
             adjacency_path=adjacency,
+            blocks=sim_blocks,
         )
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    output.write_text(plan.to_toml(), encoding="utf-8")
-    _console.print(f"[green]✓[/green] Wrote {output}")
+    if plan_format == "bsplit-par":
+        try:
+            text = plan.to_bsplit_par(ngr=ngr)
+        except Exception as exc:
+            _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+            raise typer.Exit(1) from None
+    else:
+        text = plan.to_toml()
+    output.write_text(text, encoding="utf-8")
+    _console.print(f"[green]✓[/green] Wrote {output} ({plan_format})")
 
     blocks_touched = len({s[0] for s in plan.splits})
     _err.print(
-        f"shore balance: initial imbalance {plan.initial_summary.imbalance * 100:.1f}% "
-        f"→ final {plan.final_summary.imbalance * 100:.1f}% "
-        f"after {plan.iterations} iteration(s) "
-        f"({len(plan.splits)} cut(s) across {blocks_touched} block(s))"
+        f"shore balance: {plan.initial_summary.n_blocks} blocks "
+        f"(imbalance {plan.initial_summary.imbalance * 100:.1f}%) → "
+        f"{plan.final_summary.n_blocks} blocks "
+        f"(imbalance {plan.final_summary.imbalance * 100:.2f}%) "
+        f"via {len(plan.splits)} cut(s) across {blocks_touched} block(s)"
     )
-    if not plan.converged and plan.iterations > 0:
+    if not plan.converged:
         _err.print(
-            f"[yellow]Warning:[/yellow] planner did not reach the tolerance "
-            f"({plan.final_summary.imbalance * 100:.1f}% > {tolerance * 100:.1f}%).  "
-            "Increase --max-iterations or accept the best-found plan."
+            f"[yellow]Note:[/yellow] achieved imbalance "
+            f"{plan.final_summary.imbalance * 100:.2f}% > tolerance "
+            f"{tolerance * 100:.1f}% (floor-limited or finer --blocks-per-rank needed)."
         )
 
 

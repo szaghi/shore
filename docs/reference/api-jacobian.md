@@ -3,11 +3,12 @@
 Per-cell Jacobian computation for structured O-grids.
 
 ::: tip O-grid vs open topology
-`jacobian_field` and `jacobian_per_layer` assume a **periodic** j-direction
-(O-grid). For open (non-periodic) blocks — such as the equatorial sub-blocks
-and cap blocks of the [cubed-sphere topology](/topologies/cubed-sphere) — use
-`_jacobian_field_open` instead. `min_jacobian_two_layers` accepts a
-`periodic_j` flag to select the correct behaviour automatically.
+`jacobian_field` assumes a **periodic** j-direction (O-grid). For open
+(non-periodic) blocks — such as the equatorial sub-blocks and cap blocks of the
+[cubed-sphere topology](/topologies/cubed-sphere) — use `_jacobian_field_open`
+instead. The per-layer minimum-Jacobian guard used by the marcher and by
+`Mesh.check` is built on these two field functions (see
+[Relationship to `shore check`](#relationship-to-shore-check)).
 :::
 
 ## Functions
@@ -46,80 +47,15 @@ print(J.shape)        # (ni-1, nj, nk-1)
 print(J.min())        # > 0 for a valid O-grid
 ```
 
----
-
-### `jacobian_per_layer`
-
-```python
-def jacobian_per_layer(grid: np.ndarray) -> np.ndarray
-```
-
-Minimum Jacobian over all `(i, j)` cells for each wall-normal layer interval.
-
-**Parameters**
-
-| Name | Type | Description |
-|---|---|---|
-| `grid` | `np.ndarray (ni, nj, nk, 3)` | Full structured O-grid volume |
-
-**Returns**
-
-`numpy.ndarray` of shape `(nk-1,)` — one value per layer interval `[k, k+1]`.
-
-**Example**
-
-```python
-from shore.volume.jacobian import jacobian_per_layer
-import numpy as np
-
-jmins = jacobian_per_layer(grid)
-for k, jmin in enumerate(jmins):
-    print(f"layer {k+1:3d}  jmin={jmin:.3e}")
-```
-
-This is the same quantity that `shore check` displays in its table and that the hyperbolic marching loop monitors at every step.
-
----
-
-### `min_jacobian_two_layers`
-
-```python
-def min_jacobian_two_layers(
-    layer_k: np.ndarray,
-    layer_k1: np.ndarray,
-    periodic_j: bool = True,
-) -> float
-```
-
-Minimum Jacobian over all cells between two consecutive layers.
-
-**Parameters**
-
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `layer_k` | `np.ndarray (ni, nj, 3)` | — | Inner layer (k) |
-| `layer_k1` | `np.ndarray (ni, nj, 3)` | — | Outer layer (k+1) |
-| `periodic_j` | `bool` | `True` | When `True` the j-direction wraps (O-grid, `nj` cells). When `False` it is open (`nj-1` cells). |
-
-**Returns**
-
-`float` — minimum Jacobian. Negative if any cell is inverted.
-
-**Example**
-
-```python
-from shore.volume.jacobian import min_jacobian_two_layers
-import numpy as np
-from tests.conftest import sphere_layer
-
-inner = sphere_layer(20, 24, radius=1.0)
-outer = sphere_layer(20, 24, radius=1.5)
-
-jmin = min_jacobian_two_layers(inner, outer)
-assert jmin > 0.0   # valid outward extrusion
-```
-
-Used internally by `march()` to check cell quality before accepting each new layer.
+::: tip Per-layer minimum Jacobian
+There is no standalone `jacobian_per_layer` helper. The per-layer minimum that
+`shore check` tabulates is computed inside [`Mesh.check`](./api-mesh#meshcheck)
+and `shore.mesh.inspect`: for each layer interval `[k, k+1]` they slice the two
+layers, stack them into a 2-layer volume, call `jacobian_field` (periodic-j) or
+`_jacobian_field_open` (open block), and take `jac.min()`. The marcher applies
+the same per-layer guard through `shore.topology.sphere_cap._check_jacobian`
+(see [`api-sphere-cap`](./api-sphere-cap)).
+:::
 
 ---
 
@@ -160,10 +96,15 @@ For a sphere O-grid with rays cast outward from the centroid, the lat-lon direct
 
 ### Relationship to `shore check`
 
-`shore check` calls `jacobian_per_layer` and reports the result per layer. The same function is used in the `march` loop via `min_jacobian_two_layers`.
+`shore check` calls [`Mesh.check`](./api-mesh#meshcheck), which computes the
+per-layer minimum Jacobian per block by slicing each consecutive layer pair into
+a 2-layer volume and reducing `jacobian_field` / `_jacobian_field_open` with
+`.min()`. The marcher applies the same per-layer guard at every accepted layer
+via `shore.topology.sphere_cap._check_jacobian`.
 
 ## See also
 
 - [`shore.volume.hyperbolic`](api-hyperbolic) — marching kernel that uses these functions
-- [`shore check`](check) — CLI command built on `jacobian_per_layer`
+- [`shore.topology.sphere_cap`](./api-sphere-cap) — `_check_jacobian`, the per-layer guard
+- [`shore check`](check) — CLI command built on `Mesh.check`
 - [Hyperbolic marching — Jacobian check](/algorithm/hyperbolic-marching#jacobian-check) — conceptual explanation

@@ -68,7 +68,7 @@ nj            = 60                   # longitude (multiple of 4)
 nk            = 30                   # wall-normal layers
 theta_cap_deg = 30.0                 # polar exclusion (degrees)
 # theta_cap   = 0.5236               # alternative: in radians (mutually exclusive)
-topology      = "cubed_sphere"       # 'cubed_sphere' (default), 'ogrid', 'cgrid', or 'ch'
+topology      = "cubed_sphere"       # 'cubed_sphere' (default), 'ogrid', 'cgrid', 'ch', or 'oh'
 
 [march]
 ds              = 1.0e-3             # first-layer thickness (geometric)
