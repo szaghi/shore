@@ -59,7 +59,7 @@ projection onto it.
 |---|---|---|
 | O1 half models (× 4: the ADR 0009 pairs cut at y = 0) | on both bodies <= 1e-9 × diagonal; ends on the plane; every node at y >= 0; chords max/min <= 1.01; length within 0.5 % of the exact half curve; the seed's branch | 7e-13; 0; 1.0003; -0.044 % |
 | O2 whole bodies | the seed's side is kept (seed at y < 0); a plane that is not a symmetry plane (x = 0.5, arc 2π/3) | -0.040 %, -0.018 % |
-| O3 STL half model (half box + half post, 96 sections) | on both meshes <= 1e-9 × diagonal; ends at (±0.5, 0, 0) | 2e-16; exact |
+| O3 STL half model (half box + half post, 96 sections) | on both meshes <= 1e-9 × diagonal; ends at (±0.5, 0, 0); within 5 s (re-freeze) | 2e-16; exact; 0.13 s |
 | O4 orientation (× 4 half models) | one `march_surface` layer on A outside B; on B, from the reversed curve, outside A | all |
 | O5 interface (9) | deterministic; `ParameterError` for n < 3, a bad seed (× 2), a bad plane (× 2), a seed on the plane, no intersection, a closed curve that never meets the plane (within 5 s) | |
 
@@ -94,3 +94,18 @@ of a step. The half-collar needs the marcher to hold them on the plane.
 3. The time bound applies only to the closed-curve error case (5 s). The
    strict-crossing trap shows that a stall costs minutes. Add a run-time
    bound to O3?
+
+## Review decisions and re-freeze (2026-10-26, user)
+
+1. **One plane only.** Curves ending on two different planes (a pylon or
+   tail junction) are deferred until a real case needs them.
+2. **The right-angle check belongs to the half-collar spec.** That is where
+   a curve meeting the plane obliquely matters: the bodies are not
+   mirror-symmetric there, and the collar's i-face will not be planar.
+   The curve kernel stays as frozen.
+3. **Re-freeze:** O3 also requires the curve within 5 s (prototype 0.13 s).
+   A trace that stalls at the plane now fails fast and explicitly, not
+   after the step limit (minutes).
+
+Verdict after re-freeze: still 0 passed, 20 xfailed; the prototype behind
+the interface still passes 15 of 20, failing the same 5 input checks.

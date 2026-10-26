@@ -1,6 +1,8 @@
 """FROZEN acceptance spec: open intersection curves ending on a symmetry plane (ADR 0011).
 
-Frozen 2026-10-26, before any implementation. Implementing work may not edit
+Frozen 2026-10-26, before any implementation; RE-FROZEN 2026-10-26 (user review,
+ADR 0011): O3 also bounds the run time (5 s), so a trace that stalls at the
+plane fails fast. Implementing work may not edit
 this file, ``tests/spec/__init__.py``, ``tests/conftest.py``, the pytest
 configuration in ``pyproject.toml``, or ``src/shore/quality.py``. The ONE
 permitted edit is deleting an ``@PENDING`` line once that case passes (strict
@@ -47,7 +49,8 @@ Cases (n = 33; the bodies of ADR 0009's spec):
   seed at y < 0); a plane that is not a symmetry plane (x = 0.5, the arc
   of length 2 pi / 3).
 - O3 STL half model: a half box and a half post (96 sections) cut at y = 0:
-  on both meshes within 1e-9 x diagonal, ends at (+-0.5, 0, 0).
+  on both meshes within 1e-9 x diagonal, ends at (+-0.5, 0, 0), within 5 s
+  (prototype 0.13 s; a strict crossing test stalls on the cut edge).
 - O4 orientation, each half model: one ``march_surface`` layer on A from the
   curve lies outside B; on B, from the reversed curve, outside A.
 - O5 interface: determinism, errors.
@@ -212,7 +215,9 @@ class TestCurve:
         for mesh in (box, post):
             mesh.remove_unreferenced_vertices()
         a, b = StlGeometry(box), StlGeometry(post)
+        start = time.perf_counter()
         curve = kernel()(a, b, np.array([0.45, 0.2, 0.02]), N, plane=SYMMETRY)
+        assert time.perf_counter() - start <= 5.0
         diag = float(np.linalg.norm(np.ptp(np.asarray(a.bounds), axis=0)))
         assert a.project(curve).distances.max() <= 1e-9 * diag
         assert b.project(curve).distances.max() <= 1e-9 * diag
