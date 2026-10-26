@@ -137,7 +137,6 @@ def assert_same(run: Path, ref: Path, names=("mesh.grd", "cc.par", "proc.input")
 
 
 class TestOptions:
-    @PENDING
     def test_x1_per_component_cc_par_options(self, project, tmp_path):
         main_label = project.components["main"].blocks[0].label
         options = {
@@ -157,7 +156,6 @@ class TestOptions:
                   assignments={}, np_ranks=2)  # fmt: skip
         assert_same(tmp_path / "run", tmp_path / "ref")
 
-    @PENDING
     def test_x2_run_wide_header_options(self, project, tmp_path):
         header = {
             "output_basename": "run.", "multigrid_levels": (3, 1),
@@ -168,7 +166,6 @@ class TestOptions:
                   assignments={}, np_ranks=1)  # fmt: skip
         assert_same(tmp_path / "run", tmp_path / "ref")
 
-    @PENDING
     def test_x3_proc_input_bodies_and_overrides(self, project, tmp_path):
         main_blocks = len(project.components["main"].blocks)
         main_label = project.components["main"].blocks[0].label
@@ -195,7 +192,6 @@ class TestOptions:
 
 
 class TestJournal:
-    @PENDING
     def test_x4_journal_line_replays(self, project, tmp_path):
         from shore.project import run_journal
 
@@ -217,7 +213,6 @@ class TestJournal:
 
 
 class TestErrors:
-    @PENDING
     @pytest.mark.parametrize(
         "components",
         [

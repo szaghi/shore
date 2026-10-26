@@ -1,6 +1,6 @@
 # 0017 — Per-component Xall options in `write_xall`
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -72,3 +72,22 @@ calling the existing writers, was run behind the frozen interface.
 - options for `.geo` / `.grd` writing;
 - per-component rank sets;
 - CLI flags.
+
+## Acceptance (2026-10-26): Xall options spec met
+
+`WriteXall` gains `components`, `output_basename`, `multigrid_levels`,
+`boundary_layer_thickness` and `numerical_beach`; `Project.write_xall`
+passes them on. Per component it builds `WriteCcPar` with the run-wide
+header and the component's `free_face_bc` (default `WriteCcPar`'s own),
+`meta` and `boxes`. It collects `body` and the `proc_meta` overrides at
+the merged 1-based block indices for one `write_proc_input`. `_check`
+validates every option before anything is written; besides the frozen
+cases it also rejects unknown keys inside `proc_meta`.
+
+**Verdict for `tests/spec/test_xall_options.py`: 9 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 5
+`@PENDING` lines are removed. `test_project_components.py` still reports
+14 passed. Full suite: 1441 passed, 0 xfailed.
+
+**Unit test** (`tests/test_project.py`): an unknown `proc_meta` key raises
+before anything is written.

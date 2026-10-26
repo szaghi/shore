@@ -353,9 +353,32 @@ class Project:
         """Write the ``.adjacency.json`` sidecar."""
         self.execute(WriteAdjacency(str(path)))
 
-    def write_xall(self, directory: str | Path, *, grd: str = "mesh.grd", np: int = 1) -> None:
-        """Write the Xall files of every component, merged (see ``WriteXall``)."""
-        self.execute(WriteXall(str(directory), grd, np))
+    def write_xall(
+        self,
+        directory: str | Path,
+        *,
+        grd: str = "mesh.grd",
+        np: int = 1,
+        components: dict[str, dict[str, Any]] | None = None,
+        output_basename: str = "cc.",
+        multigrid_levels: tuple[int, int] = (4, 1),
+        boundary_layer_thickness: float = -0.1,
+        numerical_beach: float = -1.0,
+    ) -> None:
+        """Write the Xall files of every component, merged; per-component and
+        run-wide options as ``WriteXall`` (ADR 0016, 0017)."""
+        self.execute(
+            WriteXall(
+                str(directory),
+                grd,
+                np,
+                {name: dict(options) for name, options in (components or {}).items()},
+                output_basename,
+                tuple(multigrid_levels),  # type: ignore[arg-type]
+                boundary_layer_thickness,
+                numerical_beach,
+            )
+        )
 
     # -- execution, undo, redo -------------------------------------------------
 

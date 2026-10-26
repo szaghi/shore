@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
 ProgressFn = Callable[[float, str], None]
 
+
 #: Directory that relative input paths resolve against while a saved
 #: project's journal replays (ADR 0016); unset: the working directory.
 input_root: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
@@ -701,7 +702,7 @@ class WriteCcPar(Command):
 
 @dataclass(frozen=True)
 class WriteXall(Command):
-    """The Xall files of the whole run, every component (ADR 0016; output only).
+    """The Xall files of the whole run, every component (ADR 0016, 0017; output only).
 
     For each component with a mesh, in creation order, into
     ``directory/<component>/``: the ``.geo`` files (one per block), the
@@ -710,29 +711,49 @@ class WriteXall(Command):
     ``write_cc_par``. Then, in *directory*, *grd* and ``cc.par`` merged from
     them (``merge_grd``, ``merge_cc_par``) and one ``proc.input`` balanced
     over the merged ``.grd`` on *np* ranks.
+
+    The ``cc.par`` header options apply to every component (``merge_cc_par``
+    requires them to agree). *components* maps a component to its options:
+    ``free_face_bc`` / ``meta`` / ``boxes`` for its ``cc.par`` (as
+    ``write_cc_par``), ``body`` for all its blocks in ``proc.input``, and
+    ``proc_meta`` (block label -> ``proc`` / ``group`` / ``body``) per block.
+    All of it is checked before anything is written.
     """
 
     method: ClassVar[str] = "write_xall"
     positional: ClassVar[tuple[str, ...]] = ("directory",)
     mutates: ClassVar[bool] = False
+    component_keys: ClassVar[frozenset[str]] = frozenset(
+        {"free_face_bc", "meta", "boxes", "body", "proc_meta"}
+    )
 
     directory: str
     grd: str = "mesh.grd"
     np: int = 1
+    components: dict[str, dict[str, Any]] = field(default_factory=dict)
+    output_basename: str = "cc."
+    multigrid_levels: tuple[int, int] = (4, 1)
+    boundary_layer_thickness: float = -0.1
+    numerical_beach: float = -1.0
 
     def apply(self, project: Project, ctx: Context) -> None:
         from shore.io.cc_par import merge_cc_par
         from shore.io.grd import merge_grd
         from shore.io.proc_input import write_proc_input
 
-        names = [name for name, mesh in project.components.items() if mesh is not None]
+        meshes = project.components
+        self._check(meshes)
+        names = [name for name, mesh in meshes.items() if mesh is not None]
         if not names:
             raise ParameterError("write_xall: no component has a mesh.")
         out = Path(self.directory)
         grds, cc_pars = [], []
+        assignments: dict[str, dict[int, int]] = {"proc": {}, "group": {}, "body": {}}
+        offset = 0
         current = project.current_component
         try:
             for name in names:
+                options = self.components.get(name, {})
                 project.select_component(name)
                 d = out / name
                 WriteGeo(str(d / name), per_block=True).apply(project, ctx)
@@ -741,15 +762,67 @@ class WriteXall(Command):
                 geos = tuple(str(d / f"{name}_{b.label}.geo") for b in blocks)
                 WriteGrd(str(d / f"{name}.grd"), geos).apply(project, ctx)
                 WriteCcPar(
-                    str(d / f"{name}.adjacency.json"), str(d / "cc.par"), grd_filename=f"{name}.grd"
+                    str(d / f"{name}.adjacency.json"),
+                    str(d / "cc.par"),
+                    grd_filename=f"{name}.grd",
+                    output_basename=self.output_basename,
+                    free_face_bc=options.get("free_face_bc", WriteCcPar.free_face_bc),
+                    multigrid_levels=tuple(self.multigrid_levels),  # type: ignore[arg-type]
+                    boundary_layer_thickness=self.boundary_layer_thickness,
+                    numerical_beach=self.numerical_beach,
+                    meta=dict(options.get("meta", {})),
+                    boxes=tuple(options.get("boxes", ())),
                 ).apply(project, ctx)
+                for index, block in enumerate(blocks, start=offset + 1):
+                    if "body" in options:
+                        assignments["body"][index] = int(options["body"])
+                    for key, value in options.get("proc_meta", {}).get(block.label, {}).items():
+                        assignments[key][index] = int(value)
+                offset += len(blocks)
                 grds.append(d / f"{name}.grd")
                 cc_pars.append(d / "cc.par")
         finally:
             project.select_component(current)
         merge_grd(grds, out / self.grd)
         merge_cc_par(cc_pars, out / "cc.par", grd_filename=self.grd)
-        project.last_result = write_proc_input(out / self.grd, out / "proc.input", np=self.np)
+        project.last_result = write_proc_input(
+            out / self.grd,
+            out / "proc.input",
+            np=self.np,
+            proc_assignment=assignments["proc"] or None,
+            group_assignment=assignments["group"] or None,
+            body_assignment=assignments["body"] or None,
+        )
+
+    def _check(self, meshes: dict[str, Mesh | None]) -> None:
+        for name, options in self.components.items():
+            if meshes.get(name) is None:
+                raise ParameterError(
+                    f"write_xall: no component {name!r} with a mesh; "
+                    f"components: {[n for n, m in meshes.items() if m is not None]}."
+                )
+            if not isinstance(options, dict):
+                raise ParameterError(f"write_xall: options of {name!r} must be a mapping.")
+            unknown = set(options) - self.component_keys
+            if unknown:
+                raise ParameterError(
+                    f"write_xall: unknown option(s) {sorted(unknown)} for {name!r}; "
+                    f"known: {sorted(self.component_keys)}."
+                )
+            labels = {b.label for b in meshes[name].blocks}  # type: ignore[union-attr]
+            for key in ("meta", "proc_meta"):
+                missing = set(options.get(key, {})) - labels
+                if missing:
+                    raise ParameterError(
+                        f"write_xall: {key} of {name!r} names unknown block(s) {sorted(missing)}."
+                    )
+            for label, values in options.get("proc_meta", {}).items():
+                bad = set(values) - {"proc", "group", "body"}
+                if bad:
+                    raise ParameterError(
+                        f"write_xall: proc_meta of {name!r}.{label} has unknown "
+                        f"key(s) {sorted(bad)}."
+                    )
 
 
 @dataclass(frozen=True)

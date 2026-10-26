@@ -337,3 +337,10 @@ class TestComponentsAndInputs:
             assert resolve_input("/abs/a.stl") == "/abs/a.stl"
         finally:
             input_root.reset(token)
+
+    def test_write_xall_rejects_unknown_proc_meta_keys(self, sphere_stl, tmp_path):
+        p = _sphere_project(sphere_stl)
+        label = p.mesh.blocks[0].label
+        with pytest.raises(ParameterError, match="unknown key"):
+            p.write_xall(tmp_path / "run", components={"main": {"proc_meta": {label: {"rank": 1}}}})
+        assert not (tmp_path / "run").exists()
