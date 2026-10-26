@@ -1,6 +1,8 @@
 """FROZEN acceptance spec: intersection loop of two bodies, for collar grids (ADR 0009).
 
-Frozen 2026-10-26, before any implementation. Implementing work may not edit
+Frozen 2026-10-26, before any implementation; RE-FROZEN 2026-10-26 (user review,
+ADR 0009): case X7 freezes the kernel's guard for grazing (tangential)
+intersections as required behaviour. Implementing work may not edit
 this file, ``tests/spec/__init__.py``, ``tests/conftest.py``, the pytest
 configuration in ``pyproject.toml``, or ``src/shore/quality.py``. The ONE
 permitted edit is deleting an ``@PENDING`` line once that case passes (strict
@@ -9,8 +11,8 @@ holds the hashes, taken with ``@PENDING`` lines removed;
 ``scripts/check_spec.py`` checks them.
 
 Verdict for acceptance (main CI job): ``pytest tests/spec/test_intersection.py``
-reports 13 passed, 0 skipped, 0 xfailed. At freeze: 0 passed, 13 xfailed (the
-kernel module does not exist yet).
+reports 14 passed, 0 skipped, 0 xfailed. At the first freeze: 0 passed,
+13 xfailed (the kernel module did not exist yet); at re-freeze: 14 passed.
 
 Interface under test
 --------------------
@@ -45,8 +47,11 @@ Thresholds and references (prototype measurements, ADR 0009):
 - X5 each pair: one ``march_surface`` layer on A from the loop lies outside B,
   and on B from the reversed loop outside A.
 - X6 interface: determinism, errors.
+- X7 grazing: a sphere tangent to a plane raises ``ParameterError`` (no
+  tracing direction where the normals are parallel), within 5 s.
 
-Out of scope of this spec: tangential (grazing) intersections, curves that
+Out of scope of this spec: tracing tangential (grazing) intersections (X7
+only requires a clean rejection), curves that
 end on a boundary (open intersection curves), more than two bodies, spacing
 laws other than uniform, run time.
 """
@@ -282,3 +287,18 @@ class TestInterface:
     def test_x6_no_intersection(self):
         with pytest.raises(ParameterError):
             kernel()(Plane(), Sphere((0.0, 0.0, 5.0)), np.array([0.0, 0.0, 2.0]), N)
+
+
+# ---------------------------------------------------------------------------
+# X7: grazing intersections are rejected, not traced (re-freeze)
+# ---------------------------------------------------------------------------
+
+
+class TestGrazing:
+    def test_x7_tangent_bodies_raise(self):
+        import time
+
+        start = time.perf_counter()
+        with pytest.raises(ParameterError):
+            kernel()(Plane(), Sphere((0.0, 0.0, 1.0)), np.array([0.05, 0.0, 0.02]), N)
+        assert time.perf_counter() - start <= 5.0

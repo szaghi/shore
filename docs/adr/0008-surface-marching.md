@@ -142,3 +142,19 @@ test).
 The review questions above are still open, the 5 % bound on converging
 fronts first among them. Changing any answer is a re-freeze. Next for
 collars: the intersection curve between components and the collar block.
+
+## Review decisions and re-freeze (2026-10-26, user)
+
+1. **The 5 % bound on converging fronts is accepted**, as a documented
+   robustness trade-off. Collar thickness tolerates a few percent of Chimera
+   overlap.
+2. **Open-curve end constraints move to the collar-block spec**, together
+   with open intersection curves (ADR 0009, decision 3).
+3. **Re-freeze:** the M6 concave-corner floor rises from 5 deg to
+   **15 deg**. That is a real regression floor below the accepted 23.9 deg;
+   5 deg would let a near-degenerate corner pass.
+4. **Re-freeze:** the M8 work budget falls from 4 to **2** projected points
+   per node and layer. That leaves room for one extra normal query but rules
+   out iterative re-projection; the kernel uses 1.
+
+Verdict after re-freeze: 23 passed, 0 skipped, 0 xfailed.

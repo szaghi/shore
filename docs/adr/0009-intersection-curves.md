@@ -123,3 +123,20 @@ the traced points only to 1e-10, with a 2.7× longer step, brings that to
 
 The review questions above are still open. Next for collars: the collar
 block (two-sided surface grids extruded into a volume block).
+
+## Review decisions and re-freeze (2026-10-26, user)
+
+1. **Spacing laws along the loop move to the collar-block spec.** Where to
+   cluster depends on the block topology; the loop can be redistributed
+   along its arc length there.
+2. **Re-freeze:** new case **X7** requires a sphere tangent to a plane to
+   raise `ParameterError` within 5 s. The case discriminates: the
+   unguarded prototype silently returns a meaningless "loop". In the
+   kernel, the "no intersection near the seed" guard fires first, because
+   alternating projections converge too slowly at a tangent contact to
+   reach the on-curve tolerance. The parallel-normals guard covers
+   tangency met during tracing.
+3. **Open intersection curves move to the collar-block spec**, with the
+   marcher's end constraint (ADR 0008, decision 2).
+
+Verdict after re-freeze: 14 passed, 0 skipped, 0 xfailed.

@@ -1,6 +1,9 @@
 """FROZEN acceptance spec: hyperbolic surface marching, the collar-grid kernel (ADR 0008).
 
-Frozen 2026-10-26, before any implementation. Implementing work may not edit
+Frozen 2026-10-26, before any implementation; RE-FROZEN 2026-10-26 (user review,
+ADR 0008): the concave-corner floor is raised from 5 to 15 deg and the work
+budget lowered from 4 to 2 projected points per node and layer, both well
+above the accepted kernel's 23.9 deg and 1. Implementing work may not edit
 this file, ``tests/spec/__init__.py``, ``tests/conftest.py``, the pytest
 configuration in ``pyproject.toml``, or ``src/shore/quality.py``. The ONE
 permitted edit is deleting an ``@PENDING`` line once that case passes (strict
@@ -29,7 +32,7 @@ entity=BODY)`` returns the surface grid as an array ``(n, m + 1, 3)``:
   implementer's choice, not passed per case.
 - ``ParameterError`` for a malformed *curve* or *steps*, and for a curve
   farther than 1e-6 x the model diagonal from the surface.
-- At most 4 points projected per node per layer (no iterative re-projection).
+- At most 2 points projected per node per layer (no iterative re-projection).
 
 The surfaces are exact analytic ``Geometry`` implementations defined here
 (numpy only). Every case marches the same schedule: 25 layers,
@@ -47,7 +50,8 @@ each node stepped along ``n x t`` and projected, computed in the cases):
 - M5 helix on a cylinder (no symmetry): k-lines orthogonal to the layers,
   |90 deg - angle| mean <= 0.5, max <= 1 (prototype 0.02 / 0.04); 0 folded.
 - M6 concave L on a plane (fronts collide at 90 deg): pure normal folds
-  (prototype 2 cells); 0 folded, min corner angle >= 5 deg (prototype 17).
+  (prototype 2 cells); 0 folded, min corner angle >= 15 deg (prototype 17,
+  kernel 23.9).
 - M7 convex L on a plane (fronts fan out): 0 folded, min corner angle
   >= 30 deg (prototype 45).
 - M8 every case: shape, row 0 = curve, nodes on the surface (<= 1e-12 diag),
@@ -299,7 +303,7 @@ class TestQuality:
         ref = pure_normal(surface, curve)
         assert (corner_sines(ref, surface.normal(ref)) <= 0).sum() >= 1  # the case discriminates
         assert (corner_sines(g, surface.normal(g)) <= 0).sum() == 0
-        assert min_angle_deg(g, surface) >= 5.0
+        assert min_angle_deg(g, surface) >= 15.0
 
     def test_m7_convex_corner(self):
         surface, _, g = run("convex_l_plane")
@@ -325,7 +329,7 @@ class TestInvariants:
         t = np.gradient(curve, axis=0)
         side = np.einsum("ij,ij->i", g[:, 1] - g[:, 0], np.cross(surface.normal(curve), t))
         assert (side > 0).all()
-        assert surface.work <= 4 * g.shape[0] * g.shape[1]
+        assert surface.work <= 2 * g.shape[0] * g.shape[1]
 
 
 # ---------------------------------------------------------------------------
