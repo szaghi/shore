@@ -22,6 +22,8 @@ jobs:
         run: ruff check src/ tests/
       - name: Format check
         run: ruff format --check src/ tests/
+      - name: Frozen acceptance specs unmodified (ADR 0005)
+        run: python scripts/check_spec.py
 
   test:
     runs-on: ubuntu-latest

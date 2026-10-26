@@ -131,3 +131,62 @@ grid bit-identical.
 Regression tests: `tests/test_smoothing.py`. The limiter treats the
 symptom inside the algebraic scheme. The hyperbolic scheme of this ADR
 remains the structural answer for near-wall orthogonality.
+
+## Acceptance spec (frozen 2026-10-26, before implementation)
+
+`tests/spec/test_hyperbolic_marching.py` is the acceptance spec for the
+hyperbolic scheme. It was written, and its helpers validated, before any
+implementation.
+
+**Verdict.** `pytest tests/spec` must report **13 passed, 0 skipped,
+0 xfailed**. Until then the module is `xfail(strict=True)`. Deleting that
+`pytestmark` line is the only permitted edit, and strict mode turns a
+passing-but-still-marked suite into a failure.
+
+**Frozen files.** Implementing work may not edit:
+- the spec file and `tests/spec/__init__.py`;
+- `tests/conftest.py`;
+- the pytest configuration in `pyproject.toml`;
+- `src/shore/quality.py`, which defines the metrics the thresholds are
+  written in.
+
+`tests/spec/SHA256SUMS` holds their hashes. The spec file has two
+accepted hashes: frozen, and with the `pytestmark` line removed.
+`scripts/check_spec.py` verifies the manifest and runs in CI's lint job.
+
+**Cases and thresholds.** The spec's docstring carries the full table.
+Every threshold sits next to the algebraic (limited) reference measured on
+the same case with `shore.quality`:
+
+| Case | Required |
+|---|---|
+| H1 coarse sphere, `ds` 1e-3 | no folds; wall orthogonality mean <= 3 deg, max <= 10 deg (algebraic 12.15 / 18.4); first cell 0.95–1.05 `ds` (algebraic down to 0.751); outer-layer distance 0.90–1.10 of the schedule; seams to round-off; bit-identical rerun |
+| H2 60x60x10 regression grid | not worse than algebraic: mean <= 2.0, max <= 5.9 deg, min scaled Jacobian >= 0.70, thickness 0.95–1.05 |
+| H3 plus prism, 4 concave 90-deg edges, cubed-sphere and O-grid | completes nk = 15 with 0 folded cells. Algebraic fails at k = 13 (legacy at k = 1); a case keeps checking that it still does |
+| H4 3-block C-grid NACA 0012 | no folds; wall orthogonality mean <= 1.0, max <= 20 deg (TE); seams to round-off |
+| H5 interface | `march_scheme` (default `"algebraic"`, unknown values raise), journaled by `Project.march`, CLI `--march-scheme` |
+
+**Harness validation (T1, before freezing):**
+- The helpers reproduce the algebraic baselines exactly on H1.
+- The seam check passes on algebraic cubed-sphere and C-grid meshes. It
+  detects a 1e-9 corruption on the C-grid wake cut, the one seam that is
+  not a shared numpy view.
+
+Validating the harness changed the spec once. The seam requirement was
+first bitwise, but the existing algebraic C-grid wake cut already differs
+at 1e-17. It is now "to round-off" (1e-12 × model diagonal).
+
+**For review (your call before implementation starts):**
+1. Is H1's max <= 10 deg right at the cubed-sphere 3-block corners, where
+   the surface normal is ill-defined? Unsmoothed algebraic reaches 7.7 deg
+   there.
+2. H2 requires "no worse than algebraic" on a grid where algebraic is
+   already good. Should hyperbolic be required to be *better* there?
+3. H3 accepts outer-layer distances of 0.5–1.5 × the schedule. Fronts merge
+   at concave edges, so the distance there is genuinely shorter. Is the
+   band too generous?
+4. H4 allows 20 deg at the trailing edge, a sharp edge with no unique
+   normal. Should the TE columns be excluded and the rest held tighter?
+
+Out of scope (stated in the spec): blunt-TE C-grids, CH/OH channel blocks
+(they do not march), non-star-shaped CAD bodies, finer grids, run time.

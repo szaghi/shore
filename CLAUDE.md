@@ -188,6 +188,7 @@ only (centroid ray-cast, like `cubed_sphere`).
 | `mesh/association.py` | Block-to-geometry association (ADR 0003): `Association` (geometry key, `EntityKind`, `EntityKey` fingerprints; `Association.body()`), `AssociationResolver` (re-finds keys via `geometry.keys.match_keys`, projects nodes; `exact=` tier), `snap_block` (face → edge → vertex projection, vertex wins), `associate_wall`. `Vertex`/`Edge`/`Face.association`; `body_projected` is a read-only derived property. `Mesh(body=...)` associates every WALL k_lo (face + 4 edges + 4 corners) with the body; `Mesh.snap(exact=)`. `split_blocks` propagates associations (lowest-dimensional source entity); `.adjacency.json` v3 stores them (deduplicated table), v2 still read. Fingerprints: `geometry/keys.py` (`EntityKey`, bbox-normalised; `match_keys` = per-(kind,type) `linear_sum_assignment`, statuses same/changed/lost). |
 | `pipeline.py` | Topology construction shared by `shore mesh` and the command layer: `k_spacing` (wall-normal `Spacing1D`), `make_topology(name, options)` (constructor args for `ch`/`oh`), `build_topology(body, name, nk=, spacing=, options=, **params)` (params checked against the named `build` parameters; their `**kwargs` would hide typos). |
 | `project/` | Command layer (ADR 0004). `commands.py`: `Command` (frozen dataclass, `apply` → `Undo`, `to_source` = journal line); state commands `LoadGeometry`, `BuildTopology`, `March` (progress + `CancelToken`, restores on failure/cancel; refuses non-marchable meshes), `Snap`, `BuildPrimitive`, `BuildTipCap`, `LoadBlocks`, `Split`; output-only (never undone) `WriteGeo` (naming: primitive rule / `per_block` / `shore mesh` rule), `WriteAdjacency`, `WriteGrd` (packs from `.geo` files, like `shore grd`), `WriteCcPar`, `WriteProcInput`; `UndoCache` (on-disk `.npz` snapshots). CLI `mesh`, `primitive *`, `cap-tip`, `split`, `grd`, `cc-par`, `proc-input` run over a `Project` (`--journal`); `*-merge`, `balance`, `boxes-*`, generators and inspection stay file tools. `project.py`: `Project` (state + history, one method per command, `undo`/`redo`, `journal()`/`save_journal`, `save(dir)` = `project.toml` + `journal.py` + `adjacency.json` + `grids/*.npz`, `load(dir)` = replay + bit-identical grid check), `run_journal`. `shore mesh` runs over a `Project` (`--journal` writes it); `shore run JOURNAL [--save-project]` replays. |
+| `quality.py` | Grid-quality metrics per block node array: `scaled_jacobian` (min corner, Verdict definition), `k_orthogonality_deg` (k-segment vs layer normal), `k_spacing`, `k_growth`, `aspect_ratio`, `summary(blocks)`. **Frozen**: the acceptance specs are written in these metrics. |
 | `surface/io.py` | `load_stl` — loads an STL file into a `trimesh.Trimesh`; validates it is a single mesh; warns on non-watertight. |
 | `surface/projector.py` | `Projector` — ray-cast helper around `trimesh.RayMeshIntersector` with cached BVH; `Projector.project(dirs)` returns hit positions + per-ray status. Used by `Body` (lazy) and by `build_cap_k0` / `build_equator` directly. |
 | `surface/anchor.py` | `resolve_anchor(mesh)` — chooses an anchor inside the body for ray casting (centroid-based, with star-shaped checks). |
@@ -223,6 +224,17 @@ only (centroid ray-cast, like `cubed_sphere`).
 | `balance.py` | Iterative split *planner* for MPI load balancing. `plan_balance(grd, np, tolerance, max_iterations, adjacency_path)` reads `.grd` cell counts (+ optional adjacency seam graph), greedily schedules topology-safe cuts on the heaviest block (k-axis preferred since k-faces are WALL/FREE, never SHARED; falls back to j/i with paired co-splits), returns a `BalancePlan` that serialises to a `shore split` `split.toml`. Plans only — never mutates files. Backs `shore balance`. |
 | `boxes.py` | `boxes_from_stl(stl, block, max_outward_gap, method)` — generate chimera hole-cutting marker boxes from a body STL. `voxel-fill` (default, watertight interior cover; resolution from the gap budget), `aabb` / `obb` (single best-effort box with an outward-gap post-check + warning). Backs `shore boxes-from-stl`. |
 | `vis.py` | PyVista interactive visualisation: `view_geo`, `view_surface`, `save_screenshot`. Optional dep (`shore[vis]`); Jupyter backend via `jupyter=True`. |
+
+### Frozen acceptance specs (phase 4 discipline)
+
+`tests/spec/` holds acceptance specs written and validated **before** an
+algorithm is implemented (ADR 0005; the `ai-research-verification`
+discipline). While implementing, do **not** edit `tests/spec/**`,
+`tests/conftest.py`, the pytest config or `src/shore/quality.py`. The only
+permitted edit is deleting a spec module's `pytestmark` xfail line once it
+passes. `python scripts/check_spec.py` verifies the hashes in
+`tests/spec/SHA256SUMS` (CI lint job). Report the verdict as counts
+(e.g. "13 passed, 0 skipped, 0 xfailed"), not "it passes".
 
 ### Test Suite
 
