@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
+from shore.exceptions import ParameterError
 from shore.geometry import EntityKind, EntityRef, Projection
 from shore.surface.tfi import EllipticParams, _control, _Metric, _tfi, surface_grid
 
@@ -79,3 +81,38 @@ class TestWork:
             surface_grid(sphere, FACE, grid, params=EllipticParams(max_iterations=iters))
             work.append(sphere.work)
         assert work[0] == work[1]
+
+
+class PeriodicCylinder(Sphere):
+    """Unit cylinder about z, u = atan2 in (-pi, pi]: its seam is at u = +-pi."""
+
+    bounds = np.array([[-1.0, -1.0, 0.0], [1.0, 1.0, 1.0]])
+
+    def evaluate(self, entity, params):
+        self.work += params[..., 0].size
+        return np.stack([np.cos(params[..., 0]), np.sin(params[..., 0]), params[..., 1]], -1)
+
+    def project(self, points, entity=None, *, exact=False):
+        u = np.arctan2(points[..., 1], points[..., 0])
+        foot = np.stack([np.cos(u), np.sin(u), points[..., 2]], -1)
+        n = foot * [1.0, 1.0, 0.0]
+        return Projection(
+            foot, np.linalg.norm(points - foot, axis=-1), n, np.stack([u, points[..., 2]], -1)
+        )
+
+
+class TestOutOfScopeFaces:
+    def test_seam_crossing_rejected(self):
+        u, z = np.meshgrid(np.linspace(2.8, 3.5, 9), np.linspace(0.0, 1.0, 7), indexing="ij")
+        grid = np.stack([np.cos(u), np.sin(u), z], -1)  # straddles u = pi
+        with pytest.raises(ParameterError, match="seam"):
+            surface_grid(PeriodicCylinder(), FACE, grid)
+        ok = np.stack([np.cos(u - 1.0), np.sin(u - 1.0), z], -1)  # the same patch off the seam
+        surface_grid(PeriodicCylinder(), FACE, ok)
+
+    def test_collapsed_edge_rejected(self):
+        u, v = np.meshgrid(np.linspace(0.2, 1.2, 9), np.linspace(0.1, 1.0, 7), indexing="ij")
+        grid = Sphere().evaluate(FACE, np.stack([u, v], -1))
+        grid[:, -1] = grid[0, -1]  # the j_hi edge collapsed to one point, as at a pole
+        with pytest.raises(ParameterError, match="collapsed"):
+            surface_grid(Sphere(), FACE, grid)

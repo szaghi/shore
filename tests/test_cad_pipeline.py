@@ -165,3 +165,22 @@ class TestCli:
             assert a.shape == b.shape
             # same polygonal wing in both formats: agreement to .geo print precision
             np.testing.assert_allclose(b, a, atol=1e-8)
+
+
+class TestSurfaceGridSeam:
+    def test_annulus_face_across_the_step_seam_is_rejected(self, tmp_path):
+        from shore.exceptions import ParameterError
+        from shore.geometry import BODY
+        from shore.project import Project
+
+        bd.export_step(bd.Cylinder(radius=0.5, height=4.0), str(tmp_path / "cyl.step"))
+        p = Project()
+        p.load_geometry(tmp_path / "cyl.step")
+        p.build_primitive(
+            "annulus", r_in=0.5, r_out=1.5, z0=-1.0, z1=1.0, ni=5, nj=13, nk=9,
+            theta_start=-0.6, theta_end=0.6,
+        )  # fmt: skip
+        k = int(p.body.geometry.project(np.array([0.5, 0.0, 0.0]), BODY).entity_index)
+        with pytest.raises(ParameterError, match="seam"):
+            p.surface_grid(p.mesh.blocks[0].label, "i_lo", surface=k)
+        assert len(p.history) == 2  # rejected before any snapshot or history entry

@@ -199,3 +199,31 @@ Measured on the CAD case (T1):
 
 The review questions above are still open; changing any answer is a
 re-freeze.
+
+## Review decisions (2026-10-26, user)
+
+1. **Seam-crossing and singular-point faces stay out of scope** for v1, and
+   are rejected explicitly (implementation follow-up, no spec change).
+2. **Clustered boundaries on strongly concave boundaries stay out of
+   scope.** The common case, arc-length boundary spacing, does not trigger
+   the Thomas–Middlecoff fold.
+3. **S6 (sphere) stays validity-only.** No principled quality target exists
+   for Winslow on a non-developable patch; a bound would only freeze
+   today's 68 deg.
+4. **The work budget stays at 10 points per node.** It already excludes
+   per-sweep evaluation.
+
+No re-freeze.
+
+Implemented for decision 1: `surface_grid`, and with it `FillFace`, walks
+the boundary once and rejects two kinds of face:
+- **a periodic seam:** a parameter step per unit length more than 50 times
+  the loop's median, because a seam makes (u, v) jump by a whole period;
+- **a singular point:** coincident consecutive boundary nodes, as at a pole
+  or apex.
+
+On the spec's faces the largest ratio is 2.76 (sphere patch), 18 times
+below the threshold. Tests: an analytic periodic cylinder patch across
+`u = π`, a sphere patch with a collapsed edge, and a STEP-cylinder annulus
+sector across OCCT's seam (`p.surface_grid` raises before any history
+entry).

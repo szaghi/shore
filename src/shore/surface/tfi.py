@@ -132,6 +132,7 @@ def surface_grid(
 
     uv = np.zeros((ni, nj, 2))
     uv[rows] = proj.params
+    _check_parameter_continuity(b, uv, tol)
     uv = _tfi(uv)
     if smoothing == "elliptic":
         uv = _winslow(geometry, surface, b, uv, params)
@@ -144,6 +145,45 @@ def surface_grid(
 # ---------------------------------------------------------------------------
 # TFI
 # ---------------------------------------------------------------------------
+
+
+def _boundary_loop(ni: int, nj: int) -> tuple[np.ndarray, np.ndarray]:
+    """(i, j) indices of the boundary nodes, once around the face."""
+    i = np.r_[
+        np.arange(ni), np.full(nj - 1, ni - 1), np.arange(ni - 2, -1, -1), np.zeros(nj - 2, int)
+    ]
+    j = np.r_[
+        np.zeros(ni, int), np.arange(1, nj), np.full(ni - 1, nj - 1), np.arange(nj - 2, 0, -1)
+    ]
+    return i, j
+
+
+SEAM_RATIO = 50.0  # a parameter step this many times the median (per unit length) is a seam
+
+
+def _check_parameter_continuity(boundary: np.ndarray, uv: np.ndarray, tol: float) -> None:
+    """Reject faces whose boundary crosses a periodic seam or collapses at a pole.
+
+    Around the boundary, the parameter step per unit length follows the
+    surface metric, which varies smoothly (by a few times at most on the
+    faces in scope); a periodic seam makes (u, v) jump by a whole period
+    across one short physical step. A singular point (pole, apex) collapses
+    a boundary edge to zero length. Both are out of scope (ADR 0007).
+    """
+    i, j = _boundary_loop(*uv.shape[:2])
+    p, q = boundary[i, j], uv[i, j]
+    dp = np.linalg.norm(np.roll(p, -1, axis=0) - p, axis=-1)
+    if np.any(dp <= tol):
+        raise ParameterError(
+            "the face boundary has coincident consecutive nodes (a collapsed edge, e.g. "
+            "at a pole or apex): singular faces are out of scope (ADR 0007)."
+        )
+    ratio = np.linalg.norm(np.roll(q, -1, axis=0) - q, axis=-1) / dp
+    if ratio.max() > SEAM_RATIO * np.median(ratio):
+        raise ParameterError(
+            "the face boundary crosses a periodic seam of the surface parametrisation: "
+            "split the face at the seam (seam-crossing faces are out of scope, ADR 0007)."
+        )
 
 
 def _boundary_mask(ni: int, nj: int) -> np.ndarray:
