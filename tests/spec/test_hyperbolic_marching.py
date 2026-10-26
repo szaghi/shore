@@ -223,7 +223,6 @@ class TestH2RegressionGrid:
         m.march(ds=0.02, growth=1.1, **HYP)
         return m
 
-    @PENDING
     def test_orthogonality_and_validity(self, mesh):
         ortho = wall_orthogonality(mesh)
         assert ortho.mean() <= 2.0

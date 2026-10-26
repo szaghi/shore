@@ -193,8 +193,12 @@ def hyperbolic_layer(
     eps_i = params.eps_implicit * rho * boost
     eps_e = params.eps_explicit * rho * rho * boost  # tilt ~ eps * rho * |lap|/h
 
-    # explicit tangential dissipation of the current layer
-    lap = _laplacian(layer, periodic, ghost)
+    # explicit tangential dissipation of the current layer. Not across a seam:
+    # grid lines kink where blocks meet (on the cubed sphere, the great-circle
+    # grid lines bend at every cube edge), a topological feature that the
+    # Laplacian would read as roughness and straighten by sliding the seam
+    # nodes sideways, tilting the k-lines off the wall normal (7-8 deg)
+    lap = _laplacian(layer, periodic, {})
     lap_t = lap - np.einsum("...j,...j->...", lap, nhat)[..., None] * nhat
     rhs_field = rz0 + eps_e[..., None] * lap_t
 

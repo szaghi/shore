@@ -285,3 +285,53 @@ Harness validation (T1): the helper reproduces the pure-normal reference
 - thickness (0.937 .. 1.075 vs 0.95 .. 1.05).
 
 Acceptance remains 13 passed, 0 skipped, 0 xfailed.
+
+## H2 progress (2026-10-26)
+
+**Wall orthogonality and validity: passed.** The verdict is now 12 passed,
+1 xfailed (T1: rerun of `pytest tests/spec`; full suite 1211 passed,
+1 xfailed).
+
+All three extremes on the H2 grid sat on block-edge rows and at the 8 cube
+corners: orthogonality max 8.09 deg, scaled Jacobian 0.674 and thickness
+max 1.075. In the interior the values were 2.9 deg and 0.83. The common
+cause is explicit tangential dissipation applied across seams.
+
+- Grid lines kink where blocks meet. On the cubed sphere the great-circle
+  grid lines of each cube face bend at the cube edge: the tangential second
+  difference across a sub-sub seam is 2-3 x step, against 0.1-0.5 one
+  column in.
+- The Laplacian reads that kink as roughness and slides the seam nodes
+  sideways by about 0.2 step per layer. This tilts the seam k-lines by
+  7-8 deg near the poles, falling to about 1 deg at the equator.
+- Isolation: switching off explicit dissipation alone drops the tilt to
+  0.9 deg. Volume smoothing and the convergence gain have no effect on it.
+
+Fix: the explicit term uses no ghost rows, so it does not act across
+seams. Implicit dissipation and the normals still couple through the
+seams.
+
+| Metric | Before | After |
+|---|---|---|
+| Seam tilt | 7-8 deg | 0.9-1.6 deg |
+| Orthogonality mean / max | 1.39 / 8.09 deg | 0.97 / 2.20 deg |
+| Minimum scaled Jacobian | 0.674 | 0.741 |
+| Thickness max | 1.075 | 1.009 |
+
+H3 still passes.
+
+**Thickness: still pending (minimum 0.937).** This corrects item 2 above:
+the floor *is* scheme-specific, and both causes have been identified.
+
+- **Algebraic** (0.932): limited Laplacian smoothing pulls each step back
+  by 2-3 %. With smoothing off the band is 0.997-1.000.
+- **Hyperbolic** (0.937): the volume target is `step x area` of the inner
+  face, but the linearised volume equation holds over the outer face. On a
+  convex wall each layer therefore marches about
+  `step * (1 - 2 * step * kappa)`: 0.960 at k = 0 and about 0.935 at k = 8,
+  as measured.
+
+A volume target consistent with the outer face makes the interior steps
+exact to 1e-4. But the same shortening damps convex kinks: over the plus
+prism the excess reaches 1-3 x dV and H3 folds. The open fix is to correct
+only resolved curvature (bounded excess); it has not been validated yet.
