@@ -21,6 +21,7 @@ by a later record that supersedes it.
 | [0011](./0011-open-intersection-curves.md) | Open intersection curves ending on a symmetry plane | Accepted |
 | [0012](./0012-march-ends-on-a-plane.md) | Surface marching with ends on a symmetry plane | Accepted |
 | [0013](./0013-half-collar-block.md) | The half-collar block on a symmetry plane | Accepted |
+| [0014](./0014-crease-aware-stl-normals.md) | Crease-aware STL surface normals | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
