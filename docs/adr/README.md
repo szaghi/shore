@@ -18,6 +18,7 @@ by a later record that supersedes it.
 | [0008](./0008-surface-marching.md) | Hyperbolic surface marching: the collar-grid kernel | Proposed |
 | [0009](./0009-intersection-curves.md) | Intersection loops of two bodies, for collar grids | Proposed |
 | [0010](./0010-collar-block.md) | The collar block of two intersecting bodies | Accepted |
+| [0011](./0011-open-intersection-curves.md) | Open intersection curves ending on a symmetry plane | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
