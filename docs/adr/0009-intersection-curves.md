@@ -76,3 +76,50 @@ and the error cases discriminate.
    this case and raise?
 3. Open intersection curves, which end on a boundary such as a symmetry
    plane, are out of scope. Wing–body collars on half models need them.
+
+## Acceptance (2026-10-26): intersection-loop spec met
+
+`src/shore/surface/intersect.py` implements the decision. Its settings
+(`TraceParams`, lengths relative to the model diagonal):
+- predictor step 4e-3;
+- traced points converged to 1e-10;
+- output nodes polished to 1e-13, all nodes at once.
+
+It also checks what the prototype did not:
+- the arguments (integer `n >= 3`, a finite 3-vector seed);
+- that the seed lands on both bodies ("no intersection near the seed");
+- a trace that does not close;
+- parallel normals, where there is no tracing direction (the grazing case
+  is out of scope, but it fails cleanly).
+
+**Verdict for `tests/spec/test_intersection.py`: 13 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 6
+`@PENDING` lines are removed; the parametrised cases share them. Full
+suite: 1285 passed, 0 xfailed.
+
+Measured (T1):
+
+| Pair | On both bodies | Chords max/min | Length vs exact | Branch, start |
+|---|---|---|---|---|
+| plane × cylinder | 0 | 1.00004 | -0.040 % | ok, node 0 |
+| tilted plane × cylinder | 1.5e-13 | 1.00026 | -0.041 % | ok, node 0 |
+| cylinder × cylinder | 5.9e-14 | 1.00153 | -0.044 % | ok, node 0 |
+| sphere × offset cylinder | 6.7e-13 | 1.00151 | -0.040 % | ok, node 0 |
+| required | <= 6.9e-9 | <= 1.01 | within 0.5 % | |
+
+The length shortfall is the inscribed 64-gon's own deficit, (π/64)²/6 ≈
+0.040 %, not a tracing error.
+
+**Performance.** Tracing with the output tolerance cost 6.3 s per loop on
+two STL meshes, from about 12,600 single-point trimesh queries. Converging
+the traced points only to 1e-10, with a 2.7× longer step, brings that to
+1.8 s. The cost is chord uniformity, 1.0002 → 1.0015.
+
+**Unit tests** (`tests/test_intersection.py`):
+- a faceted icosphere pierced by a faceted cylinder: the loop lies on both
+  meshes (< 1e-8), only the seed's (upper) loop is traced, and the chords
+  are even to 5 %;
+- the collar half marched on the sphere leaves the cylinder.
+
+The review questions above are still open. Next for collars: the collar
+block (two-sided surface grids extruded into a volume block).

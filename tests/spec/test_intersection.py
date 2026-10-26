@@ -225,7 +225,6 @@ def loop_of(name: str) -> tuple[AnalyticBody, AnalyticBody, np.ndarray, np.ndarr
 
 
 class TestLoop:
-    @PENDING
     @pytest.mark.parametrize("name", list(PAIRS))
     def test_x1_x4_loop(self, name):
         a, b, seed, loop = loop_of(name)
@@ -248,7 +247,6 @@ class TestLoop:
 
 
 class TestCollarSides:
-    @PENDING
     @pytest.mark.parametrize("name", list(PAIRS))
     def test_x5_marching_leaves_the_other_body(self, name):
         from shore.surface.march import march_surface
@@ -267,24 +265,20 @@ class TestCollarSides:
 
 
 class TestInterface:
-    @PENDING
     def test_x6_deterministic(self):
         a, b, seed = Sphere(), CylinderZ(0.5, 0.3), np.array([0.8, 0.0, 0.6])
         first = kernel()(a, b, seed, N)
         np.testing.assert_array_equal(first, kernel()(a, b, seed, N, entity_a=BODY, entity_b=BODY))
 
-    @PENDING
     def test_x6_too_few_nodes(self):
         with pytest.raises(ParameterError):
             kernel()(Plane(), CylinderZ(), np.array([1.1, 0.1, 0.05]), 2)
 
-    @PENDING
     @pytest.mark.parametrize("seed", [np.zeros(2), np.zeros((2, 3))])
     def test_x6_bad_seed(self, seed):
         with pytest.raises(ParameterError):
             kernel()(Plane(), CylinderZ(), seed, N)
 
-    @PENDING
     def test_x6_no_intersection(self):
         with pytest.raises(ParameterError):
             kernel()(Plane(), Sphere((0.0, 0.0, 5.0)), np.array([0.0, 0.0, 2.0]), N)
