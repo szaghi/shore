@@ -1,0 +1,726 @@
+{
+  "host": "adam",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.6",
+  "adapter": "llvmpipe (LLVM 20.1.2, 256 bits) (CPU) via Vulkan",
+  "versions": {
+    "pygfx": "0.17.0"
+  },
+  "frames": {
+    "n_nodes": 9860780,
+    "n_blocks": 20,
+    "surface_nodes": 748920,
+    "build_s": 0.417,
+    "upload_first_frame_s": 0.929,
+    "frame_ms_mean": 163.14,
+    "frame_ms_p95": 172.01,
+    "frame_ms_max": 186.14,
+    "note": "offscreen draw() includes GPU->CPU readback: upper bound"
+  },
+  "precision": {
+    "ds_wall": 1e-06,
+    "offset": 1000.0,
+    "modes": {
+      "absolute": {
+        "all_ok": false,
+        "picks": [
+          {
+            "k": 0,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                0
+              ]
+            ],
+            "got": null,
+            "centre_err": null,
+            "ok": false,
+            "pick_ms": null
+          },
+          {
+            "k": 1,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                1
+              ]
+            ],
+            "got": [
+              "blk_1_0",
+              "k_lo",
+              [
+                20,
+                11,
+                0
+              ]
+            ],
+            "centre_err": 0.020783613645154894,
+            "ok": false,
+            "pick_ms": 0.48
+          },
+          {
+            "k": 2,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                2
+              ]
+            ],
+            "got": null,
+            "centre_err": null,
+            "ok": false,
+            "pick_ms": null
+          },
+          {
+            "k": 5,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                5
+              ]
+            ],
+            "got": [
+              "blk_1_1",
+              "k_hi",
+              [
+                2,
+                19,
+                20
+              ]
+            ],
+            "centre_err": 2.8249008291754025,
+            "ok": false,
+            "pick_ms": 0.42
+          }
+        ]
+      },
+      "block": {
+        "all_ok": false,
+        "picks": [
+          {
+            "k": 0,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                0
+              ]
+            ],
+            "got": null,
+            "centre_err": null,
+            "ok": false,
+            "pick_ms": null
+          },
+          {
+            "k": 1,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                1
+              ]
+            ],
+            "got": [
+              "blk_1_0",
+              "k_lo",
+              [
+                20,
+                11,
+                0
+              ]
+            ],
+            "centre_err": 0.020783613645154894,
+            "ok": false,
+            "pick_ms": 0.38
+          },
+          {
+            "k": 2,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                2
+              ]
+            ],
+            "got": null,
+            "centre_err": null,
+            "ok": false,
+            "pick_ms": null
+          },
+          {
+            "k": 5,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                5
+              ]
+            ],
+            "got": [
+              "blk_1_1",
+              "k_hi",
+              [
+                2,
+                19,
+                20
+              ]
+            ],
+            "centre_err": 2.8249008291754025,
+            "ok": false,
+            "pick_ms": 0.42
+          }
+        ]
+      },
+      "floating": {
+        "all_ok": true,
+        "picks": [
+          {
+            "k": 0,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                0
+              ]
+            ],
+            "got": [
+              "blk_1_0",
+              "i_hi",
+              [
+                20,
+                11,
+                0
+              ]
+            ],
+            "centre_err": 0.0,
+            "ok": true,
+            "pick_ms": 0.45
+          },
+          {
+            "k": 1,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                1
+              ]
+            ],
+            "got": [
+              "blk_1_0",
+              "i_hi",
+              [
+                20,
+                11,
+                1
+              ]
+            ],
+            "centre_err": 0.0,
+            "ok": true,
+            "pick_ms": 0.39
+          },
+          {
+            "k": 2,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                2
+              ]
+            ],
+            "got": [
+              "blk_1_0",
+              "i_hi",
+              [
+                20,
+                11,
+                2
+              ]
+            ],
+            "centre_err": 0.0,
+            "ok": true,
+            "pick_ms": 0.45
+          },
+          {
+            "k": 5,
+            "expected": [
+              "blk_2_0",
+              "i_lo",
+              [
+                0,
+                11,
+                5
+              ]
+            ],
+            "got": [
+              "blk_1_0",
+              "i_hi",
+              [
+                20,
+                11,
+                5
+              ]
+            ],
+            "centre_err": 0.0,
+            "ok": true,
+            "pick_ms": 0.35
+          }
+        ]
+      }
+    }
+  },
+  "rebase_policy": [
+    {
+      "rebase_factor": 100.0,
+      "picks_ok": 3,
+      "picks": 3,
+      "rebases": 3,
+      "last_rebase_ms": 0.57
+    },
+    {
+      "rebase_factor": Infinity,
+      "picks_ok": 0,
+      "picks": 3,
+      "rebases": 0,
+      "last_rebase_ms": 0.41
+    }
+  ],
+  "drift_tolerance": [
+    {
+      "drift_views": 100.0,
+      "predicted_px": 0.00858306884765625,
+      "picks_ok": 3
+    },
+    {
+      "drift_views": 1000.0,
+      "predicted_px": 0.0858306884765625,
+      "picks_ok": 3
+    },
+    {
+      "drift_views": 10000.0,
+      "predicted_px": 0.858306884765625,
+      "picks_ok": 3
+    },
+    {
+      "drift_views": 100000.0,
+      "predicted_px": 8.58306884765625,
+      "picks_ok": 2
+    },
+    {
+      "drift_views": 1000000.0,
+      "predicted_px": 85.8306884765625,
+      "picks_ok": 0
+    }
+  ],
+  "extent_sweep": [
+    {
+      "mode": "floating",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.8499999999999997e-07,
+      "ds_over_extent": 9.988891130263537e-08,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 3.970780867761831,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.028,
+      "draw_ms_median": 41.2,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.8499999999999997e-07,
+      "ds_over_extent": 9.988891130263537e-08,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 3.970780867761831,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 200,
+      "tiles_capped": false,
+      "setup_s": 0.116,
+      "draw_ms_median": 48.1,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.8499999999999997e-07,
+      "ds_over_extent": 9.988891130263537e-08,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 3.970780867761831,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.028,
+      "draw_ms_median": 40.7,
+      "rebase_ms_median": 0.51
+    },
+    {
+      "mode": "floating",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.85e-08,
+      "ds_over_extent": 9.988891130263539e-09,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.4018998782937511,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.027,
+      "draw_ms_median": 44.0,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.85e-08,
+      "ds_over_extent": 9.988891130263539e-09,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.4018998782937511,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 1050,
+      "tiles_capped": false,
+      "setup_s": 0.594,
+      "draw_ms_median": 77.7,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.85e-08,
+      "ds_over_extent": 9.988891130263539e-09,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.4018998782937511,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.031,
+      "draw_ms_median": 42.6,
+      "rebase_ms_median": 0.51
+    },
+    {
+      "mode": "floating",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.8500000000000003e-09,
+      "ds_over_extent": 9.988891130263538e-10,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.04057910175109878,
+      "picks_ok": 10,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.029,
+      "draw_ms_median": 40.9,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.8500000000000003e-09,
+      "ds_over_extent": 9.988891130263538e-10,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.04057910175109878,
+      "picks_ok": 14,
+      "picks": 18,
+      "meshes": 4852,
+      "tiles_capped": false,
+      "setup_s": 2.762,
+      "draw_ms_median": 203.6,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.8500000000000003e-09,
+      "ds_over_extent": 9.988891130263538e-10,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.04057910175109878,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.029,
+      "draw_ms_median": 44.6,
+      "rebase_ms_median": 0.55
+    },
+    {
+      "mode": "floating",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.85e-10,
+      "ds_over_extent": 9.988891130263538e-11,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.004088932326581705,
+      "picks_ok": 1,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.029,
+      "draw_ms_median": 42.1,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.85e-10,
+      "ds_over_extent": 9.988891130263538e-11,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.004088932326581705,
+      "picks_ok": 12,
+      "picks": 18,
+      "meshes": 7012,
+      "tiles_capped": false,
+      "setup_s": 4.131,
+      "draw_ms_median": 285.0,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 1.0,
+      "block_extent": 2.85317,
+      "ds_wall": 2.85e-10,
+      "ds_over_extent": 9.988891130263538e-11,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.004088932326581705,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.029,
+      "draw_ms_median": 42.2,
+      "rebase_ms_median": 0.53
+    },
+    {
+      "mode": "floating",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.8499999999999998e-05,
+      "ds_over_extent": 9.988891130263537e-08,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 3.97078086776184,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.028,
+      "draw_ms_median": 43.9,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.8499999999999998e-05,
+      "ds_over_extent": 9.988891130263537e-08,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 3.97078086776184,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 200,
+      "tiles_capped": false,
+      "setup_s": 0.137,
+      "draw_ms_median": 47.9,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.8499999999999998e-05,
+      "ds_over_extent": 9.988891130263537e-08,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 3.97078086776184,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.027,
+      "draw_ms_median": 43.9,
+      "rebase_ms_median": 0.52
+    },
+    {
+      "mode": "floating",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.8500000000000002e-06,
+      "ds_over_extent": 9.988891130263539e-09,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.4018998782937496,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.028,
+      "draw_ms_median": 50.0,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.8500000000000002e-06,
+      "ds_over_extent": 9.988891130263539e-09,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.4018998782937496,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 1050,
+      "tiles_capped": false,
+      "setup_s": 1.379,
+      "draw_ms_median": 80.1,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.8500000000000002e-06,
+      "ds_over_extent": 9.988891130263539e-09,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.4018998782937496,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.034,
+      "draw_ms_median": 41.2,
+      "rebase_ms_median": 0.63
+    },
+    {
+      "mode": "floating",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.85e-07,
+      "ds_over_extent": 9.988891130263538e-10,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.04057910175109886,
+      "picks_ok": 12,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.027,
+      "draw_ms_median": 38.4,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.85e-07,
+      "ds_over_extent": 9.988891130263538e-10,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.04057910175109886,
+      "picks_ok": 17,
+      "picks": 18,
+      "meshes": 4852,
+      "tiles_capped": false,
+      "setup_s": 2.721,
+      "draw_ms_median": 208.1,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.85e-07,
+      "ds_over_extent": 9.988891130263538e-10,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.04057910175109886,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.031,
+      "draw_ms_median": 37.2,
+      "rebase_ms_median": 0.55
+    },
+    {
+      "mode": "floating",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.85e-08,
+      "ds_over_extent": 9.988891130263538e-11,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.004088932326581687,
+      "picks_ok": 2,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.029,
+      "draw_ms_median": 38.6,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "tiled",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.85e-08,
+      "ds_over_extent": 9.988891130263538e-11,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.004088932326581687,
+      "picks_ok": 17,
+      "picks": 18,
+      "meshes": 7012,
+      "tiles_capped": false,
+      "setup_s": 4.17,
+      "draw_ms_median": 293.6,
+      "rebase_ms_median": 0.0
+    },
+    {
+      "mode": "rebase",
+      "radius": 100.0,
+      "block_extent": 285.316955,
+      "ds_wall": 2.85e-08,
+      "ds_over_extent": 9.988891130263538e-11,
+      "aspect_ratio": 10000.0,
+      "ds_over_res32": 0.004088932326581687,
+      "picks_ok": 18,
+      "picks": 18,
+      "meshes": 20,
+      "tiles_capped": false,
+      "setup_s": 0.032,
+      "draw_ms_median": 44.0,
+      "rebase_ms_median": 0.56
+    }
+  ]
+}

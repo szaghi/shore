@@ -14,6 +14,7 @@ export default defineConfig({
       { text: 'Algorithm',  link: '/algorithm/' },
       { text: 'Topologies', link: '/topologies/' },
       { text: 'Reference',  link: '/reference/mesh' },
+      { text: 'Design',     link: '/adr/' },
       { text: 'GitHub',     link: 'https://github.com/szaghi/shore' },
     ],
 
@@ -106,6 +107,22 @@ export default defineConfig({
           text: 'Primitives',
           items: [
             { text: 'Box / annulus / flat-caps', link: '/topologies/primitives' },
+          ],
+        },
+      ],
+
+      '/adr/': [
+        {
+          text: 'Architecture decisions',
+          items: [
+            { text: 'Index',                           link: '/adr/' },
+            { text: '0001 Scope',                      link: '/adr/0001-scope' },
+            { text: '0002 Geometry backend',           link: '/adr/0002-geometry-backend' },
+            { text: '0003 Association',                link: '/adr/0003-association' },
+            { text: '0004 Command layer & journal',    link: '/adr/0004-command-layer' },
+            { text: '0005 Marching schemes',           link: '/adr/0005-marching-schemes' },
+            { text: '0006 GUI stack',                  link: '/adr/0006-gui-stack' },
+            { text: 'Roadmap',                         link: '/adr/roadmap' },
           ],
         },
       ],
