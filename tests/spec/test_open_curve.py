@@ -179,7 +179,6 @@ def check_curve(a, b, curve, plane, length, on_branch, seed) -> None:
 
 
 class TestCurve:
-    @PENDING
     @pytest.mark.parametrize("name", list(HALF))
     def test_o1_half_model(self, name):
         make_a, make_b, seed, length, on_branch = HALF[name]
@@ -187,21 +186,18 @@ class TestCurve:
         curve = kernel()(a, b, np.asarray(seed, dtype=np.float64), N, plane=SYMMETRY)
         check_curve(a, b, curve, SYMMETRY, length(), on_branch, seed)
 
-    @PENDING
     def test_o2_seed_side_is_kept(self):
         a, b, seed = Plane(), CylinderZ(), np.array([1.1, -0.1, 0.05])
         curve = kernel()(a, b, seed, N, plane=SYMMETRY)
         check_curve(a, b, curve, SYMMETRY, np.pi, _all, seed)
         assert (curve[1:-1, 1] < 0.0).all()
 
-    @PENDING
     def test_o2_plane_not_a_symmetry_plane(self):
         a, b, seed = Plane(), CylinderZ(), np.array([1.1, 0.1, 0.05])
         plane = ((0.5, 0.0, 0.0), (1.0, 0.0, 0.0))
         curve = kernel()(a, b, seed, N, plane=plane)
         check_curve(a, b, curve, plane, 2.0 * np.pi / 3.0, _all, seed)
 
-    @PENDING
     def test_o3_stl_half_model(self):
         from shore.geometry import StlGeometry
 
@@ -234,7 +230,6 @@ class TestCurve:
 
 
 class TestCollarSides:
-    @PENDING
     @pytest.mark.parametrize("name", list(HALF))
     def test_o4_marching_leaves_the_other_body(self, name):
         from shore.surface.march import march_surface
@@ -257,7 +252,6 @@ SEED = np.array([1.1, 0.1, 0.05])
 
 
 class TestInterface:
-    @PENDING
     def test_o5_deterministic(self):
         a, b = Half(Sphere()), Half(CylinderZ(0.5, 0.3))
         seed = np.array([0.66, 0.36, 0.68])
@@ -265,18 +259,15 @@ class TestInterface:
         again = kernel()(a, b, seed, N, plane=SYMMETRY, entity_a=BODY, entity_b=BODY)
         np.testing.assert_array_equal(first, again)
 
-    @PENDING
     def test_o5_too_few_nodes(self):
         with pytest.raises(ParameterError):
             kernel()(Plane(), CylinderZ(), SEED, 2, plane=SYMMETRY)
 
-    @PENDING
     @pytest.mark.parametrize("seed", [np.zeros(2), np.zeros((2, 3))])
     def test_o5_bad_seed(self, seed):
         with pytest.raises(ParameterError):
             kernel()(Plane(), CylinderZ(), seed, N, plane=SYMMETRY)
 
-    @PENDING
     @pytest.mark.parametrize(
         "plane", [((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)), ((0.0, 0.0), (0.0, 1.0))]
     )
@@ -284,17 +275,14 @@ class TestInterface:
         with pytest.raises(ParameterError):
             kernel()(Plane(), CylinderZ(), SEED, N, plane=plane)
 
-    @PENDING
     def test_o5_seed_on_the_plane(self):
         with pytest.raises(ParameterError):
             kernel()(Plane(), CylinderZ(), np.array([1.0, 0.0, 0.0]), N, plane=SYMMETRY)
 
-    @PENDING
     def test_o5_no_intersection(self):
         with pytest.raises(ParameterError):
             kernel()(Plane(), Sphere((0.0, 0.0, 5.0)), np.array([0.0, 0.1, 2.0]), N, plane=SYMMETRY)
 
-    @PENDING
     def test_o5_closed_curve_off_the_plane(self):
         start = time.perf_counter()
         with pytest.raises(ParameterError):

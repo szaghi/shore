@@ -15,6 +15,12 @@ The ``n_b x n_a`` order makes ``march_surface(A, loop)`` march on A away
 from B, and ``march_surface(B, loop[::-1])`` on B away from A: the two halves
 of a collar (ADR 0008). Alternating projections converge fast where the
 bodies cross at a clear angle; grazing intersections are out of scope.
+
+``intersection_curve`` is the open variant for half models (ADR 0011): the
+curve on the seed's side of a plane, traced both ways from the seed until
+it reaches the plane (within the on-curve tolerance: half-model bodies stop
+at the plane, so the trace lands on it without crossing), each end put
+exactly on the plane by Newton steps along the curve tangent.
 """
 
 from __future__ import annotations
@@ -105,6 +111,88 @@ def intersection_loop(
     return nodes
 
 
+def intersection_curve(
+    body_a: Geometry,
+    body_b: Geometry,
+    seed: np.ndarray,
+    n: int,
+    *,
+    plane: tuple[np.ndarray, np.ndarray],
+    entity_a: EntityRef = BODY,
+    entity_b: EntityRef = BODY,
+    params: TraceParams = DEFAULT,
+) -> np.ndarray:
+    """The open intersection curve of *body_a* and *body_b* ending on *plane*.
+
+    Parameters
+    ----------
+    body_a, body_b :
+        The two bodies; only ``project`` (with normals) is used. They may end
+        at the plane (a half model).
+    seed : np.ndarray, shape (3,)
+        A point near the junction, off the plane; selects the curve and the
+        side of the plane that is kept.
+    n :
+        Number of nodes, >= 3.
+    plane :
+        ``(point, normal)``, two 3-vectors; the normal's sign does not matter.
+    entity_a, entity_b :
+        The entities intersected (default: the whole bodies).
+    params :
+        Tracer settings.
+
+    Returns
+    -------
+    np.ndarray, shape (n, 3)
+        Nodes equally spaced in arc length, on both bodies and on the seed's
+        side, ordered along ``n_b x n_a``; ``[0]`` and ``[-1]`` on the plane.
+
+    Raises
+    ------
+    ParameterError
+        n < 3; *seed* not a 3-vector; *plane* not a point and a non-zero
+        normal; *seed* on the plane; no intersection near *seed*; a curve that
+        closes, or meets the plane tangentially, or does not reach it.
+    """
+    if isinstance(n, bool) or not isinstance(n, (int, np.integer)) or n < 3:
+        raise ParameterError(f"n must be an integer >= 3, got {n!r}.")
+    x = np.asarray(seed, dtype=np.float64)
+    if x.shape != (3,) or not np.all(np.isfinite(x)):
+        raise ParameterError(f"seed must be a finite 3-vector, got shape {x.shape}.")
+    try:
+        point, normal = (np.asarray(v, dtype=np.float64) for v in plane)
+    except (TypeError, ValueError):
+        raise ParameterError("plane must be (point, normal), two 3-vectors.") from None
+    if point.shape != (3,) or normal.shape != (3,):
+        raise ParameterError("plane must be (point, normal), two 3-vectors.")
+    length = float(np.linalg.norm(normal))
+    if not (np.all(np.isfinite(point)) and np.isfinite(length) and length > 0.0):
+        raise ParameterError("plane must have a finite point and a non-zero normal.")
+    normal = normal / length
+
+    bounds = np.asarray(body_a.bounds, dtype=np.float64)
+    diag = float(np.linalg.norm(bounds[1] - bounds[0]))
+    tracer = _Tracer(body_a, body_b, entity_a, entity_b, diag, params)
+    side = float((x - point) @ normal)
+    if abs(side) <= params.on_curve * diag:
+        raise ParameterError("the seed lies on the plane: it must select a side.")
+    oriented = normal * np.sign(side)  # points to the kept side
+
+    start = tracer.polish(x[None])[0]
+    if not tracer.on_curve(start[None]).all():
+        raise ParameterError(f"no intersection of the two bodies near the seed {x.tolist()}.")
+    if float((start - point) @ oriented) <= params.on_curve * diag:
+        raise ParameterError("the seed's junction point is not on the seed's side of the plane.")
+    ahead = tracer.trace_to_plane(start, 1.0, point, oriented)
+    behind = tracer.trace_to_plane(start, -1.0, point, oriented)
+    polyline = np.vstack([behind[::-1], ahead[1:]])  # along n_b x n_a
+
+    s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(polyline, axis=0), axis=1))]
+    target = np.linspace(0.0, s[-1], n)[1:-1]
+    inner = np.stack([np.interp(target, s, polyline[:, k]) for k in range(3)], axis=-1)
+    return np.vstack([polyline[:1], tracer.polish(inner), polyline[-1:]])
+
+
 class _Tracer:
     def __init__(
         self,
@@ -163,3 +251,51 @@ class _Tracer:
         raise ParameterError(
             f"the intersection trace did not close within {self.params.max_steps} steps."
         )
+
+    def trace_to_plane(
+        self, start: np.ndarray, sign: float, point: np.ndarray, normal: np.ndarray
+    ) -> np.ndarray:
+        """Trace along ``sign * n_b x n_a`` until the plane (*normal* to the kept side).
+
+        A step that reaches the plane within the on-curve tolerance, or
+        crosses it, ends the trace: on a half model the bodies stop at the
+        plane, so the trace lands on it and would stall there.
+        """
+        h = self.params.step * self.diag
+        reach = self.params.on_curve * self.diag
+        points = [start]
+        travelled = 0.0
+        for _ in range(self.params.max_steps):
+            x = points[-1]
+            y = self.polish((x + sign * h * self.direction(x))[None], self.params.trace_tolerance)
+            y = y[0]
+            if float((y - point) @ normal) <= reach:
+                points.append(self.end_on_plane(y, point, normal))
+                return np.array(points)
+            travelled += float(np.linalg.norm(y - x))
+            if travelled > 4.0 * h and np.linalg.norm(y - start) < 1.5 * h:
+                raise ParameterError(
+                    "the intersection curve closes without meeting the plane "
+                    "(use intersection_loop)."
+                )
+            points.append(y)
+        raise ParameterError(
+            f"the intersection trace did not reach the plane within {self.params.max_steps} steps."
+        )
+
+    def end_on_plane(self, x: np.ndarray, point: np.ndarray, normal: np.ndarray) -> np.ndarray:
+        """Newton steps along the curve tangent onto the plane, polished onto both bodies."""
+        tol = self.params.tolerance * self.diag
+        x = self.polish(x[None])[0]  # a traced point is only converged to trace_tolerance
+        for _ in range(self.params.polish_iterations):
+            t = self.direction(x)
+            slope = float(t @ normal)
+            if abs(slope) < 1e-8:
+                raise ParameterError(
+                    "the intersection curve meets the plane tangentially (out of scope, ADR 0011)."
+                )
+            d = float((x - point) @ normal)
+            if abs(d) <= tol:
+                break
+            x = self.polish((x - d / slope * t)[None])[0]
+        return x

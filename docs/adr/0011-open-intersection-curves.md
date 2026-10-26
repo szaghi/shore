@@ -1,6 +1,6 @@
 # 0011 — Open intersection curves ending on a symmetry plane
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -109,3 +109,43 @@ of a step. The half-collar needs the marcher to hold them on the plane.
 
 Verdict after re-freeze: still 0 passed, 20 xfailed; the prototype behind
 the interface still passes 15 of 20, failing the same 5 input checks.
+
+## Acceptance (2026-10-26): open-intersection-curve spec met
+
+`intersection_curve` in `src/shore/surface/intersect.py` implements the
+decision, with two new `_Tracer` methods: `trace_to_plane` (reaches or
+crosses within the on-curve tolerance, detects a curve that closes first)
+and `end_on_plane` (Newton along the tangent). Beyond the prototype it
+checks the arguments (n, seed, plane, a seed on the plane, a junction point
+off the seed's side) and raises `ParameterError` where the curve meets the
+plane tangentially.
+
+One defect found while measuring, and fixed: when the trace lands on the
+plane within tolerance (always on half bodies), the end point had been
+polished only to the trace tolerance (1e-10). It sat 7.3e-10 off the half
+sphere, inside the spec's 6.9e-9 bound but 1,000 times the prototype's
+error. Now it is polished to the output tolerance first. A unit test pins
+the end points below 1e-11; it fails without the fix.
+
+**Verdict for `tests/spec/test_open_curve.py`: 20 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 12
+`@PENDING` lines are removed. Full suite: 1347 passed, 0 xfailed.
+
+Measured (T1, n = 33, half models cut at y = 0):
+
+| Pair | On A | On B | Ends off the plane | Chords max/min | Length vs exact |
+|---|---|---|---|---|---|
+| plane × cylinder | 0 | 0 | 0 | 1.00001 | -0.040 % |
+| tilted plane × cylinder | 1.4e-13 | 1.2e-16 | 0 | 1.00026 | -0.041 % |
+| cylinder × cylinder | 1.8e-13 | 7.9e-17 | 0 | 1.00016 | -0.044 % |
+| sphere × offset cylinder | 6.7e-13 | 2.8e-17 | 0 | 1.00024 | -0.040 % |
+| STL half box + half post | 2.3e-16 | 2.2e-16 | 6e-17 | 1.0005 | |
+
+Each curve takes 0.01-0.02 s (analytic) and 0.13 s (STL).
+
+**Unit tests** (`tests/test_intersection.py`): a faceted icosphere and
+cylinder cut by a plane; a plane tangent to the curve raises; the end
+points' accuracy.
+
+Next for half-model collars: the surface marcher's end constraint, then
+the half-collar block (with the right-angle check, review decision 2).
