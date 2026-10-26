@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 
 if TYPE_CHECKING:
+    from shore.mesh.association import Association
     from shore.mesh.block import Block
 
 FaceName = Literal["i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi"]
@@ -212,9 +213,8 @@ class Face:
         ``[1, nccnat=19]`` (e.g. ``9`` free/far-field, ``3``/``4``
         inflow/outflow).  Lets a single block carry heterogeneous outer
         BCs — inflow on one face, extrapolation on the others.
-    body_projected :
-        True when all nodes of this face lie on the k=0 body wall (i.e.
-        bc == WALL).
+    association :
+        Geometry this face's nodes are projected onto (ADR 0003), or ``None``.
     """
 
     index: int
@@ -227,7 +227,12 @@ class Face:
     partner: Face | None = field(default=None, repr=False, compare=False)
     axis_map: AxisMap | None = field(default=None, repr=False)
     bc_code: int | None = None
-    body_projected: bool = False
+    association: Association | None = field(default=None, repr=False)
+
+    @property
+    def body_projected(self) -> bool:
+        """True when associated with a whole body (legacy flag, read-only)."""
+        return self.association is not None and self.association.kind.value == "body"
 
     def nodes(self, block: Block) -> np.ndarray:
         """Return a view of this face's node coordinates in block.nodes."""

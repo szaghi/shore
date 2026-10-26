@@ -130,45 +130,45 @@ class HexBlock(Block):
         # --- build vertex list (8 corners) ---
         # vertex index order: (i_lo/hi) x (j_lo/hi) x (k_lo/hi) = 000..111
         self._vertices: list[Vertex] = [
-            Vertex(0, (0, 0, 0), body_projected=True),
-            Vertex(1, (0, 0, -1), body_projected=False),
-            Vertex(2, (0, -1, 0), body_projected=True),
-            Vertex(3, (0, -1, -1), body_projected=False),
-            Vertex(4, (-1, 0, 0), body_projected=True),
-            Vertex(5, (-1, 0, -1), body_projected=False),
-            Vertex(6, (-1, -1, 0), body_projected=True),
-            Vertex(7, (-1, -1, -1), body_projected=False),
+            Vertex(0, (0, 0, 0)),
+            Vertex(1, (0, 0, -1)),
+            Vertex(2, (0, -1, 0)),
+            Vertex(3, (0, -1, -1)),
+            Vertex(4, (-1, 0, 0)),
+            Vertex(5, (-1, 0, -1)),
+            Vertex(6, (-1, -1, 0)),
+            Vertex(7, (-1, -1, -1)),
         ]
 
         # --- build edge list (12 edges) ---
         # Along-i edges (axis='i', j and k fixed)
         self._edges: list[Edge] = [
-            Edge(0, "j_lo_k_lo", "i", (0, 4), ni, _sp_i, body_projected=True),
-            Edge(1, "j_hi_k_lo", "i", (2, 6), ni, _sp_i, body_projected=True),
-            Edge(2, "j_lo_k_hi", "i", (1, 5), ni, _sp_i, body_projected=False),
-            Edge(3, "j_hi_k_hi", "i", (3, 7), ni, _sp_i, body_projected=False),
+            Edge(0, "j_lo_k_lo", "i", (0, 4), ni, _sp_i),
+            Edge(1, "j_hi_k_lo", "i", (2, 6), ni, _sp_i),
+            Edge(2, "j_lo_k_hi", "i", (1, 5), ni, _sp_i),
+            Edge(3, "j_hi_k_hi", "i", (3, 7), ni, _sp_i),
             # Along-j edges (axis='j', i and k fixed)
-            Edge(4, "i_lo_k_lo", "j", (0, 2), nj, _sp_j, body_projected=True),
-            Edge(5, "i_hi_k_lo", "j", (4, 6), nj, _sp_j, body_projected=True),
-            Edge(6, "i_lo_k_hi", "j", (1, 3), nj, _sp_j, body_projected=False),
-            Edge(7, "i_hi_k_hi", "j", (5, 7), nj, _sp_j, body_projected=False),
+            Edge(4, "i_lo_k_lo", "j", (0, 2), nj, _sp_j),
+            Edge(5, "i_hi_k_lo", "j", (4, 6), nj, _sp_j),
+            Edge(6, "i_lo_k_hi", "j", (1, 3), nj, _sp_j),
+            Edge(7, "i_hi_k_hi", "j", (5, 7), nj, _sp_j),
             # Along-k edges (axis='k', i and j fixed)
-            Edge(8, "i_lo_j_lo", "k", (0, 1), nk, _sp_k, body_projected=False),
-            Edge(9, "i_hi_j_lo", "k", (4, 5), nk, _sp_k, body_projected=False),
-            Edge(10, "i_lo_j_hi", "k", (2, 3), nk, _sp_k, body_projected=False),
-            Edge(11, "i_hi_j_hi", "k", (6, 7), nk, _sp_k, body_projected=False),
+            Edge(8, "i_lo_j_lo", "k", (0, 1), nk, _sp_k),
+            Edge(9, "i_hi_j_lo", "k", (4, 5), nk, _sp_k),
+            Edge(10, "i_lo_j_hi", "k", (2, 3), nk, _sp_k),
+            Edge(11, "i_hi_j_hi", "k", (6, 7), nk, _sp_k),
         ]
 
         # --- build face list (6 faces) ---
         # BCs are set to FREE by default; topology wires the real BCs after
         # construction via _set_face_bc().
         self._faces: list[Face] = [
-            Face(0, "i_lo", FaceBC.FREE, body_projected=False),
-            Face(1, "i_hi", FaceBC.FREE, body_projected=False),
-            Face(2, "j_lo", FaceBC.FREE, body_projected=False),
-            Face(3, "j_hi", FaceBC.FREE, body_projected=False),
-            Face(4, "k_lo", FaceBC.WALL, body_projected=True),
-            Face(5, "k_hi", FaceBC.FREE, body_projected=False),
+            Face(0, "i_lo", FaceBC.FREE),
+            Face(1, "i_hi", FaceBC.FREE),
+            Face(2, "j_lo", FaceBC.FREE),
+            Face(3, "j_hi", FaceBC.FREE),
+            Face(4, "k_lo", FaceBC.WALL),
+            Face(5, "k_hi", FaceBC.FREE),
         ]
 
     # ------------------------------------------------------------------

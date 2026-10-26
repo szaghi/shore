@@ -11,11 +11,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
 
 from shore.surface.projector import ProjectionResult
+
+if TYPE_CHECKING:
+    from shore.geometry.keys import EntityKey
 
 
 class EntityKind(Enum):
@@ -118,6 +121,10 @@ class Geometry(Protocol):
 
     def evaluate(self, entity: EntityRef, params: np.ndarray) -> np.ndarray:
         """Positions of *entity* at *params*: (..., 2) on a surface, (...) on a curve."""
+        ...
+
+    def fingerprint(self, entity: EntityRef) -> EntityKey:
+        """Persistent geometric fingerprint of *entity* (ADR 0003)."""
         ...
 
 

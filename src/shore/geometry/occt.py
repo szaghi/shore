@@ -50,12 +50,14 @@ from OCP.BRepBndLib import BRepBndLib
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex, BRepBuilderAPI_Sewing
 from OCP.BRepClass import BRepClass_FaceClassifier
 from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+from OCP.BRepGProp import BRepGProp
 from OCP.BRepLib import BRepLib_ToolTriangulatedShape
 from OCP.BRepLProp import BRepLProp_SLProps
 from OCP.BRepMesh import BRepMesh_IncrementalMesh
 from OCP.collections import IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher as _ShapeMap
 from OCP.GCPnts import GCPnts_QuasiUniformDeflection
 from OCP.gp import gp_Pnt, gp_Pnt2d, gp_Vec
+from OCP.GProp import GProp_GProps
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.IGESControl import IGESControl_Reader
 from OCP.ShapeAnalysis import ShapeAnalysis_Surface
@@ -67,6 +69,7 @@ from OCP.TopoDS import TopoDS, TopoDS_Shape
 
 from shore.exceptions import MeshInputError, ParameterError
 from shore.geometry.base import BODY, EntityKind, EntityRef, Projection
+from shore.geometry.keys import EntityKey, make_key
 from shore.geometry.stl import StlGeometry
 from shore.surface.projector import ProjectionResult
 
@@ -133,6 +136,7 @@ class OcctGeometry:
         self._edge_polys = [self._sample_edge(e) for e in self.edges]
         self._face_proxies: dict[int, tuple[trimesh.Trimesh, np.ndarray]] = {}
         self._surf_tools: dict[int, tuple[ShapeAnalysis_Surface, BRepAdaptor_Surface]] = {}
+        self._keys: dict[EntityRef, EntityKey] = {}
 
     # -- construction ----------------------------------------------------------
 
@@ -297,6 +301,44 @@ class OcctGeometry:
             p = np.array(_xyz(BRep_Tool.Pnt_s(self.vertices[k])))
             return np.broadcast_to(p, (*prm.shape, 3)).copy()
         raise ParameterError("The body has no parametrisation; evaluate a SURFACE or CURVE.")
+
+    def fingerprint(self, entity: EntityRef) -> EntityKey:
+        """Fingerprint: OCCT geometric type, centroid, area/length, bbox (cached)."""
+        if entity == BODY:
+            shape, kind, gtype = self.shape, EntityKind.BODY, "brep"
+        else:
+            k = self._check(entity)
+            kind = entity.kind
+            if kind is EntityKind.SURFACE:
+                shape = self.faces[k]
+                gtype = BRepAdaptor_Surface(shape).GetType().name.removeprefix("GeomAbs_")
+            elif kind is EntityKind.CURVE:
+                shape = self.edges[k]
+                gtype = (
+                    "Degenerate"
+                    if BRep_Tool.Degenerated_s(shape)
+                    else BRepAdaptor_Curve(shape).GetType().name.removeprefix("GeomAbs_")
+                )
+            else:
+                shape, gtype = self.vertices[k], "Point"
+        if entity in self._keys:
+            return self._keys[entity]
+        props = GProp_GProps()
+        if kind in (EntityKind.BODY, EntityKind.SURFACE):
+            BRepGProp.SurfaceProperties_s(shape, props)
+        elif kind is EntityKind.CURVE and gtype != "Degenerate":
+            BRepGProp.LinearProperties_s(shape, props)
+        if kind is EntityKind.POINT or (kind is EntityKind.CURVE and gtype == "Degenerate"):
+            vertex = shape if kind is EntityKind.POINT else TopoDS.Vertex(_first_vertex(shape))
+            centroid, measure = np.array(_xyz(BRep_Tool.Pnt_s(vertex))), 0.0
+        else:
+            centroid, measure = np.array(_xyz(props.CentreOfMass())), props.Mass()
+        box = Bnd_Box()
+        BRepBndLib.AddOptimal_s(shape, box, False, False)
+        bbox = np.array([_xyz(box.CornerMin()), _xyz(box.CornerMax())])
+        key = make_key(kind, gtype, centroid, measure, bbox, self._bounds)
+        self._keys[entity] = key
+        return key
 
     # -- OCCT specifics ----------------------------------------------------------
 

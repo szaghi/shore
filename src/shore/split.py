@@ -99,6 +99,47 @@ def _inherit_face(target: HexBlock, source_face: Face) -> None:
     )
 
 
+def _inherit_associations(
+    chunk: HexBlock, block: HexBlock, span: dict[str, tuple[int, int]]
+) -> None:
+    """Give *chunk*'s vertices, edges and faces the association of the
+    lowest-dimensional *block* entity they lie on (ADR 0003).
+
+    A chunk entity is fixed at ``lo``/``hi`` along some axes; each such side
+    lies on the source boundary only where the chunk touches it. Three
+    boundary constraints name a source vertex, two an edge, one a face; none
+    (an internal cut) leaves the entity unassociated.
+    """
+    n = {ax: block.nodes.shape[_AXIS_INDEX[ax]] for ax in "ijk"}
+    vertex_by_ijk = {v.ijk: v for v in block.vertices()}
+
+    def source_association(fixed: dict[str, str]):
+        on = {}
+        for ax, side in fixed.items():
+            s, e = span[ax]
+            if (side == "lo" and s == 0) or (side == "hi" and e == n[ax] - 1):
+                on[ax] = side
+        if len(on) == 3:
+            ijk = tuple(0 if on[ax] == "lo" else -1 for ax in "ijk")
+            return vertex_by_ijk[ijk].association
+        if len(on) == 2:
+            a1, a2 = sorted(on)
+            return block.edge(f"{a1}_{on[a1]}_{a2}_{on[a2]}").association
+        if len(on) == 1:
+            ((ax, side),) = on.items()
+            return block.face(f"{ax}_{side}").association
+        return None
+
+    for f in chunk.faces():
+        f.association = source_association({f.name[0]: f.name[2:]})
+    for e in chunk.edges():
+        p = e.name.split("_")
+        e.association = source_association({p[0]: p[1], p[2]: p[3]})
+    for v in chunk.vertices():
+        fixed = {ax: ("lo" if idx == 0 else "hi") for ax, idx in zip("ijk", v.ijk, strict=True)}
+        v.association = source_association(fixed)
+
+
 @dataclass(frozen=True)
 class BlockSplit:
     """One split directive: which block, which axis, at which indices.
@@ -418,6 +459,7 @@ def _split_one_multi(block: HexBlock, axis_cuts: dict[str, set[int]]) -> _ChunkG
                     want = 0 if f.name.endswith("_lo") else last[perp]
                     if coord[perp] == want:
                         _inherit_face(chunk, f)
+                _inherit_associations(chunk, block, {"i": (si, ei), "j": (sj, ej), "k": (sk, ek)})
                 grid.chunks[(a, b, c)] = chunk
 
     # Wire internal cut-plane seams between adjacent chunks on each cut axis.

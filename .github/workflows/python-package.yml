@@ -46,7 +46,8 @@ jobs:
       - name: Install package + test + CAD deps
         run: pip install -e ".[dev,cad]"
       - name: Run geometry tests
-        run: pytest tests/test_geometry.py tests/test_geometry_occt.py tests/test_cad_pipeline.py --no-cov
+        run: pytest tests/test_geometry.py tests/test_geometry_occt.py tests/test_cad_pipeline.py
+          tests/test_association.py --no-cov
 
   build:
     runs-on: ${{ matrix.os }}

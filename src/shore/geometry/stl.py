@@ -16,6 +16,7 @@ import trimesh.triangles
 
 from shore.exceptions import ParameterError
 from shore.geometry.base import BODY, EntityKind, EntityRef, Projection
+from shore.geometry.keys import EntityKey, make_key
 from shore.surface.io import load_stl
 from shore.surface.projector import ProjectionResult, Projector
 
@@ -86,6 +87,15 @@ class StlGeometry:
 
     def evaluate(self, entity: EntityRef, params: np.ndarray) -> np.ndarray:
         raise ParameterError("STL geometry has no parametric entities; use project().")
+
+    def fingerprint(self, entity: EntityRef) -> EntityKey:
+        """Fingerprint of the body: area-weighted facet centroid, area, bbox."""
+        self._check_entity(entity)
+        areas = self.mesh.area_faces
+        centroid = (self.mesh.triangles_center * areas[:, None]).sum(axis=0) / areas.sum()
+        return make_key(
+            EntityKind.BODY, "mesh", centroid, float(areas.sum()), self.bounds, self.bounds
+        )
 
     # -- STL specifics -------------------------------------------------------
 

@@ -8,8 +8,17 @@ from pathlib import Path
 
 import numpy as np
 
+from shore.geometry import Geometry
+from shore.mesh.association import (
+    BODY_GEOMETRY,
+    Association,
+    AssociationResolver,
+    associate_wall,
+    snap_block,
+)
 from shore.mesh.block import HexBlock
 from shore.mesh.body import Body
+from shore.mesh.face import FaceBC
 from shore.mesh.spacing import Spacing1D
 from shore.mesh.topology import Topology
 from shore.topology.sphere_cap import (
@@ -253,6 +262,29 @@ class Mesh:
         self.body = body
         self.blocks = blocks
         self.topology = topology
+        if body is not None:
+            # every topology's body-fitted wall is its WALL k_lo face (C-grid
+            # wake cuts and channel faces are SHARED): associate it with the body
+            body_assoc = Association.body()
+            for block in blocks:
+                if block.face("k_lo").bc is FaceBC.WALL:
+                    associate_wall(block, body_assoc)
+
+    @property
+    def geometries(self) -> dict[str, Geometry]:
+        """Geometry map for associations (``"body"`` when the mesh has one)."""
+        return {} if self.body is None else {BODY_GEOMETRY: self.body.geometry}
+
+    def snap(self, exact: bool = False) -> None:
+        """Project every associated node onto its geometry (ADR 0003).
+
+        Faces, then edges, then vertices (vertex -> edge -> face priority).
+        ``exact=True`` uses the exact CAD geometry (tier 2) instead of its
+        tessellation; for STL bodies the two are the same.
+        """
+        resolver = AssociationResolver(self.geometries, exact=exact)
+        for block in self.blocks:
+            snap_block(block, resolver)
 
     @classmethod
     def from_array(

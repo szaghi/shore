@@ -66,6 +66,20 @@ Example::
 Versioning
 ----------
 
+Version 3 adds block-to-geometry associations (ADR 0003). A top-level
+``associations`` table lists each distinct association once (``geometry``
+key, ``kind`` and entity ``keys``); each block may carry an ``associated``
+map from its faces, edges and corner indices to entries of that table::
+
+    "associations": [{"geometry": "body", "kind": "body", "keys": []}],
+    "blocks": [{..., "associated": {
+        "faces": {"k_lo": 0},
+        "edges": {"j_lo_k_lo": 0, "j_hi_k_lo": 0, "i_lo_k_lo": 0, "i_hi_k_lo": 0},
+        "vertices": {"0": 0, "2": 0, "4": 0, "6": 0}}}]
+
+Associations are optional: a sidecar without any differs from version 2
+only in its version number. Readers accept versions 2 and 3.
+
 Version 1 (deprecated) stored only ``{label, face}`` partners with no
 axis_map.  This proved insufficient for any consumer that needs to
 write a connection orientation (cc.par, overset connectivity tools)
@@ -83,10 +97,12 @@ from pathlib import Path
 from typing import Any
 
 from shore.exceptions import MeshInputError
+from shore.mesh.association import Association
 from shore.mesh.block import HexBlock
 from shore.mesh.face import AxisMap, FaceBC, FaceName
 
-ADJACENCY_VERSION = 2
+ADJACENCY_VERSION = 3
+_READABLE_VERSIONS = (2, 3)
 
 _FACE_NAMES: tuple[FaceName, ...] = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi")
 
@@ -120,6 +136,15 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
         for f in blk.faces():
             by_face_id[id(f)] = (blk.label, f.name)
 
+    table: list[Association] = []
+    index: dict[Association, int] = {}
+
+    def assoc_id(a: Association) -> int:
+        if a not in index:
+            index[a] = len(table)
+            table.append(a)
+        return index[a]
+
     payload: dict[str, Any] = {"version": ADJACENCY_VERSION, "blocks": []}
     for blk in blocks:
         ni, nj, nk, _ = blk.nodes.shape
@@ -141,14 +166,28 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
             if f.bc_code is not None:
                 face_obj["bc_code"] = f.bc_code
             face_payload[f.name] = face_obj
-        payload["blocks"].append(
-            {
-                "label": blk.label,
-                "shape": [ni, nj, nk],
-                "faces": face_payload,
-            }
-        )
+        block_obj: dict[str, Any] = {
+            "label": blk.label,
+            "shape": [ni, nj, nk],
+            "faces": face_payload,
+        }
+        associated = {
+            "faces": {f.name: assoc_id(f.association) for f in blk.faces() if f.association},
+            "edges": {e.name: assoc_id(e.association) for e in blk.edges() if e.association},
+            "vertices": {
+                str(v.index): assoc_id(v.association) for v in blk.vertices() if v.association
+            },
+        }
+        if any(associated.values()):
+            block_obj["associated"] = {k: v for k, v in associated.items() if v}
+        payload["blocks"].append(block_obj)
 
+    if table:
+        payload = {
+            "version": ADJACENCY_VERSION,
+            "associations": [a.to_json() for a in table],
+            "blocks": payload["blocks"],
+        }
     out.write_text(json.dumps(payload, indent=2) + "\n")
     return out
 
@@ -221,10 +260,10 @@ def read_adjacency_json(path: str | Path) -> dict[str, Any]:
             "consumers ambiguous on cross-axis seams.  Regenerate the "
             "sidecar by re-running the topology / split that produced it."
         )
-    if data["version"] != ADJACENCY_VERSION:
+    if data["version"] not in _READABLE_VERSIONS:
         raise MeshInputError(
             f"{p}: unsupported adjacency version {data['version']!r} "
-            f"(this build supports {ADJACENCY_VERSION})"
+            f"(this build reads {', '.join(map(str, _READABLE_VERSIONS))})"
         )
     if "blocks" not in data:
         raise MeshInputError(f"{p}: missing required key 'blocks'")
@@ -239,6 +278,20 @@ def read_adjacency_json(path: str | Path) -> dict[str, Any]:
                 source=f"{p} ({label}.{face_name})",
             )
             _validate_bc_code(face, source=f"{p} ({label}.{face_name})")
+    # Parse associations eagerly too; keep them as Association objects
+    table = [
+        Association.from_json(a, source=f"{p} (associations[{i}])")
+        for i, a in enumerate(data.get("associations", []))
+    ]
+    data["associations"] = table
+    for blk in data["blocks"]:
+        for group in blk.get("associated", {}).values():
+            for name, idx in group.items():
+                if not isinstance(idx, int) or not 0 <= idx < len(table):
+                    raise MeshInputError(
+                        f"{p} ({blk.get('label')}.{name}): association index {idx!r}"
+                        f" out of range (table has {len(table)})"
+                    )
     return data
 
 
@@ -369,6 +422,21 @@ def wire_blocks_from_adjacency(
                 blk._set_face_bc(face_name, bc, partner=partner_face, axis_map=axis_map)
             else:
                 blk._set_face_bc(face_name, bc, bc_code=face.get("bc_code"))
+        apply_associations(blk, blk_payload, payload.get("associations", []))
+
+
+def apply_associations(
+    block: HexBlock, block_payload: dict[str, Any], table: list[Association]
+) -> None:
+    """Restore a block's associations from its sidecar entry (version 3)."""
+    associated = block_payload.get("associated", {})
+    for name, idx in associated.get("faces", {}).items():
+        block.face(name).association = table[idx]
+    for name, idx in associated.get("edges", {}).items():
+        block.edge(name).association = table[idx]
+    vertices = block.vertices()
+    for name, idx in associated.get("vertices", {}).items():
+        vertices[int(name)].association = table[idx]
 
 
 # ---------------------------------------------------------------------------

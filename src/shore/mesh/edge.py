@@ -10,6 +10,7 @@ import numpy as np
 from shore.mesh.spacing import Spacing1D
 
 if TYPE_CHECKING:
+    from shore.mesh.association import Association
     from shore.mesh.block import Block
 
 # Canonical edge names: the two axes that are *constant* along this edge.
@@ -36,8 +37,8 @@ class Edge:
         Number of nodes along this edge.
     spacing :
         1D spacing law for node distribution along this edge.
-    body_projected :
-        True when all nodes of this edge lie on the k=0 body wall.
+    association :
+        Geometry this edge's nodes are projected onto (ADR 0003), or ``None``.
     first_step, last_step :
         Optional per-vertex first / last interval lengths.  When set, the
         topology / primitive builder treats them as a C1 matching request
@@ -59,9 +60,14 @@ class Edge:
     vertex_indices: tuple[int, int]
     n_nodes: int
     spacing: Spacing1D
-    body_projected: bool = False
+    association: Association | None = None
     first_step: float | None = None
     last_step: float | None = None
+
+    @property
+    def body_projected(self) -> bool:
+        """True when associated with a whole body (legacy flag, read-only)."""
+        return self.association is not None and self.association.kind.value == "body"
 
     def nodes(self, block: Block) -> np.ndarray:
         """Return a (n_nodes, 3) view of this edge's node coordinates."""

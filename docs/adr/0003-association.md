@@ -100,3 +100,57 @@ attributes.
   changed ones.
 - **Regression:** with `StlGeometry`, all existing topology tests pass
   unchanged through the shim.
+
+## Results (2026-10-26)
+
+Implemented in `shore.geometry.keys` (fingerprints, matching),
+`shore.mesh.association` (`Association`, `AssociationResolver`,
+`snap_block`, `associate_wall`), the block model, `split.py` and
+`io/adjacency.py`; tests in `tests/test_association.py`.
+
+What differs from the decision above:
+
+- **Keys are geometric only.** An `EntityKey` holds the OCCT type
+  (`Plane`, `Cylinder`, `BSplineSurface`, `Line`, ...), centroid,
+  area/length and bounding-box extent. The geometric values are normalised
+  by the model bounding box, so a uniform rescale matches as `same`. The
+  `name` slot exists, but XCAF labels are not read yet: STEP files rarely
+  name individual faces.
+- **Matching is a global assignment.** `scipy.optimize.linear_sum_assignment`
+  runs per (kind, type) group, not a nearest-neighbour per key, so two
+  similar faces cannot both claim one entity. Each key is reported `same`,
+  `changed` or `lost`.
+- **The normalisation has a consequence.** An edit that changes the model
+  bounding box (a span stretch) marks every entity `changed`, including
+  those that did not move. `changed` means "re-found after an edit", not
+  "this entity was edited".
+- **Defaults changed.** `body_projected` was set on every `HexBlock` k_lo,
+  primitive backgrounds included, and was never read. Associations now
+  default to none. A `Mesh` with a body associates each block's WALL k_lo
+  face, its 4 edges and 4 corners with the body (`Association.body()`).
+  That is the body-fitted wall of every topology: C-grid wake cuts and
+  channel faces are SHARED, so they stay unassociated. `body_projected` is a
+  read-only property derived from the association.
+- **Split propagation.** Each child entity inherits from the
+  lowest-dimensional source entity it lies on (vertex, then edge, then
+  face). Entities created inside the source block, such as internal cut
+  faces, are unassociated.
+- **Sidecar.** `.adjacency.json` version 3 adds a deduplicated
+  `associations` table and per-block `associated` references. It is
+  always written as version 3; versions 2 and 3 are read.
+
+Acceptance:
+
+| Check | Result |
+|---|---|
+| Round-trip through the sidecar | 100 % of face, edge and vertex associations restored |
+| Unchanged STEP re-read | every face and edge association resolves to the same entity, `same` |
+| +5 % span edit (polygonal NACA 0012 wing, 40 faces, 114 edges) | every association resolves, `changed` |
+| +30 % span edit | some associations exceed the tolerance and raise "no longer resolves" |
+| Projection priority on a box | face nodes on the face, edge nodes on the edges, corners exactly on the vertices (1e-12) |
+| Version-2 sidecars | still read |
+
+Still open from the decision above:
+- C-grid TE column edges associated with the detected TE curve. That needs
+  CAD-native TE detection; today's detection runs on the tessellation.
+- GUI re-association when a key is lost (phase 6).

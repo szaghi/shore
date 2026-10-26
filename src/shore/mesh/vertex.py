@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
+    from shore.mesh.association import Association
     from shore.mesh.block import Block
 
 
@@ -22,13 +23,18 @@ class Vertex:
     ijk :
         ``(i, j, k)`` corner indices into ``block.nodes``.  Use ``-1`` for
         the last index along an axis (standard Python convention).
-    body_projected :
-        True when this vertex lies on the k=0 body wall.
+    association :
+        Geometry this corner is projected onto (ADR 0003), or ``None``.
     """
 
     index: int
     ijk: tuple[int, int, int]
-    body_projected: bool = False
+    association: Association | None = None
+
+    @property
+    def body_projected(self) -> bool:
+        """True when associated with a whole body (legacy flag, read-only)."""
+        return self.association is not None and self.association.kind.value == "body"
 
     def coords(self, block: Block) -> np.ndarray:
         """Return the (3,) coordinate vector for this vertex."""
