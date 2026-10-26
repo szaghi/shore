@@ -165,3 +165,37 @@ S6 note (review question 3): on the sphere, Winslow lowers the minimum
 corner angle from the lat-lon TFI's 88 deg to 68 deg. Winslow equalises
 the grid; it does not preserve angles. The spec asks only for validity
 there.
+
+## Acceptance (2026-10-26): surface-grid spec met
+
+`Project.surface_grid(block, face, *, surface, smoothing="elliptic")` is
+the command `FillFace` (`shore/project/commands.py`). It works like this:
+- It validates the block, the face name and the SURFACE index (an STL body
+  has none), and runs the kernel on the face's node view.
+- Only then does it snapshot the mesh, so a rejected call leaves no undo
+  entry and the nodes untouched.
+- It writes the result through the view, so a SHARED face aliased by
+  another block stays consistent.
+- It journals as `p.surface_grid('annulus', 'i_lo', surface=0)`.
+
+**Verdicts** (T2, with `scripts/check_spec.py` reporting all files ok):
+
+| Module | Job | Result |
+|---|---|---|
+| `test_surface_tfi.py` | main | 23 passed, 0 skipped, 0 xfailed |
+| `test_surface_tfi_cad.py` | CAD | 4 passed, 0 skipped, 0 xfailed |
+
+All `@PENDING` lines are removed; removing them is the only edit made to
+either module since the freeze. Full local suite: 1244 passed.
+
+Measured on the CAD case (T1):
+
+| Check | Measured | Required |
+|---|---|---|
+| Distance from the primitive's exact clustered tensor face | 7.7e-4 local spacing | <= 0.05 |
+| Distance from the CAD cylinder (exact projection) | 2.2e-16 | <= 3.8e-9 |
+| Rest of the block | bit-identical | bit-identical |
+| Run time | 0.01 s | |
+
+The review questions above are still open; changing any answer is a
+re-freeze.

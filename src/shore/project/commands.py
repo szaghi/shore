@@ -286,6 +286,50 @@ class Snap(Command):
 
 
 @dataclass(frozen=True)
+class FillFace(Command):
+    """Rebuild one block face from its boundary on a CAD surface (ADR 0007).
+
+    The face's four boundary rows stay as they are; the interior is filled by
+    ``shore.surface.tfi.surface_grid`` on SURFACE entity number *surface* of
+    the loaded geometry.
+    """
+
+    method: ClassVar[str] = "surface_grid"
+    positional: ClassVar[tuple[str, ...]] = ("block", "face")
+
+    block: str
+    face: str
+    surface: int
+    smoothing: str = "elliptic"
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.geometry import EntityKind
+        from shore.mesh.face import FACE_ALONG_AXES, _face_slice
+        from shore.surface.tfi import surface_grid
+
+        mesh, _ = project.require_mesh()
+        if project.body is None:
+            raise ParameterError("surface_grid needs a loaded geometry: call load_geometry first.")
+        blocks = {b.label: b for b in mesh.blocks}
+        if self.block not in blocks:
+            raise ParameterError(f"Unknown block {self.block!r}; blocks: {sorted(blocks)}.")
+        if self.face not in FACE_ALONG_AXES:
+            raise ParameterError(f"Unknown face {self.face!r}; faces: {sorted(FACE_ALONG_AXES)}.")
+        geometry = project.body.geometry
+        surfaces = geometry.entities(EntityKind.SURFACE)
+        if not 0 <= self.surface < len(surfaces):
+            raise ParameterError(
+                f"The geometry has {len(surfaces)} parametric surface(s); "
+                f"surface={self.surface} does not exist (an STL body has none)."
+            )
+        view = _face_slice(blocks[self.block], self.face)  # type: ignore[arg-type]
+        grid = surface_grid(geometry, surfaces[self.surface], view, smoothing=self.smoothing)
+        restore = project.undo_cache.snapshot(mesh)
+        view[...] = grid.points
+        return Undo(restore)
+
+
+@dataclass(frozen=True)
 class WriteGeo(Command):
     """Write ``.geo`` files (output only).
 

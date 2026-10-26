@@ -78,7 +78,6 @@ def _local_spacing(ref: np.ndarray) -> np.ndarray:
 
 
 class TestCommand:
-    @PENDING
     def test_rebuilds_face_on_cad_surface(self, files):
         p = _project(files["step"])
         block = p.mesh.blocks[0]
@@ -94,7 +93,6 @@ class TestCommand:
         assert proj.distances.max() <= 1e-9 * diag
         np.testing.assert_array_equal(block.nodes[1:], before[1:])
 
-    @PENDING
     def test_journal_replay_and_undo(self, files, tmp_path):
         p = _project(files["step"])
         before = p.mesh.blocks[0].nodes.copy()
@@ -107,7 +105,6 @@ class TestCommand:
         p.undo()
         np.testing.assert_array_equal(p.mesh.blocks[0].nodes, before)
 
-    @PENDING
     def test_rejects_unknown_block_or_face(self, files):
         p = _project(files["step"])
         k = _cylinder_face(p)
@@ -116,7 +113,6 @@ class TestCommand:
         with pytest.raises(ParameterError):
             p.surface_grid(p.mesh.blocks[0].label, "x_lo", surface=k)
 
-    @PENDING
     def test_rejects_stl(self, files):
         p = _project(files["stl"])
         with pytest.raises(ParameterError):

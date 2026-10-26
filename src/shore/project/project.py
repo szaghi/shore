@@ -37,6 +37,7 @@ from shore.project.commands import (
     CancelToken,
     Command,
     Context,
+    FillFace,
     LoadBlocks,
     LoadGeometry,
     March,
@@ -121,6 +122,13 @@ class Project:
     def snap(self, exact: bool = False) -> None:
         """Project associated nodes onto their geometry."""
         self.execute(Snap(exact))
+
+    def surface_grid(
+        self, block: str, face: str, *, surface: int, smoothing: str = "elliptic"
+    ) -> None:
+        """Rebuild *face* of *block* from its boundary on SURFACE entity *surface*
+        of the loaded geometry (TFI + elliptic smoothing in (u, v), ADR 0007)."""
+        self.execute(FillFace(block, face, surface, smoothing))
 
     def build_primitive(self, kind: str, **params: Any) -> None:
         """Build a parametric primitive (``box``, ``annulus``, ``flat_caps``,
