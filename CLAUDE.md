@@ -233,7 +233,7 @@ only (centroid ray-cast, like `cubed_sphere`).
 
 `tests/spec/` holds acceptance specs written and validated **before** an
 algorithm is implemented (ADR 0005; the `ai-research-verification`
-discipline; ADR 0007 surface grids, ADR 0008 surface marching, ADR 0009 intersection loops, ADR 0010 collar block, ADR 0011 open intersection curves, ADR 0012 marcher ends on a plane). While implementing, do **not** edit `tests/spec/**`,
+discipline; ADR 0007 surface grids, ADR 0008 surface marching, ADR 0009 intersection loops, ADR 0010 collar block, ADR 0011 open intersection curves, ADR 0012 marcher ends on a plane, ADR 0013 half-collar block). While implementing, do **not** edit `tests/spec/**`,
 `tests/conftest.py`, the pytest config or `src/shore/quality.py`. The only
 permitted edit is deleting a case's `@PENDING` (strict xfail) line once that
 case passes. `python scripts/check_spec.py` verifies the hashes in
@@ -242,7 +242,7 @@ lint job). Changing a threshold or metric is a re-freeze: a separate,
 user-approved commit (ADR 0005 records the first one). Report the verdict as
 counts (e.g. "13 passed, 0 skipped, 0 xfailed"), not "it passes".
 Verdicts are per module and per CI job: `test_surface_tfi.py`,
-`test_surface_march.py`, `test_intersection.py`, `test_collar.py`, `test_open_curve.py` and `test_march_ends.py` run in the main job, `test_surface_tfi_cad.py` (needs
+`test_surface_march.py`, `test_intersection.py`, `test_collar.py`, `test_open_curve.py`, `test_march_ends.py` and `test_half_collar.py` run in the main job, `test_surface_tfi_cad.py` (needs
 `shore[cad]`) in the CAD job.
 
 ### Test Suite
