@@ -109,6 +109,17 @@ class TestLoad:
         with pytest.raises(MeshInputError):
             load_geometry(bad)
 
+    @pytest.mark.parametrize(
+        "part",
+        [lambda: bd.Sphere(1), lambda: bd.fillet(bd.Box(1, 1, 1).edges(), 0.1)],
+        ids=["sphere", "filleted-box"],
+    )
+    def test_merged_proxy_watertight(self, part):
+        # pole / corner-patch fans collapse on merging; degenerate faces must go
+        merged = OcctGeometry(part().wrapped).merged_proxy
+        assert merged.is_watertight
+        assert merged.volume > 0.0
+
     def test_deflection_default_relative(self, sphere):
         assert sphere.deflection == pytest.approx(1e-3 * sphere.diag)
 

@@ -302,6 +302,13 @@ class Mesh:
 
     @classmethod
     def from_stl(
+        cls, path: str | Path, topology: Topology, *args: object, **kwargs: object
+    ) -> Mesh:
+        """Alias of ``from_file`` (which also reads STEP/IGES/BREP)."""
+        return cls.from_file(path, topology, *args, **kwargs)  # type: ignore[arg-type]
+
+    @classmethod
+    def from_file(
         cls,
         path: str | Path,
         topology: Topology,
@@ -317,12 +324,14 @@ class Mesh:
         j_cluster_lon: float | None = None,
         spacing_k: Spacing1D | None = None,
     ) -> Mesh:
-        """Load an STL, project to surface, wire blocks.  Does not march.
+        """Load a body, project to surface, wire blocks.  Does not march.
 
         Parameters
         ----------
         path :
-            Path to the STL file.
+            STL, or a CAD file (STEP/IGES/BREP, needs ``shore-mesh[cad]``).
+            For CAD the k=0 ray casts are snapped to the exact surface and
+            the marcher's normal blending reads exact-geometry normals.
         topology :
             Wired topology builder (e.g. ``CubedSphereTopology()``).
         ni, nj :
@@ -344,7 +353,7 @@ class Mesh:
         Mesh
             Ready to call ``.march()``.
         """
-        body = Body.from_stl(path)
+        body = Body.from_file(path)
 
         if theta_cap_deg is not None and theta_cap is None:
             _theta = float(np.deg2rad(theta_cap_deg))
@@ -364,13 +373,13 @@ class Mesh:
         if isinstance(topology, (CGridTopology, CHTopology)):
             kind = type(topology).__name__
             raise ValueError(
-                f"Mesh.from_stl does not support {kind} — its "
+                f"Mesh.from_file does not support {kind} — its "
                 "parameters (ni_body, ni_wake, n_stations, wake_length, "
                 "span_axis, freestream_world) don't fit the (ni, nj, nk) "
                 "signature.  Build the block list directly:\n\n"
                 "    import trimesh\n"
                 f"    from shore.mesh import Body, Mesh, {kind}\n"
-                "    body = Body.from_stl(path)\n"
+                "    body = Body.from_file(path)\n"
                 f"    topo = {kind}(...)\n"
                 "    blocks = topo.build(\n"
                 "        surface=None, nk=nk, mesh=body.mesh,\n"
@@ -584,9 +593,7 @@ class Mesh:
 
         do_blend = blend_normals_k > 0
         if do_blend:
-            from shore.volume.hyperbolic import _stl_normals
-
-            trimesh_obj = self.body.mesh
+            body_normals = self.body.normals
 
         for k in range(nk - 1):
             step = float(_steps[k])
@@ -617,7 +624,7 @@ class Mesh:
                         periodic=(False, False),
                         ghost_rows=ghost,
                     )
-                    stl_n = _stl_normals(trimesh_obj, layer_q.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
+                    stl_n = body_normals(layer_q.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
                     blended = alpha * stl_n + (1.0 - alpha) * grid_n
                     mag = np.linalg.norm(blended, axis=-1, keepdims=True)
                     normals_override: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
@@ -688,7 +695,7 @@ class Mesh:
                     periodic=(False, False),
                     ghost_rows=cap_north_ghost,
                 )
-                stl_n = _stl_normals(trimesh_obj, cn_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
+                stl_n = body_normals(cn_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
                 blended = alpha * stl_n + (1.0 - alpha) * grid_n
                 mag = np.linalg.norm(blended, axis=-1, keepdims=True)
                 cap_north_no: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
@@ -699,7 +706,7 @@ class Mesh:
                     periodic=(False, False),
                     ghost_rows=cap_south_ghost,
                 )
-                stl_n = _stl_normals(trimesh_obj, cs_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
+                stl_n = body_normals(cs_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
                 blended = alpha * stl_n + (1.0 - alpha) * grid_n
                 mag = np.linalg.norm(blended, axis=-1, keepdims=True)
                 cap_south_no: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
@@ -796,9 +803,7 @@ class Mesh:
 
         do_blend = blend_normals_k > 0
         if do_blend:
-            from shore.volume.hyperbolic import _stl_normals
-
-            trimesh_obj = self.body.mesh
+            body_normals = self.body.normals
 
         periodic = (False, False)
 
@@ -837,7 +842,7 @@ class Mesh:
             ) -> np.ndarray:
                 grid_n = _compute_normals(layer, periodic=_periodic, ghost_rows=ghost)
                 ni_q, nj_q = layer.shape[:2]
-                stl_n = _stl_normals(trimesh_obj, layer.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
+                stl_n = body_normals(layer.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
                 blended = _alpha * stl_n + (1.0 - _alpha) * grid_n
                 mag = np.linalg.norm(blended, axis=-1, keepdims=True)
                 return blended / np.where(mag < 1e-15, 1.0, mag)
@@ -962,9 +967,7 @@ class Mesh:
 
         do_blend = blend_normals_k > 0
         if do_blend:
-            from shore.volume.hyperbolic import _stl_normals
-
-            trimesh_obj = self.body.mesh
+            body_normals = self.body.normals
 
         ni, nj, _, _ = block.nodes.shape
         periodic = (False, False)
@@ -977,7 +980,7 @@ class Mesh:
             if do_blend and k < blend_normals_k:
                 alpha = 1.0 - k / blend_normals_k
                 grid_n = _compute_normals(layer, periodic=periodic)
-                stl_n = _stl_normals(trimesh_obj, layer.reshape(-1, 3)).reshape(ni, nj, 3)
+                stl_n = body_normals(layer.reshape(-1, 3)).reshape(ni, nj, 3)
                 normals_override = alpha * stl_n + (1.0 - alpha) * grid_n
                 normals_override /= np.linalg.norm(normals_override, axis=-1, keepdims=True)
 
@@ -1028,9 +1031,7 @@ class Mesh:
 
         do_blend = blend_normals_k > 0
         if do_blend:
-            from shore.volume.hyperbolic import _stl_normals
-
-            trimesh_obj = self.body.mesh
+            body_normals = self.body.normals
 
         ni, nj, _, _ = block.nodes.shape
         periodic = (False, True)
@@ -1043,7 +1044,7 @@ class Mesh:
             if do_blend and k < blend_normals_k:
                 alpha = 1.0 - k / blend_normals_k
                 grid_n = _compute_normals(layer, periodic=periodic)
-                stl_n = _stl_normals(trimesh_obj, layer.reshape(-1, 3)).reshape(ni, nj, 3)
+                stl_n = body_normals(layer.reshape(-1, 3)).reshape(ni, nj, 3)
                 normals_override = alpha * stl_n + (1.0 - alpha) * grid_n
                 normals_override /= np.linalg.norm(normals_override, axis=-1, keepdims=True)
 

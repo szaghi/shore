@@ -5,7 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from shore.exceptions import MeshInputError
-from shore.geometry.base import BODY, EntityKind, EntityRef, Geometry, Projection
+from shore.geometry.base import (
+    BODY,
+    AnchoredCaster,
+    EntityKind,
+    EntityRef,
+    Geometry,
+    Projection,
+)
 from shore.geometry.stl import StlGeometry
 
 CAD_SUFFIXES = (".step", ".stp", ".iges", ".igs", ".brep", ".brp")
@@ -13,6 +20,7 @@ CAD_SUFFIXES = (".step", ".stp", ".iges", ".igs", ".brep", ".brp")
 __all__ = [
     "BODY",
     "CAD_SUFFIXES",
+    "AnchoredCaster",
     "EntityKind",
     "EntityRef",
     "Geometry",

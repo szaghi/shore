@@ -1,7 +1,8 @@
 # shore project
 
-Project a structured single-block lat-lon sphere grid onto an STL
-surface, producing the k=0 layer only as an `.npz` file.
+Project a structured single-block lat-lon sphere grid onto an STL or CAD
+(STEP/IGES/BREP, needs `shore-mesh[cad]`) surface, producing the k=0 layer
+only as an `.npz` file. CAD hits are snapped onto the exact surface.
 
 ::: warning Independent of `shore mesh`
 The `.npz` produced here is a **single-block** surface (`(ni, nj, 3)` lat-lon

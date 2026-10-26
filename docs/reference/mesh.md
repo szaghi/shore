@@ -1,6 +1,6 @@
 # shore mesh
 
-Full pipeline: STL → structured volume → geo files.
+Full pipeline: STL or CAD (STEP/IGES/BREP) → structured volume → geo files.
 
 Five topologies are supported, selected via `--topology`:
 
@@ -319,6 +319,12 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
 
 ## Notes
 
+- CAD input (`.step`/`.stp`, `.iges`/`.igs`, `.brep`/`.brp`) needs the
+  optional backend: `pip install 'shore-mesh[cad]'`. Ray-cast k=0 nodes
+  (`cubed_sphere`, `ogrid`, `oh`) are snapped onto the exact CAD surface,
+  and `--blend-normals-k` reads exact-geometry normals. The C-grid family
+  (`cgrid`, `ch`) still slices a tessellation of the CAD body (deflection
+  10⁻³ × the bounding-box diagonal); exact CAD sections are future work.
 - The STL must be a single connected, watertight mesh. Multi-body STL files
   (multiple shells) will fail during projection — split them first with a
   CAD tool or trimesh.

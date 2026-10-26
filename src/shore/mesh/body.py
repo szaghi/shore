@@ -1,4 +1,4 @@
-"""Body: STL surface wrapper with structured sphere projection."""
+"""Body: a geometry (STL or CAD) with structured sphere projection."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import numpy as np
 import trimesh
 
 from shore.exceptions import MeshInputError
+from shore.geometry import CAD_SUFFIXES, AnchoredCaster, Geometry, load_geometry
 from shore.geometry.stl import StlGeometry
 from shore.surface.anchor import resolve_anchor
 from shore.surface.io import load_stl
@@ -22,21 +23,38 @@ from shore.surface.remesh import (
 
 @dataclass
 class Body:
-    """Triangulated body surface with ray-cast projection capability.
+    """Body surface with ray-cast projection capability.
 
     Parameters
     ----------
     mesh :
-        Triangulated body surface.
+        Triangulated body surface. For a CAD body (``geometry`` given) it may
+        be omitted and defaults to the geometry's merged tessellation, which
+        serves the mesh-based consumers (anchor resolution, C-grid slicing).
     anchor :
         Ray-cast origin, shape (3,).  When *None*, defaults to the mesh
         centroid (set by ``__post_init__``).
+    geometry :
+        The body as a ``Geometry``. When *None*, an ``StlGeometry`` over
+        *mesh*. Projections (k=0 ray casts, marching normals) go through it.
     """
 
-    mesh: trimesh.Trimesh
+    mesh: trimesh.Trimesh | None = None
     anchor: np.ndarray = field(default=None, compare=False, repr=False)  # type: ignore[assignment]
+    geometry: Geometry = field(default=None, compare=False, repr=False)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
+        if self.geometry is None:
+            if self.mesh is None:
+                raise MeshInputError("Body needs a mesh or a geometry.")
+            self.geometry = StlGeometry(self.mesh)
+        if self.mesh is None:
+            proxy = getattr(self.geometry, "merged_proxy", None)
+            if proxy is None:
+                raise MeshInputError(
+                    f"{type(self.geometry).__name__} has no tessellation; pass mesh= as well."
+                )
+            self.mesh = proxy
         if self.anchor is None:
             self.anchor = self.mesh.centroid.copy()
 
@@ -66,23 +84,55 @@ class Body:
         anchor = resolve_anchor(mesh, strategy=anchor_strategy)
         return cls(mesh=mesh, anchor=anchor)
 
+    @classmethod
+    def from_file(
+        cls,
+        path: str | Path,
+        anchor_strategy: str = "auto",
+        skip_hygiene: bool = False,
+    ) -> Body:
+        """Load an STL or a CAD file (STEP/IGES/BREP) and resolve the anchor.
+
+        STL goes through ``from_stl``. CAD needs ``shore-mesh[cad]``; the
+        anchor is resolved on the merged tessellation, and *skip_hygiene*
+        does not apply.
+        """
+        if Path(path).suffix.lower() not in CAD_SUFFIXES:
+            return cls.from_stl(path, anchor_strategy=anchor_strategy, skip_hygiene=skip_hygiene)
+        geometry = load_geometry(path)
+        body = cls(geometry=geometry)
+        body.anchor = resolve_anchor(body.mesh, strategy=anchor_strategy)
+        return body
+
     # ------------------------------------------------------------------
     # Cached projector (Phase 3 — single BVH build per Body instance)
     # ------------------------------------------------------------------
 
-    @functools.cached_property
-    def geometry(self) -> StlGeometry:
-        """The body as a ``Geometry`` (STL backend), built once per Body."""
-        return StlGeometry(self.mesh)
+    @property
+    def is_cad(self) -> bool:
+        """True when the body has exact (non-STL) geometry."""
+        return not isinstance(self.geometry, StlGeometry)
 
     @property
-    def projector(self) -> Projector:
-        """Projector for the body anchor — BVH built exactly once per Body.
+    def projector(self) -> Projector | AnchoredCaster:
+        """Anchored ray caster for the k=0 builders, one per Body.
 
-        Served by ``geometry.projector(anchor)``, so the ``Geometry`` and the
-        legacy projector share one BVH.
+        STL: ``geometry.projector(anchor)`` (the legacy ``Projector``, sharing
+        the geometry's BVH; results bit-identical to before). CAD: an
+        ``AnchoredCaster`` that casts on the tessellation and snaps hits to
+        the exact surface.
         """
-        return self.geometry.projector(self.anchor)
+        if isinstance(self.geometry, StlGeometry):
+            return self.geometry.projector(self.anchor)
+        return self._cad_caster
+
+    @functools.cached_property
+    def _cad_caster(self) -> AnchoredCaster:
+        return AnchoredCaster(self.geometry, self.anchor, snap=True)
+
+    def normals(self, points: np.ndarray) -> np.ndarray:
+        """Unit outward surface normals at the closest body points (..., 3)."""
+        return self.geometry.project(points).normals
 
     # ------------------------------------------------------------------
     # Projection

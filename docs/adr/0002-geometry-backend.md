@@ -113,9 +113,25 @@ excluded (ADR 0006 sets Python + numpy only).
 - `Projector`, `Body` and the surface builders take a `Geometry`, not a
   `trimesh.Trimesh`. `Body.from_stl` keeps its signature and builds a
   `StlGeometry`.
+
+  *As implemented (2026-10-26):*
+  - **The k=0 builders keep their `projector` argument.** `cap`,
+    `equator`, `remesh` and the topologies only call
+    `.project(dirs)`/`.anchor`. For CAD, `Body.projector` is an
+    `AnchoredCaster` that ray-casts on the tessellation and **snaps** hits
+    to the exact surface. For STL it is still the legacy `Projector`, so
+    results are bit-identical.
+  - **Marcher normal blending** goes through `Body.normals` →
+    `geometry.project(...).normals`.
+  - **`Body.from_file`, `Mesh.from_file` and the `mesh`/`project` CLI
+    commands** read CAD.
+  - **Remaining trimesh consumers** (anchor resolution, C-grid slicing and
+    TE detection) read `Body.mesh`, which for CAD is the merged,
+    degenerate-free (watertight) tessellation. They run at tessellation
+    accuracy until a CAD-native section replaces them.
 - The star-shaped restriction stays only on the centroid-ray-cast templates.
   Association-driven projection (ADR 0003) has no such restriction.
-- CI gains a `cad` job that installs `shore[cad]`. The default job stays light.
+- CI gains a `cad` job (`test-cad`) that installs `shore[cad]`. The default job stays light.
 
 ## Verification
 

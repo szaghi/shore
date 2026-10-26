@@ -119,3 +119,44 @@ class Geometry(Protocol):
     def evaluate(self, entity: EntityRef, params: np.ndarray) -> np.ndarray:
         """Positions of *entity* at *params*: (..., 2) on a surface, (...) on a curve."""
         ...
+
+
+class AnchoredCaster:
+    """``Projector``-compatible anchored ray caster over any ``Geometry``.
+
+    Exposes ``anchor`` and ``project(dirs, on_failure)`` (the interface the
+    k=0 builders call: ``surface.cap``, ``surface.equator``,
+    ``surface.remesh``), backed by ``geometry.ray_cast``. With ``snap=True``
+    every HIT location is then moved to the exact closest point on the body
+    (``geometry.project(..., exact=True)``): for a CAD body the ray cast runs
+    on the tessellation, and snapping puts k=0 on the exact surface. For an
+    STL body snapping would be a no-op, so it is left off.
+
+    Parameters
+    ----------
+    geometry :
+        Body geometry.
+    anchor :
+        Ray origin inside the body, shape (3,).
+    snap :
+        Snap hits to the exact surface.
+    """
+
+    def __init__(self, geometry: Geometry, anchor: np.ndarray, snap: bool = False) -> None:
+        self.geometry = geometry
+        self.anchor = np.asarray(anchor, dtype=np.float64).copy()
+        self.snap = snap
+
+    def project(self, dirs: np.ndarray, on_failure: str = "raise") -> ProjectionResult:
+        """Cast from the anchor along *dirs* (..., 3); see ``Projector.project``."""
+        res = self.geometry.ray_cast(self.anchor, dirs, on_failure)
+        if not self.snap:
+            return res
+        valid = np.all(np.isfinite(res.locations), axis=-1)
+        if not valid.any():
+            return res
+        locations = res.locations.copy()
+        distances = res.distances.copy()
+        locations[valid] = self.geometry.project(locations[valid], exact=True).points
+        distances[valid] = np.linalg.norm(locations[valid] - self.anchor, axis=-1)
+        return ProjectionResult(locations=locations, status=res.status, distances=distances)

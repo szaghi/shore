@@ -35,6 +35,7 @@ loads in a subprocess (ADR 0006).
 
 from __future__ import annotations
 
+import functools
 import logging
 from pathlib import Path
 
@@ -303,6 +304,24 @@ class OcctGeometry:
     def proxy(self) -> trimesh.Trimesh:
         """The tier-1 tessellation (faces not merged across edges)."""
         return self._proxy
+
+    @functools.cached_property
+    def merged_proxy(self) -> trimesh.Trimesh:
+        """The tessellation with coincident vertices merged and degenerate
+        triangles dropped: watertight for a closed solid.
+
+        For mesh-based consumers that need a closed triangulation
+        (inside/outside tests, plane sections, dihedral-angle TE detection).
+        Its vertex normals are smoothed across face boundaries, so do not
+        read normals from it: use ``project``.
+        """
+        mesh = trimesh.Trimesh(self._verts, self._tris, process=True)
+        # singular edges (sphere poles, fillet corner patches) are meshed with
+        # several coincident nodes; merged, their fan triangles collapse and
+        # leave non-manifold edges until removed
+        mesh.update_faces(mesh.nondegenerate_faces())
+        mesh.remove_unreferenced_vertices()
+        return mesh
 
     def _check(self, entity: EntityRef) -> int:
         n = len(self.entities(entity.kind))

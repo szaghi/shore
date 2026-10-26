@@ -588,7 +588,10 @@ def mesh(
     ctx: typer.Context,
     input: Annotated[
         Path | None,
-        typer.Argument(help="Input STL file (optional when --config supplies it)."),
+        typer.Argument(
+            help="Input STL or CAD file (STEP/IGES/BREP, needs shore-mesh[cad]);"
+            " optional when --config supplies it."
+        ),
     ] = None,
     config: Annotated[
         Path | None,
@@ -881,16 +884,17 @@ def mesh(
 
     # --- load body ---
     # C-grid topology doesn't ray-cast through the body — it slices the
-    # STL directly with mesh_plane.  Skip the trimesh.repair pass to
-    # avoid the optional networkx dependency.
+    # triangulation directly with mesh_plane (for CAD input: the merged
+    # tessellation).  Skip the trimesh.repair pass to avoid the optional
+    # networkx dependency.
     _skip_hygiene = topology in ("cgrid", "ch")
     if verbose:
         with _progress() as prog:
-            t = prog.add_task("Loading STL   ", total=1, info="")
-            body = Body.from_stl(input, skip_hygiene=_skip_hygiene)
+            t = prog.add_task("Loading body  ", total=1, info="")
+            body = Body.from_file(input, skip_hygiene=_skip_hygiene)
             prog.update(t, advance=1, info=f"{len(body.mesh.faces)} triangles")
     else:
-        body = Body.from_stl(input, skip_hygiene=_skip_hygiene)
+        body = Body.from_file(input, skip_hygiene=_skip_hygiene)
 
     # --- build topology + march ---
     _theta_topo = theta if theta is not None else 0.05 * np.pi
@@ -1143,7 +1147,10 @@ def config_cmd(
 
 @app.command()
 def project(
-    input: Annotated[Path, typer.Argument(help="Input STL file.")],
+    input: Annotated[
+        Path,
+        typer.Argument(help="Input STL or CAD file (STEP/IGES/BREP, needs shore-mesh[cad])."),
+    ],
     output: Annotated[
         Path | None,
         typer.Option("-o", "--output", help="Output .npz file."),
@@ -1169,8 +1176,8 @@ def project(
 
     if verbose:
         with _progress() as prog:
-            t = prog.add_task("Loading STL   ", total=1, info="")
-            body = Body.from_stl(input)
+            t = prog.add_task("Loading body  ", total=1, info="")
+            body = Body.from_file(input)
             prog.update(t, advance=1, info=f"{len(body.mesh.faces)} triangles")
 
         with _progress() as prog:
@@ -1187,7 +1194,7 @@ def project(
             )
             prog.update(t, advance=1, info=f"({ni}x{nj}) surface layer")
     else:
-        body = Body.from_stl(input)
+        body = Body.from_file(input)
         k0 = body.project(
             ni,
             nj,
