@@ -55,6 +55,7 @@ class HyperbolicParams:
     volume_iters: int = 2
     convergence_gain: float = 16.0  # extra dissipation per unit of front convergence
     distance_clip: float = 2.0  # marching distance kept in [step / clip, step * clip]
+    excess_bound: float = 0.04  # outer-face volume correction, at most this fraction of dV
 
 
 DEFAULT = HyperbolicParams()
@@ -102,6 +103,20 @@ def _neighbour_mean(field: np.ndarray, periodic: tuple[bool, bool]) -> np.ndarra
             total += np.where(v, nb, 0.0)
             count = count + v
     return total / np.maximum(count, 1)
+
+
+def _central(field: np.ndarray, axis: int, periodic: bool) -> np.ndarray:
+    """Half the centred difference along *axis*; past a non-periodic edge the
+    neighbour is the node itself (the system's seam extrapolation)."""
+    up = np.roll(field, -1, axis)
+    down = np.roll(field, 1, axis)
+    if not periodic:
+        first = [slice(None)] * 2
+        last = [slice(None)] * 2
+        first[axis], last[axis] = 0, -1
+        down[tuple(first)] = field[tuple(first)]
+        up[tuple(last)] = field[tuple(last)]
+    return 0.5 * (up - down)
 
 
 def _laplacian(
@@ -231,6 +246,19 @@ def hyperbolic_layer(
     c_inv[safe] = np.linalg.inv(c_mat[safe])
     ma = c_inv @ a_mat  # (ni, nj, 3, 3)
     mb = c_inv @ b_mat
+
+    # The volume row holds over the outer face, but r_zeta0 = dist * n sets
+    # the inner face's volume: on a convex wall each layer would march only
+    # ~dist * (1 - 2 * dist * curvature). Add the outer-face excess, with the
+    # system's own differences, so that dr = r_zeta0 solves the undissipated
+    # system. Only where the curvature is resolved: the excess is bounded to
+    # excess_bound * dV, and none is added on concave layers. At a convex kink
+    # (excess ~ dV) and on converging fronts the shorter or longer step of the
+    # inner-face target is what keeps the cells from folding.
+    excess = np.einsum("...j,...j->...", a_mat[..., 2, :], _central(dr, 0, periodic[0]))
+    excess += np.einsum("...j,...j->...", b_mat[..., 2, :], _central(dr, 1, periodic[1]))
+    excess = np.clip(excess, 0.0, params.excess_bound * dist * area)
+    rhs_field = rhs_field + c_inv[..., :, 2] * excess[..., None]
 
     idx = -np.ones((ni, nj), dtype=np.int64)
     ii, jj = np.nonzero(interior)

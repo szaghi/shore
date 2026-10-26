@@ -229,7 +229,6 @@ class TestH2RegressionGrid:
         assert ortho.max() <= 4.6
         assert summary(mesh.blocks)["scaled_jacobian_min"] >= 0.70
 
-    @PENDING
     def test_thickness(self, mesh):
         outer = outer_distance_ratio(mesh, (0.02 * 1.1 ** np.arange(9)).sum())
         assert outer.min() >= 0.95 and outer.max() <= 1.05

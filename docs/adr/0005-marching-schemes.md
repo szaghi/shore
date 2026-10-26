@@ -335,3 +335,59 @@ A volume target consistent with the outer face makes the interior steps
 exact to 1e-4. But the same shortening damps convex kinks: over the plus
 prism the excess reaches 1-3 x dV and H3 folds. The open fix is to correct
 only resolved curvature (bounded excess); it has not been validated yet.
+
+## Acceptance (2026-10-26): hyperbolic marching spec met
+
+**Verdict: 13 passed, 0 skipped, 0 xfailed** (T2: `pytest tests/spec`,
+with `scripts/check_spec.py` reporting all hashes `ok`; full suite 1212
+passed). All `@PENDING` markers have been removed. Removing them is the
+only edit made to the spec since the re-freeze.
+
+**Thickness floor fix.** The volume row of the linear system gets the
+outer-face excess `(r_eta x r_zeta0) . D_xi r_zeta0 + (r_zeta0 x r_xi) .
+D_eta r_zeta0`, computed with the system's own differences, so that
+`dr = r_zeta0` solves the undissipated system. Two limits apply:
+
+- The excess is bounded to `excess_bound x dV` (default 0.04). On a sphere
+  the excess is about `2 x step / R`, so layers with `step / R <= 0.02` are
+  fully corrected. At a convex kink the excess is about 1-3 x dV and stays
+  uncorrected: there the shorter step of the inner-face target is what
+  keeps the cells from folding (see the H3 diagnosis above).
+- No excess is added on concave layers: the longer step there is what
+  keeps converging fronts from folding.
+
+The bound is one default chosen from a sweep over every spec case, not
+tuned per case. Results of the sweep:
+
+| `excess_bound` | Thickness on H2 | Scaled Jacobian | Rest of the spec |
+|---|---|---|---|
+| 0 | 0.937-1.009 | 0.741 | passes |
+| 0.01 | 0.947-1.016 | 0.741 | passes |
+| 0.025 | 0.961-1.026 | 0.739 | passes |
+| **0.04** | **0.975-1.033** | **0.740** | **passes** |
+| 0.075 | 0.985-1.044 | 0.713 | passes |
+| 0.1 | | | H3 O-grid folds |
+| 0.15 | | | H2 orthogonality and H3 fail |
+
+The H2 thickness band 0.95-1.05 is met for bounds in roughly 0.02-0.075.
+0.04 balances the two thickness margins (0.025 and 0.017) and stays clear
+of the H3 limit. Unit check: a convex ring of radius 1 with step 0.02
+marches 0.9986 x step, against 0.979 = 1 - step / R with the bound at 0
+(`tests/test_hyperbolic_scheme.py`).
+
+Final H2 metrics:
+
+| Metric | Value | Required |
+|---|---|---|
+| Orthogonality mean / max | 0.96 / 2.33 deg | <= 2.0 / <= 4.6 |
+| Minimum scaled Jacobian | 0.740 | >= 0.70 |
+| Thickness | 0.975-1.033 | 0.95-1.05 |
+
+Scope: the spec's own scope. Unverified, as stated in the spec:
+- blunt-TE C-grids;
+- CH/OH channels;
+- non-star-shaped CAD;
+- finer grids;
+- run time.
+
+The bound was swept on these cases only.

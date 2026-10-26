@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pytest
 
 from shore.exceptions import ParameterError
 from shore.mesh import CubedSphereTopology, Mesh
 from shore.quality import scaled_jacobian
-from shore.volume.hyperbolic_scheme import hyperbolic_layer
+from shore.volume.hyperbolic_scheme import HyperbolicParams, hyperbolic_layer
 
 
 def _plane(ni: int = 7, nj: int = 6, h: float = 0.1) -> np.ndarray:
@@ -36,6 +38,21 @@ class TestExactCases:
         dr = np.linalg.norm(new[..., :2], axis=-1) - 1.0
         np.testing.assert_allclose(dr, 1e-3, rtol=2e-2)
         np.testing.assert_allclose(new[..., 2], layer[..., 2], atol=1e-6)
+
+    def test_convex_step_not_shortened(self):
+        # the volume row holds over the outer face: without the outer-face
+        # excess a convex ring of radius 1 marches only ~step * (1 - step);
+        # with it (step / R = 0.02 is within excess_bound) it marches step
+        theta = np.linspace(0.0, 2.0 * np.pi, 48, endpoint=False)
+        z = np.linspace(0.0, 0.5, 6)
+        t, zz = np.meshgrid(theta, z, indexing="ij")
+        layer = np.stack([np.cos(t), np.sin(t), zz], axis=-1)
+        step = 0.02
+        for bound, expected, tol in ((0.04, 1.0, 2e-3), (0.0, 1.0 - step, 2e-3)):
+            params = dataclasses.replace(HyperbolicParams(), excess_bound=bound)
+            new = hyperbolic_layer(layer, step, (True, False), params=params)
+            dr = np.linalg.norm(new[:, 1:-1, :2], axis=-1) - 1.0  # unconnected z edges are pinned
+            np.testing.assert_allclose(dr / step, expected, atol=tol)
 
     def test_boundary_target_is_exact(self):
         layer = _plane()
