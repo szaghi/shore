@@ -39,3 +39,27 @@ class TestWork:
         x = np.linspace(0.0, 1.0, 21)
         march_surface(Plane(), np.c_[x, 0 * x, 0 * x], np.full(7, 0.05))
         assert calls == [21] * 8  # the curve once, then each new layer once
+
+
+class TestMirror:
+    """The symmetry-plane helper of the end constraint (ADR 0012)."""
+
+    def test_ghosts_are_mirror_images(self):
+        from shore.surface.march import _Mirror
+
+        mirror = _Mirror.of(((0.0, 1.0, 0.0), (0.0, 2.0, 0.0)))  # y = 1, normal unnormalised
+        f = np.array([[0.0, 1.0, 0.0], [1.0, 1.5, 2.0], [3.0, 2.0, 1.0], [4.0, 1.0, 5.0]])
+        ext = mirror.extend(f)
+        np.testing.assert_allclose(ext[0], [1.0, 0.5, 2.0])
+        np.testing.assert_allclose(ext[-1], [3.0, 0.0, 1.0])
+        np.testing.assert_allclose(mirror.reflect(mirror.reflect(f)), f)
+        np.testing.assert_allclose(mirror.matrix @ [0.0, 1.0, 0.0], [0.0, -1.0, 0.0])
+
+    def test_end_tangent_is_the_plane_normal(self):
+        from shore.surface.march import _central, _Mirror
+
+        mirror = _Mirror.of(((0.0, 0.0, 0.0), (0.0, 1.0, 0.0)))
+        theta = np.linspace(0.0, np.pi, 9)
+        arc = np.c_[np.cos(theta), np.sin(theta), 0.0 * theta]  # ends on y = 0
+        t = _central(arc, False, mirror)
+        np.testing.assert_allclose(t[[0, -1], [0, 0]], 0.0, atol=1e-15)

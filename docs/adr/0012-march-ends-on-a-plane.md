@@ -1,6 +1,6 @@
 # 0012 — Surface marching with ends on a symmetry plane
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -79,3 +79,51 @@ flat STL face; it is outside this spec.
 2. The mirror-match bound (1e-9 × the first step) is five orders above the
    prototype's 3e-14. It requires the symmetric solution, not a particular
    floating-point order. Keep it?
+
+## Review decisions (2026-10-26, user)
+
+1. **STL normals get a separate ADR later.** Changing `StlGeometry`'s
+   interpolated vertex normals affects every STL march and ADR 0002's
+   bit-identity with `Projector`. This spec stays as frozen.
+2. **The mirror-match bound stays** at 1e-9 × the first step.
+
+## Acceptance (2026-10-26): end-constraint spec met
+
+`march_surface(..., plane=)` in `src/shore/surface/march.py` implements the
+decision. `_Mirror` validates the plane and gives the ghost nodes; the
+ghosts enter the tangent, the Laplacian, the contraction sensor and the
+linear system (the ghost's increment is the reflected increment of the
+inner neighbour); `_on_surface_and_plane` puts each end on both
+(alternating projections, `MarchParams.end_tolerance` 1e-14 × diagonal).
+The arguments are checked (plane shape and normal, `periodic=True`, curve
+ends off the plane).
+
+`plane=None` is bit-identical to the committed marcher: checked on the
+four open half-model curves and the four ADR 0009 loops (periodic).
+
+**Verdict for `tests/spec/test_march_ends.py`: 17 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 7
+`@PENDING` lines are removed. `tests/spec/test_surface_march.py` still
+reports 23 passed. Full suite: 1366 passed, 0 xfailed.
+
+Measured (T1), half models with 15 collar layers:
+
+| Pair | Side | End tangent vs plane normal | Mirror match / first step | Ends off the plane |
+|---|---|---|---|---|
+| plane × cylinder | A, B | 0.014°, 0.013° | 2.2e-14 | 0 |
+| tilted plane × cylinder | A, B | 0.043°, 0.065° | 2.2-3.3e-14 | 0 |
+| cylinder × cylinder | A, B | 0.071°, 0.119° | 2.2e-14 | 0 |
+| sphere × offset cylinder | A, B | 0.048°, 0.043° | 2.2-3.3e-14 | 0 |
+| required | | <= 0.5° | <= 1e-9 | <= 1e-9 × diagonal |
+
+**Geometry work.** ADR 0008 queries the geometry once per node and layer.
+The end constraint adds the alternating projections of the two end nodes:
+on the half sphere, 46 queries and 558 points against 16 and 528 without
+it (1.06 points per node and layer).
+
+**Unit tests** (`tests/test_surface_march.py`): the mirror ghosts and the
+reflection; a curve ending on the plane gets the plane normal as its end
+tangent.
+
+Next for half-model collars: the half-collar block, with the right-angle
+check of ADR 0011 (review decision 2).

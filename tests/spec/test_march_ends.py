@@ -124,7 +124,6 @@ def plane_offset(points: np.ndarray, plane) -> np.ndarray:
 
 
 class TestHalfModel:
-    @PENDING
     @pytest.mark.parametrize("side", ["A", "B"])
     @pytest.mark.parametrize("name", list(HALF))
     def test_e1_symmetry_plane(self, name, side):
@@ -151,7 +150,6 @@ OBLIQUE = ((0.5, 0.0, 0.0), (1.0, 0.0, 0.0))
 
 
 class TestObliquePlane:
-    @PENDING
     @pytest.mark.parametrize("side", ["A", "B"])
     def test_e2_ends_on_an_oblique_plane(self, side):
         from shore.surface.intersect import intersection_curve
@@ -189,7 +187,6 @@ def stl_half():
 
 
 class TestStlHalfModel:
-    @PENDING
     @pytest.mark.parametrize("side", ["box", "post"])
     def test_e3_stl_half_model(self, stl_half, side):
         a, b, curve = stl_half
@@ -208,7 +205,6 @@ class TestStlHalfModel:
 
 
 class TestInterface:
-    @PENDING
     def test_e4_deterministic(self):
         make_a, *_ = HALF["sphere_cylinder"]
         curve = half_curve("sphere_cylinder")
@@ -216,20 +212,17 @@ class TestInterface:
         again = kernel()(make_a(), curve, STEPS, plane=SYMMETRY, entity=BODY)
         np.testing.assert_array_equal(first, again)
 
-    @PENDING
     def test_e4_periodic_with_plane(self):
         make_a, *_ = HALF["plane_cylinder"]
         with pytest.raises(ParameterError):
             kernel()(make_a(), half_curve("plane_cylinder"), STEPS, periodic=True, plane=SYMMETRY)
 
-    @PENDING
     def test_e4_ends_off_the_plane(self):
         make_a, *_ = HALF["plane_cylinder"]
         curve = half_curve("plane_cylinder")[1:]  # starts one node off the plane
         with pytest.raises(ParameterError):
             kernel()(make_a(), curve, STEPS, plane=SYMMETRY)
 
-    @PENDING
     @pytest.mark.parametrize(
         "plane", [((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)), ((0.0, 0.0), (0.0, 1.0))]
     )

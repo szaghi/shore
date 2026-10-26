@@ -26,7 +26,12 @@ so thin layers march along the local normal:
 
 The same stabilisation lengthens the steps of converging fronts: marching
 north from a sphere's equator overshoots the schedule by ~3.5 % (ADR 0008).
-Open curves march their end nodes along their own ``n x t``.
+Open curves march their end nodes along their own ``n x t``, or, with
+``plane``, hold them on a symmetry plane (ADR 0012): each end is solved as
+an interior node whose missing neighbour is the mirror image of its inner
+neighbour across the plane, then put on the surface and the plane by
+alternating projections. On mirror-symmetric bodies this is the symmetric
+half of the periodic march of the mirrored closed curve.
 """
 
 from __future__ import annotations
@@ -51,6 +56,8 @@ class MarchParams:
     area_iters: int = 2
     convergence_gain: float = 16.0  # extra dissipation per unit of front contraction
     distance_clip: float = 2.0  # marching distance kept in [step / clip, step * clip]
+    end_tolerance: float = 1e-14  # ends on surface and plane, relative to the model diagonal
+    end_iterations: int = 100
 
 
 DEFAULT = MarchParams()
@@ -64,6 +71,7 @@ def march_surface(
     periodic: bool = False,
     entity: EntityRef = BODY,
     params: MarchParams = DEFAULT,
+    plane: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> np.ndarray:
     """March a surface grid from *curve* over *entity* of *geometry*.
 
@@ -82,6 +90,10 @@ def march_surface(
         The entity marched over (default: the whole body).
     params :
         Marcher settings.
+    plane :
+        ``(point, normal)``: hold both ends of an open *curve* on this plane
+        with a symmetry condition (ADR 0012). The curve's ends must lie on
+        it. ``None``: the ends march freely.
 
     Returns
     -------
@@ -94,7 +106,9 @@ def march_surface(
     ParameterError
         *curve* not (n, 3) with n >= 3; *steps* not a non-empty 1-D array of
         positive finite values; *curve* off the surface by more than 1e-6
-        of the model diagonal.
+        of the model diagonal; *plane* not a point and a non-zero normal,
+        given with *periodic*, or with the curve's ends off it by more than
+        that tolerance.
     """
     r = np.asarray(curve, dtype=np.float64)
     if r.ndim != 2 or r.shape[1] != 3 or r.shape[0] < 3:
@@ -111,20 +125,97 @@ def march_surface(
         raise ParameterError(
             f"curve nodes are off the surface by up to {worst:.3e} (tolerance {tol:.3e})."
         )
+    mirror = None
+    if plane is not None:
+        if periodic:
+            raise ParameterError("plane holds the ends of an open curve: not with periodic=True.")
+        mirror = _Mirror.of(plane)
+        off = float(np.max(np.abs(mirror.offset(r[[0, -1]]))))
+        if off > tol:
+            raise ParameterError(
+                f"curve ends are off the plane by up to {off:.3e} (tolerance {tol:.3e})."
+            )
+    end_tol = params.end_tolerance * tol / 1e-6
 
     out = np.empty((r.shape[0], s.size + 1, 3))
     out[:, 0] = r
     normals = np.asarray(proj.normals, dtype=np.float64)
     for j, step in enumerate(s):
-        new = _layer(out[:, j], normals, float(step), periodic, params)
+        new = _layer(out[:, j], normals, float(step), periodic, params, mirror)
         landed = geometry.project(new, entity)
-        out[:, j + 1] = landed.points
-        normals = np.asarray(landed.normals, dtype=np.float64)
+        points = np.array(landed.points, dtype=np.float64)
+        normals = np.array(landed.normals, dtype=np.float64)
+        if mirror is not None:
+            for end in (0, -1):
+                points[end], normals[end] = _on_surface_and_plane(
+                    geometry, entity, points[end], mirror, end_tol, params.end_iterations
+                )
+        out[:, j + 1] = points
     return out
 
 
-def _central(f: np.ndarray, periodic: bool) -> np.ndarray:
-    """Central difference along the layer; one-sided at open ends."""
+@dataclass(frozen=True)
+class _Mirror:
+    """Reflection across the plane through *point* with unit *normal*."""
+
+    point: np.ndarray
+    normal: np.ndarray
+
+    @classmethod
+    def of(cls, plane: tuple[np.ndarray, np.ndarray]) -> _Mirror:
+        try:
+            point, normal = (np.asarray(v, dtype=np.float64) for v in plane)
+        except (TypeError, ValueError):
+            raise ParameterError("plane must be (point, normal), two 3-vectors.") from None
+        if point.shape != (3,) or normal.shape != (3,):
+            raise ParameterError("plane must be (point, normal), two 3-vectors.")
+        length = float(np.linalg.norm(normal))
+        if not (np.all(np.isfinite(point)) and np.isfinite(length) and length > 0.0):
+            raise ParameterError("plane must have a finite point and a non-zero normal.")
+        return cls(point, normal / length)
+
+    @property
+    def matrix(self) -> np.ndarray:
+        return np.eye(3) - 2.0 * np.outer(self.normal, self.normal)
+
+    def offset(self, x: np.ndarray) -> np.ndarray:
+        return (x - self.point) @ self.normal
+
+    def reflect(self, x: np.ndarray) -> np.ndarray:
+        return x - 2.0 * self.offset(x)[..., None] * self.normal
+
+    def onto(self, x: np.ndarray) -> np.ndarray:
+        return x - self.offset(x)[..., None] * self.normal
+
+    def extend(self, f: np.ndarray) -> np.ndarray:
+        """*f* with a ghost node at each end: the mirror image of the inner neighbour."""
+        return np.concatenate([self.reflect(f[1:2]), f, self.reflect(f[-2:-1])])
+
+
+def _on_surface_and_plane(
+    geometry: Geometry,
+    entity: EntityRef,
+    x: np.ndarray,
+    mirror: _Mirror,
+    tol: float,
+    iterations: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Alternating projections onto the plane and the surface; the point and its normal."""
+    for _ in range(iterations):
+        landed = geometry.project(mirror.onto(x)[None], entity)
+        y = landed.points[0]
+        moved = float(np.linalg.norm(y - x))
+        x = y
+        if moved <= tol:
+            break
+    return x, np.asarray(landed.normals[0], dtype=np.float64)
+
+
+def _central(f: np.ndarray, periodic: bool, mirror: _Mirror | None = None) -> np.ndarray:
+    """Central difference along the layer; one-sided at free ends, mirrored at a plane."""
+    if mirror is not None:
+        ghosted = mirror.extend(f)
+        return 0.5 * (ghosted[2:] - ghosted[:-2])
     if periodic:
         return 0.5 * (np.roll(f, -1, axis=0) - np.roll(f, 1, axis=0))
     d = np.empty_like(f)
@@ -139,11 +230,16 @@ def _dot(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def _layer(
-    r: np.ndarray, normal: np.ndarray, step: float, periodic: bool, params: MarchParams
+    r: np.ndarray,
+    normal: np.ndarray,
+    step: float,
+    periodic: bool,
+    params: MarchParams,
+    mirror: _Mirror | None = None,
 ) -> np.ndarray:
     """One marching step: the new layer before its projection onto the surface."""
     n_nodes = r.shape[0]
-    t = _central(r, periodic)
+    t = _central(r, periodic, mirror)
     h = np.linalg.norm(t, axis=-1)
     b = np.cross(normal, t)
     b /= np.linalg.norm(b, axis=-1, keepdims=True)
@@ -162,15 +258,19 @@ def _layer(
     dr0 = dist[:, None] * b
 
     # front-contraction sensor on the pure-normal trial layer
-    shrink = np.linalg.norm(_central(r + dr0, periodic), axis=-1) / h
+    shrink = np.linalg.norm(_central(r + dr0, periodic, mirror), axis=-1) / h
     contraction = np.clip((1.0 - shrink) / np.maximum(rho, 1e-12), 0.0, 1.0)
     boost = 1.0 + params.convergence_gain * contraction
     eps_i = params.eps_implicit * rho * boost
     eps_e = params.eps_explicit * rho * rho * boost
 
-    lap = np.roll(r, -1, axis=0) + np.roll(r, 1, axis=0) - 2.0 * r
-    if not periodic:
-        lap[0] = lap[-1] = 0.0
+    if mirror is not None:
+        ghosted = mirror.extend(r)
+        lap = ghosted[2:] + ghosted[:-2] - 2.0 * r
+    else:
+        lap = np.roll(r, -1, axis=0) + np.roll(r, 1, axis=0) - 2.0 * r
+        if not periodic:
+            lap[0] = lap[-1] = 0.0
     lap_t = lap - _dot(lap, normal)[:, None] * normal
 
     # C dr + A D(dr) - eps_i C Lap(dr) = [0, dist h, 0] + C (eps_e lap_t)
@@ -181,8 +281,8 @@ def _layer(
     rhs += np.einsum("nab,nb->na", c_mat, eps_e[:, None] * lap_t)
 
     fixed = np.zeros(n_nodes, dtype=bool)
-    if not periodic:
-        fixed[[0, -1]] = True  # open ends march along their own n x t
+    if not periodic and mirror is None:
+        fixed[[0, -1]] = True  # free ends march along their own n x t
     unknown = np.flatnonzero(~fixed)
     index = -np.ones(n_nodes, dtype=np.int64)
     index[unknown] = np.arange(unknown.size)
@@ -202,6 +302,10 @@ def _layer(
     for shift, sign in ((1, 0.5), (-1, -0.5)):
         nb = (unknown + shift) % n_nodes
         mats = sign * a_mat[unknown] - eps_i[unknown, None, None] * c_mat[unknown]
+        if mirror is not None:  # past an end: the ghost moves as the mirrored inner neighbour
+            past = (unknown + shift < 0) | (unknown + shift >= n_nodes)
+            nb = np.where(past, unknown - shift, nb)
+            mats = np.where(past[:, None, None], mats @ mirror.matrix, mats)
         free = ~fixed[nb]
         block(u[free], index[nb[free]], mats[free])
         if (~free).any():  # neighbour is a fixed end: known increment
