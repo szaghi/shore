@@ -129,7 +129,9 @@ class TestProject:
         np.testing.assert_array_equal(proj.points, ref)
         np.testing.assert_array_equal(proj.distances, ref_d)
 
-    def test_normals_match_stl_normals(self, geom, unit_sphere):
+    def test_normals_match_stl_normals_without_creases(self, geom, unit_sphere):
+        # no edge of the icosphere is sharper than 30 deg: the crease-aware
+        # normals (ADR 0014) equal the legacy vertex normals here
         pts = 1.2 * _radial_dirs(50, seed=4)
         proj = geom.project(pts)
         np.testing.assert_allclose(
@@ -201,3 +203,33 @@ class TestLoadGeometry:
     def test_unknown_suffix(self, tmp_path):
         with pytest.raises(MeshInputError, match="unknown geometry format"):
             load_geometry(tmp_path / "wing.obj")
+
+
+class TestCornerNormals:
+    """Crease-aware STL normals (ADR 0014) beyond the frozen spec."""
+
+    def test_chunking_does_not_change_the_result(self, monkeypatch):
+        import shore.geometry.stl as stl
+
+        mesh = trimesh.creation.cylinder(radius=0.5, height=1.6, sections=24)
+        whole = stl._corner_normals(mesh, 30.0)
+        monkeypatch.setattr(stl, "_CHUNK", 7)
+        np.testing.assert_array_equal(stl._corner_normals(mesh, 30.0), whole)
+
+    def test_planar_boundary_found_and_line_skipped(self):
+        from shore.geometry.stl import _planar_boundaries
+
+        cyl = trimesh.creation.cylinder(radius=0.5, height=1.6, sections=24)
+        cyl.update_faces(cyl.triangles_center[:, 1] > 0.0)
+        cyl.remove_unreferenced_vertices()
+        [(_, normal)] = _planar_boundaries(cyl)
+        np.testing.assert_allclose(np.abs(normal), [0.0, 1.0, 0.0], atol=1e-12)
+        assert _planar_boundaries(trimesh.creation.icosphere(2)) == []
+
+    def test_legacy_marching_normals_untouched(self):
+        # the legacy shore mesh path keeps trimesh's vertex normals (ADR 0014)
+        mesh = trimesh.creation.box(extents=(4.0, 4.0, 1.0))
+        points = np.array([[0.5, 0.3, 0.5]])
+        legacy = _stl_normals(mesh, points)
+        assert abs(legacy[0, 2] - 1.0) > 1e-3  # the corner-averaged tilt is still there
+        np.testing.assert_allclose(StlGeometry(mesh).project(points).normals, [[0, 0, 1]])

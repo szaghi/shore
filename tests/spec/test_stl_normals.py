@@ -127,14 +127,12 @@ def half_box() -> trimesh.Trimesh:
 
 
 class TestClosedMeshes:
-    @PENDING
     def test_n1_box_faces_are_flat(self):
         mesh = box()
         points, faces = sample(mesh, 2000, seed=1)
         normals = stl(mesh).project(points).normals
         assert np.abs(normals - mesh.face_normals[faces]).max() <= TOL
 
-    @PENDING
     def test_n2_cylinder_side_radial_caps_axial(self):
         mesh = cylinder()
         points, _ = sample(mesh, 4000, seed=2)
@@ -151,7 +149,6 @@ class TestClosedMeshes:
         points, _ = sample(mesh, 2000, seed=3)
         assert np.abs(stl(mesh).project(points).normals - old_normals(mesh, points)).max() <= TOL
 
-    @PENDING
     @pytest.mark.parametrize("make", [lambda: trimesh.creation.icosphere(3), box, cylinder])
     def test_n3_crease_180_is_the_old_normal(self, make):
         mesh = make()
@@ -166,7 +163,6 @@ class TestClosedMeshes:
 
 
 class TestHalfModels:
-    @PENDING
     @pytest.mark.parametrize(
         ("make_half", "make_whole"),
         [(half_post, cylinder), (half_box, box)],
@@ -185,14 +181,12 @@ class TestHalfModels:
         got, want = stl(part).project(points).normals, stl(whole).project(points).normals
         assert np.abs(got - want).max() <= TOL
 
-    @PENDING
     def test_n4_cut_vertex_normals_in_the_plane(self):
         part = half_post()
         cut = part.vertices[np.abs(part.vertices[:, 1]) < 1e-12]
         assert len(cut) > 0
         assert np.abs(stl(part).project(cut).normals[:, 1]).max() <= TOL
 
-    @PENDING
     @pytest.mark.parametrize("side", ["box", "post"])
     def test_n5_half_model_march_is_mirror_symmetric(self, side):
         from shore.surface.intersect import intersection_curve
@@ -237,13 +231,11 @@ class TestOpenBoundary:
 
 
 class TestInterface:
-    @PENDING
     @pytest.mark.parametrize("crease", [0.0, -1.0, 181.0, float("nan")])
     def test_n7_bad_crease_angle(self, crease):
         with pytest.raises(ParameterError):
             stl(box(), crease_deg=crease)
 
-    @PENDING
     def test_n7_from_file_passes_crease_angle(self, tmp_path):
         from shore.geometry import StlGeometry
 

@@ -1,6 +1,6 @@
 # 0014 — Crease-aware STL surface normals
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -106,3 +106,38 @@ comes from CI.
    the marching tests?
 3. Corner normals are computed once per `StlGeometry` (memory: 9 floats
    per face). Fine?
+
+## Review decisions (2026-10-26, user)
+
+1. **Default crease angle 30°**, as frozen.
+2. **The legacy `shore mesh` path gets a follow-up ADR** with a re-baseline
+   of the marching tests; until then it keeps trimesh's vertex normals.
+3. **Corner normals are cached**, computed when the `StlGeometry` is built.
+
+## Acceptance (2026-10-26): crease-aware normals spec met
+
+`src/shore/geometry/stl.py`: `StlGeometry(mesh, crease_deg=30.0)` checks
+the angle and computes `_corner_normals` once; `project` blends them;
+`from_file` passes `crease_deg` on. `_planar_boundaries` finds the planar
+open boundaries (trimesh row grouping, SVD, deviation <= 1e-9 × diagonal).
+The corner normals are bit-identical to the prototype's on the box, the
+cylinder and the icosphere.
+
+Cost of the accumulation, which runs one vertex-face slot at a time over
+blocks of 65,536 faces: on a 1.31M-face icosphere, 1.4 s and 269 MB peak
+beyond trimesh's own caches. The cached result itself is 94 MB
+(72 bytes per face). The prototype's fully vectorised form peaked at
+606 MB.
+
+**Verdict for `tests/spec/test_stl_normals.py`: 17 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 8
+`@PENDING` lines are removed. Full suite: 1412 passed, 0 xfailed. The CAD
+job's verdict comes from CI.
+
+**Unit tests** (`tests/test_geometry.py`):
+- chunking does not change the result;
+- a half cylinder's cut is found as a plane, and a closed mesh has none;
+- the legacy `_stl_normals` keeps its tilt on the box.
+
+The existing check that `project` matches `_stl_normals` on the icosphere
+is renamed: it holds because no edge there is sharper than 30°.
