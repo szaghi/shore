@@ -62,6 +62,17 @@ def resolve_input(path: str) -> str:
     return str(root / path)
 
 
+def _file_digest(path: str) -> str:
+    """SHA-256 of a file (geometry identity for reuse, ADR 0018)."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _check_name(kind: str, name: object) -> str:
     if not isinstance(name, str) or not name.strip():
         raise ParameterError(f"{kind} name must be a non-empty string, got {name!r}.")
@@ -184,12 +195,12 @@ class LoadGeometry(Command):
             anchor_strategy=self.anchor_strategy,
             skip_hygiene=self.skip_hygiene,
         )
-        prev_body = project.geometries.get(name)
+        prev = (project.geometries.get(name), project.geometry_digest(name))
         discarded = project.discard_built_on(name)
-        project.set_geometry(name, body)
+        project.set_geometry(name, body, _file_digest(resolve_input(self.path)))
 
         def restore() -> None:
-            project.set_geometry(name, prev_body)
+            project.set_geometry(name, *prev)
             project.restore_components(discarded)
 
         return Undo(restore)

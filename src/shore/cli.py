@@ -104,6 +104,76 @@ _JOURNAL = Annotated[
     Path | None,
     typer.Option("--journal", help="Also write the run as a replayable journal (`shore run`)."),
 ]
+_PROJECT = Annotated[
+    Path | None,
+    typer.Option(
+        "--project",
+        help="Add the result to the project in this directory (created if missing; ADR 0018).",
+    ),
+]
+_COMPONENT = Annotated[
+    str | None,
+    typer.Option("--component", help="Component of --project to build (default: see command)."),
+]
+
+
+def _open_project(directory: Path | None, component: str | None, default: str) -> Project:
+    """The project in *directory* (or a new one) with component selected.
+
+    Without *directory*: a throwaway project, as before ADR 0018.
+    """
+    from shore.exceptions import MeshInputError, ParameterError
+
+    if directory is None:
+        if component is not None:
+            raise ParameterError("--component needs --project.")
+        return Project()
+    if (directory / "project.toml").exists():
+        proj = Project.load(directory)
+    elif directory.exists() and any(directory.iterdir()):
+        raise MeshInputError(f"{directory} exists and is not a SHORE project.")
+    else:
+        proj = Project()
+    name = component or default
+    if proj.current_component != name:
+        proj.use_component(name)
+    return proj
+
+
+def _ensure_geometry(
+    proj: Project, path: Path, name: str | None, *, skip_hygiene: bool = False
+) -> str:
+    """Load *path* as geometry *name* (default: its stem) unless already loaded.
+
+    The same name loaded from a file with the same SHA-256 is reused, so the
+    components built on it survive. A default (stem) name already taken by
+    a different file is an error: replacing it would discard its components.
+    """
+    from shore.exceptions import ParameterError
+    from shore.project.commands import _file_digest
+
+    key = name or path.stem
+    if key in proj.geometries:
+        if proj.geometry_digest(key) == _file_digest(str(path)):
+            return key
+        if name is None:
+            raise ParameterError(
+                f"geometry {key!r} is already loaded from another file; "
+                "give this one an explicit name (--name-a / --name-b / --geometry-name)."
+            )
+    proj.load_geometry(path, name=key, skip_hygiene=skip_hygiene)
+    return key
+
+
+def _save_project(proj: Project, directory: Path | None) -> None:
+    if directory is not None:
+        proj.save(directory)
+        _console.print(
+            f"[green]✓[/green] Saved project {_esc(str(directory))} "
+            f"(component '{_esc(proj.current_component)}')"
+        )
+
+
 _BLEND_K = Annotated[
     int,
     typer.Option(
@@ -697,6 +767,12 @@ def mesh(
         ),
     ] = None,
     journal: _JOURNAL = None,
+    project: _PROJECT = None,
+    component: _COMPONENT = None,
+    geometry_name: Annotated[
+        str | None,
+        typer.Option("--geometry-name", help="Geometry name in --project (default: file stem)."),
+    ] = None,
     verbose: _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL -> structured volume -> geo files.
@@ -914,15 +990,21 @@ def mesh(
     # tessellation).  Skip the trimesh.repair pass to avoid the optional
     # networkx dependency.
     _skip_hygiene = topology in ("cgrid", "ch")
-    proj = Project()
-    if verbose:
-        with _progress() as prog:
-            t = prog.add_task("Loading body  ", total=1, info="")
+    try:
+        proj = _open_project(project, component, "main")
+        if project is None:  # a throwaway project: the legacy default name
             proj.load_geometry(input, skip_hygiene=_skip_hygiene)
-            assert proj.body is not None
-            prog.update(t, advance=1, info=f"{len(proj.body.mesh.faces)} triangles")
-    else:
-        proj.load_geometry(input, skip_hygiene=_skip_hygiene)
+            geometry = "body"
+        else:
+            geometry = _ensure_geometry(proj, input, geometry_name, skip_hygiene=_skip_hygiene)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    if verbose:
+        _console.print(
+            f"[green]✓[/green] Loaded {_esc(str(input))}  "
+            f"({len(proj.geometries[geometry].mesh.faces)} triangles)"
+        )
 
     # --- build topology + march ---
     _theta_topo = theta if theta is not None else 0.05 * np.pi
@@ -1016,6 +1098,7 @@ def mesh(
             k_beta=volume_k_beta,
             k_thickness=volume_k_thickness,
             options=options,
+            geometry=geometry,
             **params,
         )
     except Exception as exc:
@@ -1067,6 +1150,7 @@ def mesh(
         proj.save_journal(journal)
         if verbose:
             _console.print(f"[green]✓[/green] Wrote {journal}  (replay: shore run {journal})")
+    _save_project(proj, project)
 
 
 # ---------------------------------------------------------------------------
@@ -1107,6 +1191,161 @@ def run(
         f"[green]✓[/green] Replayed {len(proj.history)} commands from {_esc(str(journal))}"
         + (f"; project saved to {_esc(str(save_project))}" if save_project else "")
     )
+
+
+# ---------------------------------------------------------------------------
+# shore collar
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def collar(
+    body_a: Annotated[Path, typer.Argument(help="Body A (STL or CAD): the collar's wall side A.")],
+    body_b: Annotated[Path, typer.Argument(help="Body B (STL or CAD), meeting body A.")],
+    seed: Annotated[
+        tuple[float, float, float],
+        typer.Option("--seed", help="A point near the junction (selects the curve)."),
+    ],
+    n_loop: Annotated[int, typer.Option("--n-loop", help="Nodes along the junction curve.")],
+    ds_surface: Annotated[float, typer.Option("--ds-surface", help="First surface step.")],
+    growth_surface: Annotated[float, typer.Option("--growth-surface", help="Surface growth.")],
+    m_a: Annotated[int, typer.Option("--m-a", help="Surface layers on body A.")],
+    m_b: Annotated[int, typer.Option("--m-b", help="Surface layers on body B.")],
+    ds_wall: Annotated[float, typer.Option("--ds-wall", help="First wall-normal step.")],
+    growth_wall: Annotated[float, typer.Option("--growth-wall", help="Wall-normal growth.")],
+    nk: Annotated[int, typer.Option("--nk", help="Wall-normal layers.")],
+    label: Annotated[str, typer.Option("--label", help="Block label.")] = "collar",
+    plane: Annotated[
+        tuple[float, float, float, float, float, float] | None,
+        typer.Option(
+            "--plane", help="PX PY PZ NX NY NZ: symmetry plane of a half model (half-collar)."
+        ),
+    ] = None,
+    name_a: Annotated[
+        str | None, typer.Option("--name-a", help="Geometry name of body A (default: stem).")
+    ] = None,
+    name_b: Annotated[
+        str | None, typer.Option("--name-b", help="Geometry name of body B (default: stem).")
+    ] = None,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Output stem for the .geo file.")
+    ] = None,
+    adjacency_json: Annotated[
+        Path | None, typer.Option("--adjacency-json", help="Also write a .adjacency.json.")
+    ] = None,
+    project: _PROJECT = None,
+    component: _COMPONENT = None,
+) -> None:
+    """Build the collar block around the junction of two bodies (ADR 0010, 0013).
+
+    With --plane, the half-collar of a half model on that symmetry plane.
+    The result goes to the .geo file(s) (-o), to component --component
+    (default 'collar') of --project, or both.
+    """
+    if output is None and project is None:
+        _err.print("[red]Error:[/red] nothing to write: give -o and/or --project.")
+        raise typer.Exit(1)
+    try:
+        proj = _open_project(project, component, "collar")
+        a = _ensure_geometry(proj, body_a, name_a)
+        b = _ensure_geometry(proj, body_b, name_b)
+        proj.build_collar(
+            b,
+            geometry=a,
+            seed=seed,
+            n_loop=n_loop,
+            ds_surface=ds_surface,
+            growth_surface=growth_surface,
+            m_a=m_a,
+            m_b=m_b,
+            ds_wall=ds_wall,
+            growth_wall=growth_wall,
+            nk=nk,
+            label=label,
+            plane=None if plane is None else (plane[:3], plane[3:]),
+        )
+        if output is not None:
+            proj.write_geo(output)
+        if adjacency_json is not None:
+            proj.write_adjacency(adjacency_json)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    assert proj.mesh is not None
+    shape = "x".join(map(str, proj.mesh.blocks[0].nodes.shape[:3]))
+    _console.print(f"[green]✓[/green] Collar '{_esc(label)}' {shape}")
+    _save_project(proj, project)
+
+
+# ---------------------------------------------------------------------------
+# shore xall
+# ---------------------------------------------------------------------------
+
+_XALL_RUN_KEYS = {
+    "grd", "np", "output_basename", "multigrid_levels", "boundary_layer_thickness",
+    "numerical_beach",
+}  # fmt: skip
+_XALL_COMPONENT_KEYS = {"free_face_bc", "body", "meta", "proc_meta", "boxes"}
+
+
+def _xall_options(path: Path) -> dict[str, object]:
+    """``write_xall`` keyword arguments from an options TOML file (ADR 0018)."""
+    import json
+    import tomllib
+
+    from shore.exceptions import ParameterError
+
+    data = tomllib.loads(path.read_text())
+    unknown = set(data) - {"run", "components"}
+    if unknown:
+        raise ParameterError(
+            f"{path}: unknown table(s) {sorted(unknown)}; use [run] and [components]."
+        )
+    run = dict(data.get("run", {}))
+    unknown = set(run) - _XALL_RUN_KEYS
+    if unknown:
+        raise ParameterError(f"{path}: unknown [run] key(s) {sorted(unknown)}.")
+    if "multigrid_levels" in run:
+        run["multigrid_levels"] = tuple(run["multigrid_levels"])
+    components: dict[str, dict[str, object]] = {}
+    for name, options in data.get("components", {}).items():
+        unknown = set(options) - _XALL_COMPONENT_KEYS
+        if unknown:
+            raise ParameterError(
+                f"{path}: unknown key(s) {sorted(unknown)} in [components.{name}]."
+            )
+        options = dict(options)
+        if "boxes" in options:
+            options["boxes"] = json.loads((path.parent / options["boxes"]).read_text())
+        components[name] = options
+    return {**run, "components": components}
+
+
+@app.command(name="xall")
+def xall(
+    project_dir: Annotated[Path, typer.Argument(help="A saved SHORE project directory.")],
+    out: Annotated[Path, typer.Option("--out", help="Directory for the Xall run files.")],
+    options: Annotated[
+        Path | None,
+        typer.Option("--options", help="TOML file: [run] and [components.<name>] options."),
+    ] = None,
+) -> None:
+    """Write the Xall run of every component of a project (ADR 0016-0018).
+
+    Per component: .geo files, adjacency sidecar, .grd and cc.par under
+    OUT/<component>/; then the merged .grd, cc.par and one proc.input in OUT.
+    """
+    from shore.project import Project as _Project
+
+    try:
+        kwargs = _xall_options(options) if options is not None else {}
+        proj = _Project.load(project_dir)
+        proj.write_xall(out, **kwargs)  # type: ignore[arg-type]
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    names = [n for n, m in proj.components.items() if m is not None]
+    _console.print(f"[green]✓[/green] Wrote the Xall run of {names} to {_esc(str(out))}")
 
 
 # ---------------------------------------------------------------------------
@@ -1611,6 +1850,8 @@ def primitive_box(
         ),
     ] = None,
     journal: _JOURNAL = None,
+    project: _PROJECT = None,
+    component: _COMPONENT = None,
 ) -> None:
     """Build a Cartesian box primitive (single block)."""
     cfg = _load_prim_config(config)
@@ -1639,7 +1880,7 @@ def primitive_box(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        proj = Project()
+        proj = _open_project(project, component, "main")
         proj.build_primitive(
             "box",
             vmin=tuple(vmin),
@@ -1661,6 +1902,7 @@ def primitive_box(
     _emit_primitive_writeback(
         proj, journal, output, default_name="box", adjacency_json=adjacency_json
     )
+    _save_project(proj, project)
 
 
 # ----- shore primitive annulus -------------------------------------------
@@ -1714,6 +1956,8 @@ def primitive_annulus(
         ),
     ] = None,
     journal: _JOURNAL = None,
+    project: _PROJECT = None,
+    component: _COMPONENT = None,
 ) -> None:
     """Build an annular-cylinder primitive (single block, optionally periodic-j)."""
     cfg = _load_prim_config(config)
@@ -1749,7 +1993,7 @@ def primitive_annulus(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        proj = Project()
+        proj = _open_project(project, component, "main")
         proj.build_primitive(
             "annulus",
             r_in=r_in,
@@ -1777,6 +2021,7 @@ def primitive_annulus(
     _emit_primitive_writeback(
         proj, journal, output, default_name="annulus", adjacency_json=adjacency_json
     )
+    _save_project(proj, project)
 
 
 # ----- shore primitive flat-caps -----------------------------------------
@@ -1841,6 +2086,8 @@ def primitive_flat_caps(
         ),
     ] = None,
     journal: _JOURNAL = None,
+    project: _PROJECT = None,
+    component: _COMPONENT = None,
 ) -> None:
     """Build a 5-block flat-caps cylinder (no central hole - Chimera-free background)."""
     cfg = _load_prim_config(config)
@@ -1878,7 +2125,7 @@ def primitive_flat_caps(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        proj = Project()
+        proj = _open_project(project, component, "main")
         proj.build_primitive(
             "flat_caps",
             r_out=r_out,
@@ -1904,6 +2151,7 @@ def primitive_flat_caps(
     _emit_primitive_writeback(
         proj, journal, output, default_name="flat_caps", adjacency_json=adjacency_json
     )
+    _save_project(proj, project)
 
 
 # ----- shore primitive h-grid-rect ---------------------------------------
@@ -1950,6 +2198,8 @@ def primitive_h_grid_rect(
         ),
     ] = None,
     journal: _JOURNAL = None,
+    project: _PROJECT = None,
+    component: _COMPONENT = None,
 ) -> None:
     """Build a rectangular-duct H-grid (single block, internal flow).
 
@@ -1958,7 +2208,7 @@ def primitive_h_grid_rect(
     prismatic ducts; the analytic baseline for internal flow.
     """
     try:
-        proj = Project()
+        proj = _open_project(project, component, "main")
         proj.build_primitive(
             "h_grid_rect",
             length=length,
@@ -1982,6 +2232,7 @@ def primitive_h_grid_rect(
     _emit_primitive_writeback(
         proj, journal, output, default_name="h_grid_rect", adjacency_json=adjacency_json
     )
+    _save_project(proj, project)
 
 
 # ----- shore primitive h-grid-tube ---------------------------------------
@@ -2035,6 +2286,8 @@ def primitive_h_grid_tube(
         ),
     ] = None,
     journal: _JOURNAL = None,
+    project: _PROJECT = None,
+    component: _COMPONENT = None,
 ) -> None:
     """Build a circular-bore H-grid (single block, j-periodic).
 
@@ -2048,7 +2301,7 @@ def primitive_h_grid_tube(
     you want a non-singular cross-section.
     """
     try:
-        proj = Project()
+        proj = _open_project(project, component, "main")
         proj.build_primitive(
             "h_grid_tube",
             length=length,
@@ -2069,6 +2322,7 @@ def primitive_h_grid_tube(
     _emit_primitive_writeback(
         proj, journal, output, default_name="h_grid_tube", adjacency_json=adjacency_json
     )
+    _save_project(proj, project)
 
 
 # ---------------------------------------------------------------------------

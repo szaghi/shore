@@ -38,11 +38,17 @@ class Body:
     geometry :
         The body as a ``Geometry``. When *None*, an ``StlGeometry`` over
         *mesh*. Projections (k=0 ray casts, marching normals) go through it.
+    anchor_error :
+        Why no anchor could be resolved (``from_stl`` / ``from_file``): the
+        body loads, and the error is raised where the anchor is first used,
+        by ``projector`` (ADR 0018). Collars never ray-cast, so an open
+        half-model body without an interior point still serves them.
     """
 
     mesh: trimesh.Trimesh | None = None
     anchor: np.ndarray = field(default=None, compare=False, repr=False)  # type: ignore[assignment]
     geometry: Geometry = field(default=None, compare=False, repr=False)  # type: ignore[assignment]
+    anchor_error: MeshInputError | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.geometry is None:
@@ -82,8 +88,10 @@ class Body:
             degenerate faces).  Preserves legacy behaviour for regression tests.
         """
         mesh = load_stl(path, skip_hygiene=skip_hygiene)
-        anchor = resolve_anchor(mesh, strategy=anchor_strategy)
-        return cls(mesh=mesh, anchor=anchor)
+        try:
+            return cls(mesh=mesh, anchor=resolve_anchor(mesh, strategy=anchor_strategy))
+        except MeshInputError as err:
+            return cls(mesh=mesh, anchor_error=err)
 
     @classmethod
     def from_file(
@@ -102,7 +110,10 @@ class Body:
             return cls.from_stl(path, anchor_strategy=anchor_strategy, skip_hygiene=skip_hygiene)
         geometry = load_geometry(path)
         body = cls(geometry=geometry)
-        body.anchor = resolve_anchor(body.mesh, strategy=anchor_strategy)
+        try:
+            body.anchor = resolve_anchor(body.mesh, strategy=anchor_strategy)
+        except MeshInputError as err:
+            body.anchor_error = err
         return body
 
     # ------------------------------------------------------------------
@@ -122,7 +133,11 @@ class Body:
         the geometry's BVH; results bit-identical to before). CAD: an
         ``AnchoredCaster`` that casts on the tessellation and snaps hits to
         the exact surface.
+
+        Raises the anchor resolution error when the body has no anchor.
         """
+        if self.anchor_error is not None:
+            raise self.anchor_error
         if isinstance(self.geometry, StlGeometry):
             return self.geometry.projector(self.anchor)
         return self._cad_caster

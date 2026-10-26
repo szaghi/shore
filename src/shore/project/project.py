@@ -91,6 +91,7 @@ class Project:
 
     def __init__(self, undo_root: str | Path | None = None) -> None:
         self._geometries: dict[str, Body] = {}
+        self._digests: dict[str, str] = {}  # geometry name -> SHA-256 of its file
         self._components: dict[str, _Component] = {DEFAULT_COMPONENT: _Component()}
         self._current = DEFAULT_COMPONENT
         self._input_root = input_root.get()  # set while a saved project replays
@@ -147,12 +148,19 @@ class Project:
             )
         return self._geometries[name]
 
-    def set_geometry(self, name: str, body: Body | None) -> None:
+    def geometry_digest(self, name: str) -> str | None:
+        """SHA-256 of the file geometry *name* was loaded from (None if not loaded)."""
+        return self._digests.get(name)
+
+    def set_geometry(self, name: str, body: Body | None, digest: str | None = None) -> None:
         """Register (or, with ``None``, remove) geometry *name*; for commands."""
         if body is None:
             self._geometries.pop(name, None)
+            self._digests.pop(name, None)
         else:
             self._geometries[name] = body
+            if digest is not None:
+                self._digests[name] = digest
 
     def discard_built_on(self, name: str) -> dict[str, tuple[Mesh | None, BuildState | None]]:
         """Empty the components whose mesh was built on geometry *name*; return
@@ -443,7 +451,13 @@ class Project:
 
         d = Path(directory)
         (d / "grids").mkdir(parents=True, exist_ok=True)
-        commands, copies = self._portable_history(d / "inputs")
+        # stage the copies: the project may be saved back where its inputs live
+        staging = d / ".inputs.new"
+        shutil.rmtree(staging, ignore_errors=True)
+        commands, copies = self._portable_history(staging)
+        shutil.rmtree(d / "inputs", ignore_errors=True)
+        if staging.exists():
+            staging.rename(d / "inputs")
         (d / "journal.py").write_text(
             JOURNAL_HEADER + "".join(c.to_source() + "\n" for c in commands)
         )
@@ -504,11 +518,12 @@ class Project:
         if source not in by_source:
             if not source.is_file():
                 raise MeshInputError(f"save: input file {source} no longer exists.")
-            rel = f"inputs/{len(by_source):02d}_{source.name}"
+            name = f"{len(by_source):02d}_{source.name}"
             inputs.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, inputs.parent / rel)
+            shutil.copyfile(source, inputs / name)
+            rel = f"inputs/{name}"
             by_source[source] = rel
-            copies[rel] = _sha256(inputs.parent / rel)
+            copies[rel] = _sha256(inputs / name)
         return by_source[source]
 
     @classmethod

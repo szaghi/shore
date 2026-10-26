@@ -159,7 +159,6 @@ def load(d: Path):
 
 
 class TestCollar:
-    @PENDING
     def test_l1_collar_into_a_project(self, files, tmp_path):
         r = shore("collar", files["box"], files["post"], *collar_args(COLLAR),
                   "--project", tmp_path / "proj")  # fmt: skip
@@ -168,7 +167,6 @@ class TestCollar:
         assert list(q.components) == ["main", "collar"]
         assert same(q.components["collar"], api_collar(files["box"], files["post"], COLLAR).mesh)
 
-    @PENDING
     def test_l2_half_collar(self, files, tmp_path):
         from shore.mesh.face import FaceBC
 
@@ -179,7 +177,6 @@ class TestCollar:
         assert same(collar, api_collar(files["hbox"], files["hpost"], HALF).mesh)
         assert collar.blocks[0].face("j_lo").bc is FaceBC.SYMMETRY
 
-    @PENDING
     def test_l3_collar_geo_output(self, files, tmp_path):
         r = shore("collar", files["box"], files["post"], *collar_args(COLLAR),
                   "-o", tmp_path / "out" / "c")  # fmt: skip
@@ -198,7 +195,6 @@ class TestCollar:
 
 
 class TestProjects:
-    @PENDING
     def test_l4_mesh_into_a_project(self, files, tmp_path):
         from shore.project import run_journal
 
@@ -212,7 +208,6 @@ class TestProjects:
         assert list(q.components) == ["main"] and list(q.geometries) == ["sphere"]
         assert same(q.components["main"], run_journal(tmp_path / "plain.py").mesh)
 
-    @PENDING
     def test_l5_three_components(self, files, tmp_path):
         proj = tmp_path / "proj"
         r = shore("mesh", files["sphere"], *MESH, "-o", tmp_path / "o1" / "m", "--project", proj)
@@ -230,7 +225,6 @@ class TestProjects:
         assert all(np.array_equal(a, b) for a, b in kept)
         assert same(q.components["collar"], api_collar(files["box"], files["post"], COLLAR).mesh)
 
-    @PENDING
     def test_l6_geometries_reused(self, files, tmp_path):
         proj = tmp_path / "proj"
         for component in ("c1", "c2"):
@@ -271,7 +265,6 @@ proc = 1
 
 
 class TestXall:
-    @PENDING
     def test_l7_xall_with_options(self, files, tmp_path):
         proj = tmp_path / "proj"
         assert shore("mesh", files["sphere"], *MESH, "-o", tmp_path / "o" / "m",
@@ -306,7 +299,6 @@ class TestXall:
 
 
 class TestErrors:
-    @PENDING
     @pytest.mark.parametrize(
         "options",
         ["[run]\ncolour = 3\n", "[components.nope]\nbody = 1\n"],
@@ -321,22 +313,18 @@ class TestErrors:
         assert r.exit_code == 1
         assert not (tmp_path / "run" / "proc.input").exists()
 
-    @PENDING
     def test_l8_not_a_project(self, tmp_path):
         (tmp_path / "empty").mkdir()
         assert shore("xall", tmp_path / "empty", "--out", tmp_path / "run").exit_code == 1
 
-    @PENDING
     def test_l8_component_without_project(self, files, tmp_path):
         r = shore("collar", files["box"], files["post"], *collar_args(COLLAR),
                   "-o", tmp_path / "c", "--component", "x")  # fmt: skip
         assert r.exit_code == 1
 
-    @PENDING
     def test_l8_collar_with_nothing_to_write(self, files):
         assert shore("collar", files["box"], files["post"], *collar_args(COLLAR)).exit_code == 1
 
-    @PENDING
     def test_l8_mesh_component_without_project(self, files, tmp_path):
         r = shore("mesh", files["sphere"], *MESH, "-o", tmp_path / "m", "--component", "x")
         assert r.exit_code == 1

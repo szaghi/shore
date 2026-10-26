@@ -1,6 +1,6 @@
 # 0018 — CLI for collars and multi-component projects
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -94,3 +94,46 @@ leaves the open half meshes open.
    collide: the second load replaces the first and discards its
    components. Should a stem collision with different content be an error
    asking for `--name-a` / `--geometry-name`?
+
+## Review decisions (2026-10-26, user)
+
+1. **Load, apply, save is accepted for now.** A grid cache (format 3) waits
+   until large projects make the replay cost painful.
+2. **A stem collision is an error.** A file whose default (stem) name
+   matches a geometry loaded from a different file fails with exit code 1
+   and asks for `--name-a` / `--name-b` / `--geometry-name`. An explicit
+   name still replaces the geometry.
+
+## Acceptance (2026-10-26): CLI spec met
+
+**CLI** (`src/shore/cli.py`).
+- `shore collar` and `shore xall` are new.
+- `--project` and `--component` are added to `shore mesh` and to the five
+  `shore primitive` commands; `shore mesh` also gains `--geometry-name`.
+- Three helpers carry the logic: `_open_project` (load, create or
+  refuse; select the component), `_ensure_geometry` (reuse by SHA-256;
+  collisions) and `_save_project`.
+- `_xall_options` parses and checks the options TOML before the project
+  is loaded.
+- Without `--project`, `shore mesh` keeps the legacy geometry name
+  `"body"`, so its journals are unchanged.
+
+**Project and body.**
+- `LoadGeometry` records each geometry's file SHA-256
+  (`Project.geometry_digest`, undone with the load).
+- `save` stages the input copies in `.inputs.new` and then swaps them in,
+  so a project can be saved back into the directory its inputs are read
+  from.
+- `Body` keeps an anchor-resolution failure in `anchor_error` and raises
+  it from `projector`.
+
+**Docs.** `docs/reference/collar.md` and `docs/reference/xall.md` are new,
+and both are in the sidebar.
+
+**Verdict for `tests/spec/test_cli_projects.py`: 13 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 12
+`@PENDING` lines are removed. Full suite: 1456 passed, 0 xfailed.
+
+**Unit tests:**
+- a stem collision exits with 1 and asks for a name (`tests/test_cli.py`);
+- an open half body loads, and fails only when it is ray-cast.

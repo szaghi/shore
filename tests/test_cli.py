@@ -1082,3 +1082,37 @@ class TestPrimitiveHGridTube:
             str(tmp_path / "x"),
         )
         assert r.exit_code == 1
+
+
+class TestCollarProjects:
+    """CLI project helpers beyond the frozen spec (ADR 0018)."""
+
+    def test_stem_collision_needs_a_name(self, tmp_path):
+        import trimesh
+
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        trimesh.creation.box(extents=(4.0, 4.0, 1.0)).export(str(tmp_path / "a" / "body.stl"))
+        trimesh.creation.icosphere(2).export(str(tmp_path / "b" / "body.stl"))
+        args = ["--seed", "0.55", "0", "0.02", "--n-loop", "16", "--ds-surface", "0.02",
+                "--growth-surface", "1.15", "--m-a", "5", "--m-b", "5", "--ds-wall", "1e-3",
+                "--growth-wall", "1.25", "--nk", "8", "--project", str(tmp_path / "p")]  # fmt: skip
+        bodies = [str(tmp_path / "a" / "body.stl"), str(tmp_path / "b" / "body.stl")]
+        r = runner.invoke(app, ["collar", *bodies, *args])
+        assert r.exit_code == 1
+        assert "explicit name" in r.output
+
+    def test_open_body_loads_and_fails_only_when_ray_cast(self, tmp_path):
+        import trimesh
+
+        from shore.exceptions import MeshInputError
+        from shore.mesh.body import Body
+
+        post = trimesh.creation.cylinder(radius=0.5, height=1.6, sections=48)
+        post.update_faces(post.triangles_center[:, 1] > 0.0)
+        post.remove_unreferenced_vertices()
+        post.export(str(tmp_path / "half.stl"))
+        body = Body.from_stl(tmp_path / "half.stl")
+        assert body.anchor_error is not None
+        with pytest.raises(MeshInputError, match="anchor"):
+            body.projector  # noqa: B018
