@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from shore.exceptions import ParameterError
 from shore.geometry import Geometry
 from shore.mesh.association import (
     BODY_GEOMETRY,
@@ -465,6 +466,7 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None = None,
         blend_normals_k: int = 0,
         smooth_mode: str = "limited",
+        march_scheme: str = "algebraic",
     ) -> None:
         """Extrude all blocks simultaneously by hyperbolic marching.
 
@@ -499,6 +501,13 @@ class Mesh:
             reproduce old grids); on curved walls the layer shrinks inward by
             about ``smooth_strength * h**2 * curvature`` and folds layers
             thinner than that.
+        march_scheme :
+            ``'algebraic'`` (default): extrude along the local normal, then
+            Laplacian smoothing (``smooth_*``). ``'hyperbolic'``: the
+            Steger-Chaussee scheme (``volume.hyperbolic_scheme``): k-lines
+            orthogonal to each layer, prescribed cell volumes, implicit
+            coupling and dissipation that grow with step / cell size; the
+            ``smooth_*`` arguments are not used.
 
         Raises
         ------
@@ -507,6 +516,10 @@ class Mesh:
         NotImplementedError
             If the topology has no registered marcher.
         """
+        if march_scheme not in ("algebraic", "hyperbolic"):
+            raise ParameterError(
+                f"march_scheme must be 'algebraic' or 'hyperbolic', got {march_scheme!r}."
+            )
         from shore.mesh.topology import (
             CGridTipCap,
             CGridTopology,
@@ -530,6 +543,7 @@ class Mesh:
                 growth=growth,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -545,6 +559,7 @@ class Mesh:
                 growth=growth,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -557,6 +572,7 @@ class Mesh:
                 growth=growth,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -568,6 +584,7 @@ class Mesh:
                 growth=growth,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -579,6 +596,7 @@ class Mesh:
                 growth=growth,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -599,6 +617,7 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
         smooth_mode: str = "limited",
+        march_scheme: str = "algebraic",
     ) -> None:
         """Simultaneous marching for the 6-block CubedSphereTopology."""
         self._march_caps_blocks(
@@ -607,6 +626,7 @@ class Mesh:
             growth=growth,
             smooth_strength=smooth_strength,
             smooth_mode=smooth_mode,
+            march_scheme=march_scheme,
             smooth_iters=smooth_iters,
             steps=steps,
             layer_callback=layer_callback,
@@ -624,6 +644,7 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
         smooth_mode: str = "limited",
+        march_scheme: str = "algebraic",
     ) -> None:
         """Simultaneous marching for a 6-block cubed-sphere wrap.
 
@@ -689,6 +710,7 @@ class Mesh:
                     normals_override=normals_override,
                     ghost_rows=ghost,
                     smooth_mode=smooth_mode,
+                    march_scheme=march_scheme,
                 )
                 # Note: a previous "pole-row STL-normal override" used to run
                 # here whenever do_blend was True, on the assumption that the
@@ -775,6 +797,7 @@ class Mesh:
                 normals_override=cap_north_no,
                 ghost_rows=cap_north_ghost,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
             )
             new_cap_south = _march_cap_layer(
                 cs_k,
@@ -786,6 +809,7 @@ class Mesh:
                 normals_override=cap_south_no,
                 ghost_rows=cap_south_ghost,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
             )
 
             jmin_cap_n = _check_jacobian(
@@ -827,6 +851,7 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
         smooth_mode: str = "limited",
+        march_scheme: str = "algebraic",
     ) -> None:
         """Hyperbolic march for the 3-block C-grid (upper / body / lower).
 
@@ -911,6 +936,7 @@ class Mesh:
                 normals_override=_blend(u_k, upper_ghost) if do_blend_now else None,
                 ghost_rows=upper_ghost,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
             )
             new_b = _march_one_layer(
                 b_k,
@@ -921,6 +947,7 @@ class Mesh:
                 normals_override=_blend(b_k, body_ghost) if do_blend_now else None,
                 ghost_rows=body_ghost,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
             )
             new_l = _march_one_layer(
                 l_k,
@@ -931,6 +958,7 @@ class Mesh:
                 normals_override=_blend(l_k, lower_ghost) if do_blend_now else None,
                 ghost_rows=lower_ghost,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
             )
 
             # ----- re-stitch SHARED TE columns ----------------------
@@ -994,6 +1022,7 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
         smooth_mode: str = "limited",
+        march_scheme: str = "algebraic",
     ) -> None:
         """Hyperbolic march for ``CGridTopology`` (1, 3, or 4 blocks; or
         4 + N cap blocks under the conformal-cap path).
@@ -1013,6 +1042,7 @@ class Mesh:
                 growth=growth,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -1048,6 +1078,7 @@ class Mesh:
                 step=step,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 periodic=periodic,
                 normals_override=normals_override,
@@ -1078,6 +1109,7 @@ class Mesh:
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
         smooth_mode: str = "limited",
+        march_scheme: str = "algebraic",
     ) -> None:
         """Single-block hyperbolic march for ``OGridTopology``.
 
@@ -1114,6 +1146,7 @@ class Mesh:
                 step=step,
                 smooth_strength=smooth_strength,
                 smooth_mode=smooth_mode,
+                march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 periodic=periodic,
                 normals_override=normals_override,

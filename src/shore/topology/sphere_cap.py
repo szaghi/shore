@@ -41,6 +41,7 @@ from shore.volume.hyperbolic import (
     _laplacian_smooth,
     _limit_smoothing,
 )
+from shore.volume.hyperbolic_scheme import hyperbolic_layer
 from shore.volume.jacobian import _jacobian_field_open
 
 # ---------------------------------------------------------------------------
@@ -120,8 +121,9 @@ def _march_one_layer(
     normals_override: np.ndarray | None = None,
     ghost_rows: dict[str, np.ndarray] | None = None,
     smooth_mode: str = "limited",
+    march_scheme: str = "algebraic",
 ) -> np.ndarray:
-    """Advance one layer by hyperbolic extrusion + smoothing.
+    """Advance one layer by normal extrusion + smoothing, or one hyperbolic step.
 
     Parameters
     ----------
@@ -136,6 +138,8 @@ def _march_one_layer(
         smoothing motion, capped by the step (``_limit_smoothing``).
         ``'legacy'``: the full Laplacian motion (folds thin first layers).
     """
+    if march_scheme == "hyperbolic":
+        return hyperbolic_layer(layer, step, periodic, ghost_rows, normals_override)
     if normals_override is not None:
         normals = normals_override
     else:
@@ -167,6 +171,7 @@ def _march_cap_layer(
     normals_override: np.ndarray | None = None,
     ghost_rows: dict[str, np.ndarray] | None = None,
     smooth_mode: str = "limited",
+    march_scheme: str = "algebraic",
 ) -> np.ndarray:
     """Advance one cap layer with Dirichlet boundary pinning.
 
@@ -195,6 +200,16 @@ def _march_cap_layer(
     -------
     numpy.ndarray, shape (nc, nc, 3)
     """
+    if march_scheme == "hyperbolic":
+        # the pinned equator rows are the Dirichlet boundary of the implicit solve
+        target = layer.copy()
+        _overwrite_cap_boundaries(target, eq_rows, pole=pole)
+        new_layer = hyperbolic_layer(
+            layer, step, (False, False), ghost_rows, normals_override, boundary_target=target
+        )
+        _overwrite_cap_boundaries(new_layer, eq_rows, pole=pole)
+        return new_layer
+
     # 1. Normal-based displacement.
     if normals_override is not None:
         normals = normals_override

@@ -614,6 +614,16 @@ def mesh(
             ),
         ),
     ] = "limited",
+    march_scheme: Annotated[
+        str,
+        typer.Option(
+            "--march-scheme",
+            help=(
+                "algebraic (default): normal extrusion + smoothing; hyperbolic: "
+                "Steger-Chaussee marching (orthogonal k-lines, prescribed cell volumes)."
+            ),
+        ),
+    ] = "algebraic",
     theta_cap: _THETA_CAP = None,
     theta_cap_deg: _THETA_CAP_DEG = None,
     cap_pull: _CAP_PULL = None,
@@ -744,6 +754,13 @@ def mesh(
     smooth = _pick("smooth", smooth, cfg.march.smooth if cfg else None)
     smooth_iters = _pick("smooth_iters", smooth_iters, cfg.march.smooth_iters if cfg else None)
     smooth_mode = _pick("smooth_mode", smooth_mode, cfg.march.smooth_mode if cfg else None)
+    march_scheme = _pick("march_scheme", march_scheme, cfg.march.march_scheme if cfg else None)
+    if march_scheme not in ("algebraic", "hyperbolic"):
+        _err.print(
+            "[red]Error:[/red] --march-scheme must be 'algebraic' or 'hyperbolic', "
+            f"got {march_scheme!r}."
+        )
+        raise typer.Exit(1)
     if smooth_mode not in ("limited", "legacy"):
         _err.print(
             f"[red]Error:[/red] --smooth-mode must be 'limited' or 'legacy', got {smooth_mode!r}."
@@ -1013,9 +1030,11 @@ def mesh(
                 def _cb(fraction: float, message: str) -> None:
                     prog.update(t, advance=1, info=message)
 
-                proj.march(smooth, smooth_iters, blend_normals_k, smooth_mode, progress=_cb)
+                proj.march(
+                    smooth, smooth_iters, blend_normals_k, smooth_mode, march_scheme, progress=_cb
+                )
         else:
-            proj.march(smooth, smooth_iters, blend_normals_k, smooth_mode)
+            proj.march(smooth, smooth_iters, blend_normals_k, smooth_mode, march_scheme)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None

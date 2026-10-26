@@ -106,13 +106,14 @@ class Project:
         smooth_iters: int = 2,
         blend_normals_k: int = 0,
         smooth_mode: str = "limited",
+        march_scheme: str = "algebraic",
         *,
         progress: ProgressFn | None = None,
         cancel: CancelToken | None = None,
     ) -> None:
         """Extrude the blocks from the wall; *progress* / *cancel* are hooks."""
         self.execute(
-            March(smooth_strength, smooth_iters, blend_normals_k, smooth_mode),
+            March(smooth_strength, smooth_iters, blend_normals_k, smooth_mode, march_scheme),
             progress=progress,
             cancel=cancel,
         )
