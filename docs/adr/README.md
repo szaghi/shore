@@ -24,6 +24,7 @@ by a later record that supersedes it.
 | [0014](./0014-crease-aware-stl-normals.md) | Crease-aware STL surface normals | Accepted |
 | [0015](./0015-stl-normals-for-marching-blend.md) | STL normals for the marcher's normal blending | Accepted |
 | [0016](./0016-multi-component-projects.md) | Multi-component, portable projects | Accepted |
+| [0017](./0017-xall-options-per-component.md) | Per-component Xall options in `write_xall` | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
