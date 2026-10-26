@@ -16,11 +16,13 @@ from shore.project.commands import (
     March,
     Snap,
     Split,
+    UseComponent,
     WriteAdjacency,
     WriteCcPar,
     WriteGeo,
     WriteGrd,
     WriteProcInput,
+    WriteXall,
 )
 from shore.project.project import Project, run_journal
 
@@ -39,10 +41,12 @@ __all__ = [
     "Project",
     "Snap",
     "Split",
+    "UseComponent",
     "WriteAdjacency",
     "WriteCcPar",
     "WriteGeo",
     "WriteGrd",
     "WriteProcInput",
+    "WriteXall",
     "run_journal",
 ]

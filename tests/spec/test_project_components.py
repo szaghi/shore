@@ -141,7 +141,6 @@ def two_components(inputs):
 
 
 class TestPortable:
-    @PENDING
     def test_p1_moved_project_loads_without_the_original_inputs(self, inputs, tmp_path):
         from shore.project import Project
 
@@ -157,7 +156,6 @@ class TestPortable:
         q = Project.load(tmp_path / "elsewhere" / "moved")
         assert same(nodes(q.mesh), built)
 
-    @PENDING
     def test_p2_changed_input_is_detected(self, inputs, tmp_path):
         from shore.project import Project
 
@@ -204,7 +202,6 @@ class TestPortable:
 
 
 class TestComponents:
-    @PENDING
     def test_p4_collar_by_name_equals_collar_by_path(self, inputs):
         by_path = project()
         by_path.load_geometry(inputs["box"])
@@ -216,7 +213,6 @@ class TestComponents:
         assert sorted(by_name.geometries) == ["box", "post"]
         assert same(nodes(by_name.mesh), nodes(by_path.mesh))
 
-    @PENDING
     def test_p5_components_coexist(self, inputs):
         p = project()
         p.load_geometry(inputs["sphere"])
@@ -240,7 +236,6 @@ class TestComponents:
 
 
 class TestXall:
-    @PENDING
     def test_p6_write_xall_equals_the_accepted_tools(self, inputs, tmp_path):
         from shore.io.cc_par import merge_cc_par
         from shore.io.grd import merge_grd
@@ -279,7 +274,6 @@ class TestXall:
 
 
 class TestHistory:
-    @PENDING
     def test_p7_undo_redo_across_components(self, inputs):
         p = two_components(inputs)
         collar = nodes(p.mesh)
@@ -293,7 +287,6 @@ class TestHistory:
         assert p.current_component == "collar"
         assert same(nodes(p.mesh), collar)
 
-    @PENDING
     def test_p8_save_load_two_components(self, inputs, tmp_path):
         from shore.project import Project
 
@@ -308,7 +301,6 @@ class TestHistory:
         for name in ("main", "collar"):
             assert same(nodes(q.components[name]), nodes(p.components[name]))
 
-    @PENDING
     def test_p9_reloading_a_geometry_discards_only_its_components(self, inputs):
         p = two_components(inputs)
         main = nodes(p.components["main"])
@@ -323,14 +315,12 @@ class TestHistory:
 
 
 class TestErrors:
-    @PENDING
     def test_p10_unknown_geometry(self, inputs):
         p = project()
         p.load_geometry(inputs["box"], name="box")
         with pytest.raises(ParameterError):
             p.build_topology("ogrid", geometry="nope", **OGRID)
 
-    @PENDING
     @pytest.mark.parametrize("call", ["component", "geometry"])
     def test_p10_empty_names(self, inputs, call):
         p = project()
@@ -340,14 +330,12 @@ class TestErrors:
             else:
                 p.load_geometry(inputs["box"], name="")
 
-    @PENDING
     def test_p10_write_xall_without_a_mesh(self, tmp_path):
         p = project()
         p.use_component("empty")
         with pytest.raises(ParameterError):
             p.write_xall(tmp_path / "run")
 
-    @PENDING
     def test_p10_reporting(self, inputs):
         p = project()
         assert dict(p.geometries) == {} and list(p.components) == ["main"]

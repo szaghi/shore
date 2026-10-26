@@ -6,22 +6,36 @@ commands as its history, so it can undo and redo them and render them as a
 *journal*: a plain Python script of the same method calls that
 ``shore run`` replays (ADR 0004).
 
-On disk a project is a directory::
+A project holds named geometries and named components (ADR 0016): every
+mesh command acts on the current component (``use_component``; the default
+is ``"main"``), and ``write_xall`` writes the Xall files of all of them.
 
-    project.toml      metadata (format version, shore version, labels)
-    journal.py        the history; loading a project replays it
-    adjacency.json    face graph and associations (when a mesh exists)
-    grids/<n>.npz     node arrays, written for inspection and checked on load
+On disk a project is a directory (format 2)::
 
-``Project.load`` replays ``journal.py`` and then requires every grid to be
-bit-identical to the saved one, so a load is also a determinism check.
+    project.toml                 metadata: format, shore version, components
+                                 and their block labels, input hashes
+    journal.py                   the state-changing history, reading inputs/
+    inputs/                      copies of every file the journal reads
+    adjacency.json               the current component's face graph
+    grids/<component>/<n>.npz    node arrays, checked on load
+
+``Project.load`` checks the input copies against their hashes, replays
+``journal.py`` with the inputs resolved against the project directory
+(wherever it now is), and requires every grid to be bit-identical to the
+saved one, so a load is also a determinism check. Format-1 projects (one
+mesh, inputs at their journaled paths) still load.
 """
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
 import runpy
+import shutil
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -47,14 +61,18 @@ from shore.project.commands import (
     Split,
     Undo,
     UndoCache,
+    UseComponent,
     WriteAdjacency,
     WriteCcPar,
     WriteGeo,
     WriteGrd,
     WriteProcInput,
+    WriteXall,
+    input_root,
 )
 
-PROJECT_FORMAT = 1
+PROJECT_FORMAT = 2
+DEFAULT_COMPONENT = "main"
 JOURNAL_HEADER = (
     "# SHORE journal: replay with `shore run <this file>`.\n"
     "from shore.project import Project\n\n"
@@ -62,25 +80,128 @@ JOURNAL_HEADER = (
 )
 
 
+@dataclasses.dataclass
+class _Component:
+    mesh: Mesh | None = None
+    build: BuildState | None = None
+
+
 class Project:
-    """Meshing project: body, mesh and the command history that made them."""
+    """Meshing project: geometries, components and the command history that made them."""
 
     def __init__(self, undo_root: str | Path | None = None) -> None:
-        self.body: Body | None = None
-        self.mesh: Mesh | None = None
-        self.build: BuildState | None = None
+        self._geometries: dict[str, Body] = {}
+        self._components: dict[str, _Component] = {DEFAULT_COMPONENT: _Component()}
+        self._current = DEFAULT_COMPONENT
+        self._input_root = input_root.get()  # set while a saved project replays
         self.last_result: Any = None  # what the last command reported (paths, summaries)
         self.undo_cache = UndoCache(Path(undo_root) if undo_root else None)
         self._done: list[tuple[Command, Undo | None]] = []
         self._redo: list[Command] = []
 
+    # -- state ---------------------------------------------------------------
+
+    @property
+    def mesh(self) -> Mesh | None:
+        """The current component's mesh."""
+        return self._components[self._current].mesh
+
+    @mesh.setter
+    def mesh(self, value: Mesh | None) -> None:
+        self._components[self._current].mesh = value
+
+    @property
+    def build(self) -> BuildState | None:
+        """What later commands need from the command that made the current mesh."""
+        return self._components[self._current].build
+
+    @build.setter
+    def build(self, value: BuildState | None) -> None:
+        self._components[self._current].build = value
+
+    @property
+    def body(self) -> Body | None:
+        """The geometry named ``"body"`` (the default of every command)."""
+        return self._geometries.get("body")
+
+    @property
+    def geometries(self) -> Mapping[str, Body]:
+        """Loaded geometries by name (read-only)."""
+        return MappingProxyType(self._geometries)
+
+    @property
+    def components(self) -> dict[str, Mesh | None]:
+        """Each component's mesh (``None`` while empty), in creation order."""
+        return {name: c.mesh for name, c in self._components.items()}
+
+    @property
+    def current_component(self) -> str:
+        return self._current
+
+    def require_geometry(self, name: str, command: str) -> Body:
+        if name not in self._geometries:
+            if name == "body" and not self._geometries:
+                raise ParameterError(f"{command} needs a body: call load_geometry first.")
+            raise ParameterError(
+                f"{command}: no geometry named {name!r}; loaded: {sorted(self._geometries)}."
+            )
+        return self._geometries[name]
+
+    def set_geometry(self, name: str, body: Body | None) -> None:
+        """Register (or, with ``None``, remove) geometry *name*; for commands."""
+        if body is None:
+            self._geometries.pop(name, None)
+        else:
+            self._geometries[name] = body
+
+    def discard_built_on(self, name: str) -> dict[str, tuple[Mesh | None, BuildState | None]]:
+        """Empty the components whose mesh was built on geometry *name*; return
+        their previous state for ``restore_components``. For commands."""
+        old: dict[str, tuple[Mesh | None, BuildState | None]] = {}
+        for key, c in self._components.items():
+            built_on = c.build.geometries if c.build is not None else ()
+            # as before ADR 0016, reloading "body" also drops the current
+            # component's geometry-free mesh (primitives, loaded blocks)
+            legacy = name == "body" and key == self._current and not built_on
+            if name in built_on or (legacy and c.mesh is not None):
+                old[key] = (c.mesh, c.build)
+                c.mesh, c.build = None, None
+        return old
+
+    def restore_components(self, old: dict[str, tuple[Mesh | None, BuildState | None]]) -> None:
+        for key, (mesh, build) in old.items():
+            if key in self._components:
+                self._components[key].mesh, self._components[key].build = mesh, build
+
+    def select_component(self, name: str) -> bool:
+        """Make *name* current, creating it if new; True if it was created. For commands."""
+        created = name not in self._components
+        if created:
+            self._components[name] = _Component()
+        self._current = name
+        return created
+
+    def drop_component(self, name: str) -> None:
+        """Remove component *name* (not the current one). For commands."""
+        if name != self._current:
+            self._components.pop(name, None)
+
     # -- commands ------------------------------------------------------------
 
     def load_geometry(
-        self, path: str | Path, anchor_strategy: str = "auto", skip_hygiene: bool = False
+        self,
+        path: str | Path,
+        anchor_strategy: str = "auto",
+        skip_hygiene: bool = False,
+        *,
+        name: str = "body",
     ) -> None:
-        """Load the body from STL or STEP/IGES/BREP."""
-        self.execute(LoadGeometry(str(path), anchor_strategy, skip_hygiene))
+        """Load geometry *name* from STL or STEP/IGES/BREP (ADR 0016)."""
+        self.execute(LoadGeometry(str(path), anchor_strategy, skip_hygiene, name))
+
+    def use_component(self, name: str) -> None:
+        """Make component *name* current, creating it empty if new (ADR 0016)."""
+        self.execute(UseComponent(name))
 
     def build_topology(
         self,
@@ -93,12 +214,23 @@ class Project:
         k_beta: float = 3.0,
         k_thickness: float | None = None,
         options: dict[str, Any] | None = None,
+        geometry: str = "body",
         **params: Any,
     ) -> None:
-        """Build the blocks of *topology* (see ``shore.pipeline.build_topology``)."""
+        """Build the blocks of *topology* on *geometry* (see
+        ``shore.pipeline.build_topology``)."""
         self.execute(
             BuildTopology(
-                topology, nk, ds, growth, k_law, k_beta, k_thickness, dict(options or {}), params
+                topology,
+                nk,
+                ds,
+                growth,
+                k_law,
+                k_beta,
+                k_thickness,
+                dict(options or {}),
+                params,
+                geometry,
             )
         )
 
@@ -125,11 +257,17 @@ class Project:
         self.execute(Snap(exact))
 
     def surface_grid(
-        self, block: str, face: str, *, surface: int, smoothing: str = "elliptic"
+        self,
+        block: str,
+        face: str,
+        *,
+        surface: int,
+        smoothing: str = "elliptic",
+        geometry: str = "body",
     ) -> None:
         """Rebuild *face* of *block* from its boundary on SURFACE entity *surface*
-        of the loaded geometry (TFI + elliptic smoothing in (u, v), ADR 0007)."""
-        self.execute(FillFace(block, face, surface, smoothing))
+        of *geometry* (TFI + elliptic smoothing in (u, v), ADR 0007)."""
+        self.execute(FillFace(block, face, surface, smoothing, geometry))
 
     def build_primitive(self, kind: str, **params: Any) -> None:
         """Build a parametric primitive (``box``, ``annulus``, ``flat_caps``,
@@ -151,10 +289,12 @@ class Project:
         nk: int,
         label: str = "collar",
         plane: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None,
+        geometry: str = "body",
     ) -> None:
-        """Collar block around the junction of the loaded body and the body in
-        file *other* (ADR 0010); with *plane* the half-collar of a half model
-        (ADR 0013). Replaces the mesh. See ``BuildCollar``."""
+        """Collar block around the junction of *geometry* and *other*, a
+        geometry name or a file path (ADR 0010, 0016); with *plane* the
+        half-collar of a half model (ADR 0013). Replaces the current
+        component's mesh. See ``BuildCollar``."""
         self.execute(
             BuildCollar(
                 str(other),
@@ -169,6 +309,7 @@ class Project:
                 nk,
                 label,
                 None if plane is None else _plane_tuple(plane),
+                geometry,
             )
         )
 
@@ -211,6 +352,10 @@ class Project:
     def write_adjacency(self, path: str | Path) -> None:
         """Write the ``.adjacency.json`` sidecar."""
         self.execute(WriteAdjacency(str(path)))
+
+    def write_xall(self, directory: str | Path, *, grd: str = "mesh.grd", np: int = 1) -> None:
+        """Write the Xall files of every component, merged (see ``WriteXall``)."""
+        self.execute(WriteXall(str(directory), grd, np))
 
     # -- execution, undo, redo -------------------------------------------------
 
@@ -269,27 +414,79 @@ class Project:
         return out
 
     def save(self, directory: str | Path) -> Path:
-        """Write the project directory (see module docstring)."""
+        """Write the project directory, inputs included (see module docstring)."""
         from shore import __version__
         from shore.io.adjacency import write_adjacency_json
 
         d = Path(directory)
         (d / "grids").mkdir(parents=True, exist_ok=True)
-        self.save_journal(d / "journal.py")
-        labels: list[str] = []
+        commands, copies = self._portable_history(d / "inputs")
+        (d / "journal.py").write_text(
+            JOURNAL_HEADER + "".join(c.to_source() + "\n" for c in commands)
+        )
         if self.mesh is not None:
             write_adjacency_json(self.mesh.blocks, d / "adjacency.json")
-            for i, block in enumerate(self.mesh.blocks):
-                np.savez(d / "grids" / f"{i:04d}.npz", nodes=block.nodes)
-                labels.append(block.label)
         meta = [
             f"format = {PROJECT_FORMAT}",
             f'shore_version = "{__version__}"',
-            f"commands = {len(self.history)}",
-            "labels = [" + ", ".join(f'"{lbl}"' for lbl in labels) + "]",
+            f"commands = {len(commands)}",
+            "",
+            "[components]",
         ]
+        for name, component in self._components.items():
+            labels = []
+            if component.mesh is not None:
+                (d / "grids" / name).mkdir(parents=True, exist_ok=True)
+                for i, block in enumerate(component.mesh.blocks):
+                    np.savez(d / "grids" / name / f"{i:04d}.npz", nodes=block.nodes)
+                    labels.append(block.label)
+            meta.append(f"{_toml_key(name)} = [" + ", ".join(_toml_str(x) for x in labels) + "]")
+        meta += ["", "[inputs]"]
+        meta += [f"{_toml_key(rel)} = {_toml_str(digest)}" for rel, digest in copies.items()]
         (d / "project.toml").write_text("\n".join(meta) + "\n")
         return d
+
+    def _portable_history(self, inputs: Path) -> tuple[list[Command], dict[str, str]]:
+        """The state-changing history with every input file copied into *inputs*.
+
+        Returns the rewritten commands and ``{relative copy path: sha256}``.
+        A ``build_collar`` whose *other* names a loaded geometry has no file.
+        """
+        commands: list[Command] = []
+        copies: dict[str, str] = {}
+        by_source: dict[Path, str] = {}
+        names: set[str] = set()
+        for command in self.history:
+            if not command.mutates:
+                continue  # outputs: replaying them would write where the journal says
+            changes: dict[str, Any] = {}
+            for field in command.inputs:
+                if isinstance(command, BuildCollar) and command.other in names:
+                    continue
+                value = getattr(command, field)
+                paths = value if isinstance(value, tuple) else (value,)
+                moved = tuple(self._copy_input(p, inputs, by_source, copies) for p in paths)
+                changes[field] = moved if isinstance(value, tuple) else moved[0]
+            if isinstance(command, LoadGeometry):
+                names.add(command.name)
+            commands.append(dataclasses.replace(command, **changes) if changes else command)  # type: ignore[type-var]
+        return commands, copies
+
+    def _copy_input(
+        self, path: str, inputs: Path, by_source: dict[Path, str], copies: dict[str, str]
+    ) -> str:
+        root = self._input_root
+        source = Path(path) if root is None or Path(path).is_absolute() else root / path
+        source = source.resolve()
+        if source not in by_source:
+            if not source.is_file():
+                raise MeshInputError(f"save: input file {source} no longer exists.")
+            rel = f"inputs/{len(by_source):02d}_{source.name}"
+            inputs.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, inputs.parent / rel)
+            by_source[source] = rel
+            copies[rel] = _sha256(inputs.parent / rel)
+        return by_source[source]
 
     @classmethod
     def load(cls, directory: str | Path) -> Project:
@@ -299,20 +496,25 @@ class Project:
             meta = tomllib.loads((d / "project.toml").read_text())
         except (OSError, tomllib.TOMLDecodeError) as err:
             raise MeshInputError(f"{d}: not a SHORE project ({err})") from err
-        if meta.get("format") != PROJECT_FORMAT:
-            raise MeshInputError(f"{d}: unsupported project format {meta.get('format')!r}")
-        project = run_journal(d / "journal.py")
-        labels = meta.get("labels", [])
-        blocks = project.mesh.blocks if project.mesh is not None else []
-        if [b.label for b in blocks] != labels:
-            raise MeshInputError(f"{d}: replayed blocks {[b.label for b in blocks]} != {labels}")
-        for i, block in enumerate(blocks):
-            with np.load(d / "grids" / f"{i:04d}.npz") as saved:
-                if not np.array_equal(saved["nodes"], block.nodes):
-                    raise MeshInputError(
-                        f"{d}: replay of block '{block.label}' differs from the saved grid"
-                        " (journal not deterministic, or inputs changed)"
-                    )
+        version = meta.get("format")
+        if version == 1:
+            project = run_journal(d / "journal.py")
+            _check_grids(d, d / "grids", project.mesh, meta.get("labels", []))
+            return project
+        if version != PROJECT_FORMAT:
+            raise MeshInputError(f"{d}: unsupported project format {version!r}")
+        for rel, digest in meta.get("inputs", {}).items():
+            copy = d / rel
+            if not copy.is_file() or _sha256(copy) != digest:
+                raise MeshInputError(f"{d}: input {rel} is missing or changed since the save.")
+        project = run_journal(d / "journal.py", input_dir=d)
+        saved = meta.get("components", {})
+        if list(saved) != list(project._components):
+            raise MeshInputError(
+                f"{d}: replayed components {list(project._components)} != {list(saved)}"
+            )
+        for name, labels in saved.items():
+            _check_grids(d, d / "grids" / name, project._components[name].mesh, labels)
         return project
 
     def close(self) -> None:
@@ -323,12 +525,18 @@ class Project:
         self.undo_cache.close()
 
 
-def run_journal(path: str | Path) -> Project:
+def run_journal(path: str | Path, input_dir: str | Path | None = None) -> Project:
     """Execute a journal script and return the ``Project`` it built (``p``).
 
-    A journal is Python: run only journals you trust.
+    With *input_dir*, relative input paths in the journal resolve against it
+    (a saved project's directory). A journal is Python: run only journals you
+    trust.
     """
-    namespace = runpy.run_path(str(path), run_name="__shore_journal__")
+    token = input_root.set(None if input_dir is None else Path(input_dir).resolve())
+    try:
+        namespace = runpy.run_path(str(path), run_name="__shore_journal__")
+    finally:
+        input_root.reset(token)
     project = namespace.get("p")
     if not isinstance(project, Project):
         raise MeshInputError(f"{path}: journal does not define a Project named 'p'.")
@@ -342,3 +550,32 @@ def _plane_tuple(plane: Any) -> tuple[tuple[float, float, float], tuple[float, f
         return tuple(float(c) for c in point), tuple(float(c) for c in normal)  # type: ignore[return-value]
     except (TypeError, ValueError):
         raise ParameterError("plane must be (point, normal), two 3-vectors.") from None
+
+
+def _check_grids(d: Path, grids: Path, mesh: Mesh | None, labels: list[str]) -> None:
+    blocks = mesh.blocks if mesh is not None else []
+    if [b.label for b in blocks] != labels:
+        raise MeshInputError(f"{d}: replayed blocks {[b.label for b in blocks]} != {labels}")
+    for i, block in enumerate(blocks):
+        with np.load(grids / f"{i:04d}.npz") as saved:
+            if not np.array_equal(saved["nodes"], block.nodes):
+                raise MeshInputError(
+                    f"{d}: replay of block '{block.label}' differs from the saved grid"
+                    " (journal not deterministic, or inputs changed)"
+                )
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _toml_str(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _toml_key(value: str) -> str:
+    return _toml_str(value)

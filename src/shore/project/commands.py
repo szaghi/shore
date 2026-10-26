@@ -7,10 +7,17 @@ re-issues it, which is what the journal records.
 
 Node-array changes (march, snap) are undone from snapshots that the
 ``UndoCache`` keeps on disk, not in RAM: a 1e7-node grid is 240 MB.
+
+A project holds named geometries and named components (ADR 0016); mesh
+commands act on the current component. Commands that read files name those
+fields in ``inputs``: ``Project.save`` copies the files into the project, and
+a replay resolves relative input paths against ``input_root`` (the saved
+project's directory).
 """
 
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import shutil
 import tempfile
@@ -38,6 +45,26 @@ if TYPE_CHECKING:
     from shore.project.project import Project
 
 ProgressFn = Callable[[float, str], None]
+
+#: Directory that relative input paths resolve against while a saved
+#: project's journal replays (ADR 0016); unset: the working directory.
+input_root: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
+    "shore_input_root", default=None
+)
+
+
+def resolve_input(path: str) -> str:
+    """*path*, relative to ``input_root`` when that is set and *path* is relative."""
+    root = input_root.get()
+    if root is None or Path(path).is_absolute():
+        return path
+    return str(root / path)
+
+
+def _check_name(kind: str, name: object) -> str:
+    if not isinstance(name, str) or not name.strip():
+        raise ParameterError(f"{kind} name must be a non-empty string, got {name!r}.")
+    return name
 
 
 class Cancelled(ShoreError):
@@ -112,6 +139,7 @@ class Command(ABC):
     method: ClassVar[str]  # the Project method that issues this command
     positional: ClassVar[tuple[str, ...]] = ()  # fields rendered positionally
     mutates: ClassVar[bool] = True  # False: output only, never undone
+    inputs: ClassVar[tuple[str, ...]] = ()  # fields holding input file paths (str or tuple)
 
     @abstractmethod
     def apply(self, project: Project, ctx: Context) -> Undo | None: ...
@@ -133,25 +161,57 @@ class Command(ABC):
 
 @dataclass(frozen=True)
 class LoadGeometry(Command):
-    """Load the body (STL or STEP/IGES/BREP). Discards any existing mesh."""
+    """Load a geometry (STL or STEP/IGES/BREP) under *name*.
+
+    Reloading a name replaces that geometry and discards the meshes of the
+    components built on it (ADR 0016).
+    """
 
     method: ClassVar[str] = "load_geometry"
     positional: ClassVar[tuple[str, ...]] = ("path",)
+    inputs: ClassVar[tuple[str, ...]] = ("path",)
 
     path: str
     anchor_strategy: str = "auto"
     skip_hygiene: bool = False
+    name: str = "body"
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        prev = (project.body, project.mesh, project.build)
-        project.body = Body.from_file(
-            self.path, anchor_strategy=self.anchor_strategy, skip_hygiene=self.skip_hygiene
+        name = _check_name("geometry", self.name)
+        body = Body.from_file(
+            resolve_input(self.path),
+            anchor_strategy=self.anchor_strategy,
+            skip_hygiene=self.skip_hygiene,
         )
-        project.mesh = None
-        project.build = None
+        prev_body = project.geometries.get(name)
+        discarded = project.discard_built_on(name)
+        project.set_geometry(name, body)
 
         def restore() -> None:
-            project.body, project.mesh, project.build = prev
+            project.set_geometry(name, prev_body)
+            project.restore_components(discarded)
+
+        return Undo(restore)
+
+
+@dataclass(frozen=True)
+class UseComponent(Command):
+    """Make *name* the current component, creating it empty if new (ADR 0016)."""
+
+    method: ClassVar[str] = "use_component"
+    positional: ClassVar[tuple[str, ...]] = ("name",)
+
+    name: str
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        name = _check_name("component", self.name)
+        prev = project.current_component
+        created = project.select_component(name)
+
+        def restore() -> None:
+            project.select_component(prev)
+            if created:
+                project.drop_component(name)
 
         return Undo(restore)
 
@@ -177,19 +237,19 @@ class BuildTopology(Command):
     k_thickness: float | None = None
     options: dict[str, Any] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
+    geometry: str = "body"
 
     def to_source(self) -> str:
         # *params* read better as keywords: p.build_topology('ogrid', nk=6, ni=10)
         return _params_source(self, self.params)
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        if project.body is None:
-            raise ParameterError("build_topology needs a body: call load_geometry first.")
+        body = project.require_geometry(self.geometry, "build_topology")
         spacing = k_spacing(
             self.k_law, ds=self.ds, growth=self.growth, beta=self.k_beta, thickness=self.k_thickness
         )
         topo, blocks = build_topology(
-            project.body,
+            body,
             self.topology,
             nk=self.nk,
             spacing=spacing,
@@ -197,8 +257,10 @@ class BuildTopology(Command):
             **self.params,
         )
         prev = (project.mesh, project.build)
-        project.mesh = Mesh(body=project.body, blocks=blocks, topology=topo)
-        project.build = BuildState(self.topology, self.nk, self.ds, self.growth, spacing)
+        project.mesh = Mesh(body=body, blocks=blocks, topology=topo)
+        project.build = BuildState(
+            self.topology, self.nk, self.ds, self.growth, spacing, geometries=(self.geometry,)
+        )
 
         def restore() -> None:
             project.mesh, project.build = prev
@@ -217,6 +279,7 @@ class BuildState:
     spacing: Any = None  # Spacing1D, for March
     writer: Callable[[Path], None] | None = None  # own .geo naming (primitives)
     marchable: bool = True
+    geometries: tuple[str, ...] = ()  # the named geometries the mesh was built on
 
 
 def _params_source(command: Command, params: dict[str, Any]) -> str:
@@ -301,6 +364,7 @@ class FillFace(Command):
     face: str
     surface: int
     smoothing: str = "elliptic"
+    geometry: str = "body"
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         from shore.geometry import EntityKind
@@ -308,14 +372,13 @@ class FillFace(Command):
         from shore.surface.tfi import surface_grid
 
         mesh, _ = project.require_mesh()
-        if project.body is None:
-            raise ParameterError("surface_grid needs a loaded geometry: call load_geometry first.")
+        body = project.require_geometry(self.geometry, "surface_grid")
         blocks = {b.label: b for b in mesh.blocks}
         if self.block not in blocks:
             raise ParameterError(f"Unknown block {self.block!r}; blocks: {sorted(blocks)}.")
         if self.face not in FACE_ALONG_AXES:
             raise ParameterError(f"Unknown face {self.face!r}; faces: {sorted(FACE_ALONG_AXES)}.")
-        geometry = project.body.geometry
+        geometry = body.geometry
         surfaces = geometry.entities(EntityKind.SURFACE)
         if not 0 <= self.surface < len(surfaces):
             raise ParameterError(
@@ -416,6 +479,7 @@ class BuildTipCap(Command):
 
     method: ClassVar[str] = "build_tip_cap"
     positional: ClassVar[tuple[str, ...]] = ("body_geo",)
+    inputs: ClassVar[tuple[str, ...]] = ("body_geo",)
 
     body_geo: str
     tip: str = "jlo"
@@ -433,7 +497,7 @@ class BuildTipCap(Command):
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         kwargs = {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
-        mesh, resolved = build_tip_cap(kwargs.pop("body_geo"), **kwargs)
+        mesh, resolved = build_tip_cap(resolve_input(kwargs.pop("body_geo")), **kwargs)
         prev = (project.mesh, project.build, project.last_result)
         project.mesh = mesh
         project.build = BuildState("tip_cap", int(mesh.blocks[0].nodes.shape[2]), marchable=False)
@@ -459,6 +523,7 @@ class BuildCollar(Command):
 
     method: ClassVar[str] = "build_collar"
     positional: ClassVar[tuple[str, ...]] = ("other",)
+    inputs: ClassVar[tuple[str, ...]] = ("other",)  # when *other* is a file, not a geometry
 
     other: str
     seed: tuple[float, float, float]
@@ -472,20 +537,26 @@ class BuildCollar(Command):
     nk: int
     label: str = "collar"
     plane: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
+    geometry: str = "body"
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         from shore.collar import build_collar
         from shore.geometry import load_geometry
 
-        if project.body is None:
-            raise ParameterError("build_collar needs a body: call load_geometry first.")
+        body = project.require_geometry(self.geometry, "build_collar")
+        if self.other in project.geometries:
+            other = project.geometries[self.other].geometry
+            built_on: tuple[str, ...] = (self.geometry, self.other)
+        else:
+            other = load_geometry(resolve_input(self.other))
+            built_on = (self.geometry,)
         for name in ("m_a", "m_b", "nk"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ParameterError(f"{name} must be an integer >= 1, got {value!r}.")
         block = build_collar(
-            project.body.geometry,
-            load_geometry(self.other),
+            body.geometry,
+            other,
             np.asarray(self.seed, dtype=np.float64),
             n_loop=self.n_loop,
             steps_a=self.ds_surface * self.growth_surface ** np.arange(self.m_a),
@@ -497,7 +568,7 @@ class BuildCollar(Command):
         prev = (project.mesh, project.build)
         # no body association: k_lo lies on two bodies
         project.mesh = Mesh(body=None, blocks=[block], topology=None)  # type: ignore[arg-type]
-        project.build = BuildState("collar", self.nk + 1, marchable=False)
+        project.build = BuildState("collar", self.nk + 1, marchable=False, geometries=built_on)
 
         def restore() -> None:
             project.mesh, project.build = prev
@@ -511,12 +582,15 @@ class LoadBlocks(Command):
 
     method: ClassVar[str] = "load_blocks"
     positional: ClassVar[tuple[str, ...]] = ("geo_paths",)
+    inputs: ClassVar[tuple[str, ...]] = ("geo_paths", "adjacency")
 
     geo_paths: tuple[str, ...]
     adjacency: tuple[str, ...] = ()
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        blocks = load_blocks(self.geo_paths, self.adjacency)
+        blocks = load_blocks(
+            tuple(map(resolve_input, self.geo_paths)), tuple(map(resolve_input, self.adjacency))
+        )
         prev = (project.mesh, project.build)
         project.mesh = Mesh(body=None, blocks=blocks, topology=None)  # type: ignore[arg-type]
         project.build = BuildState("blocks", int(blocks[0].nodes.shape[2]), marchable=False)
@@ -623,6 +697,59 @@ class WriteCcPar(Command):
             block_metadata=block_meta,
             boxes=boxes,
         )
+
+
+@dataclass(frozen=True)
+class WriteXall(Command):
+    """The Xall files of the whole run, every component (ADR 0016; output only).
+
+    For each component with a mesh, in creation order, into
+    ``directory/<component>/``: the ``.geo`` files (one per block), the
+    adjacency sidecar, ``<component>.grd`` and ``cc.par``, written by the
+    same commands as ``write_geo`` / ``write_adjacency`` / ``write_grd`` /
+    ``write_cc_par``. Then, in *directory*, *grd* and ``cc.par`` merged from
+    them (``merge_grd``, ``merge_cc_par``) and one ``proc.input`` balanced
+    over the merged ``.grd`` on *np* ranks.
+    """
+
+    method: ClassVar[str] = "write_xall"
+    positional: ClassVar[tuple[str, ...]] = ("directory",)
+    mutates: ClassVar[bool] = False
+
+    directory: str
+    grd: str = "mesh.grd"
+    np: int = 1
+
+    def apply(self, project: Project, ctx: Context) -> None:
+        from shore.io.cc_par import merge_cc_par
+        from shore.io.grd import merge_grd
+        from shore.io.proc_input import write_proc_input
+
+        names = [name for name, mesh in project.components.items() if mesh is not None]
+        if not names:
+            raise ParameterError("write_xall: no component has a mesh.")
+        out = Path(self.directory)
+        grds, cc_pars = [], []
+        current = project.current_component
+        try:
+            for name in names:
+                project.select_component(name)
+                d = out / name
+                WriteGeo(str(d / name), per_block=True).apply(project, ctx)
+                WriteAdjacency(str(d / f"{name}.adjacency.json")).apply(project, ctx)
+                blocks = project.require_mesh()[0].blocks
+                geos = tuple(str(d / f"{name}_{b.label}.geo") for b in blocks)
+                WriteGrd(str(d / f"{name}.grd"), geos).apply(project, ctx)
+                WriteCcPar(
+                    str(d / f"{name}.adjacency.json"), str(d / "cc.par"), grd_filename=f"{name}.grd"
+                ).apply(project, ctx)
+                grds.append(d / f"{name}.grd")
+                cc_pars.append(d / "cc.par")
+        finally:
+            project.select_component(current)
+        merge_grd(grds, out / self.grd)
+        merge_cc_par(cc_pars, out / "cc.par", grd_filename=self.grd)
+        project.last_result = write_proc_input(out / self.grd, out / "proc.input", np=self.np)
 
 
 @dataclass(frozen=True)

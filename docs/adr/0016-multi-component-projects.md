@@ -1,6 +1,6 @@
 # 0016 — Multi-component, portable projects
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -102,3 +102,64 @@ listed above, and only those.
    the paths recorded in the journal, relative to the current directory.
    Should `save` drop output commands from the saved journal (they are
    never undone and do not change state)?
+
+## Review decisions (2026-10-26, user)
+
+1. **`proc.input` is balanced once over the whole run**, as frozen.
+2. **Per-component `cc.par` options come later**, in a separate change.
+3. **`save` drops output commands from the saved journal.** They never
+   change state, and on load they would write wherever the journal says.
+   `journal()` and `save_journal()` still give the full history for
+   scripting.
+
+## Acceptance (2026-10-26): multi-component project spec met
+
+**State.** `Project` holds `_geometries` (name → `Body`) and `_components`
+(name → mesh and `BuildState`). `mesh` and `build` are properties of the
+current component, so the existing commands are unchanged. `BuildState`
+records the geometries a mesh was built on (`geometries`). That record is
+what reloading a geometry uses to decide which components to discard, and
+it is undone with the rest of the state. Reloading `"body"` also drops the
+current component's geometry-free mesh (a primitive, loaded blocks), as
+before.
+
+**Commands.**
+- `UseComponent` is new.
+- `LoadGeometry(name=)`; `BuildTopology`, `FillFace` and `BuildCollar` take
+  `geometry=`. For `BuildCollar`, *other* is a geometry name when one is
+  loaded under it, else a file.
+- `WriteXall` runs the existing `WriteGeo` / `WriteAdjacency` / `WriteGrd`
+  / `WriteCcPar` per component, so its per-component files are the
+  accepted writers' by construction; it then merges.
+
+**Inputs.**
+- Commands name their input-file fields in `Command.inputs`.
+- `save` copies each distinct file once to `inputs/NN_<name>` and rewrites
+  the journal against the copies. A `build_collar` that names a geometry
+  has no file to copy.
+- `run_journal(input_dir=)` sets the `input_root` context variable, and
+  `resolve_input` resolves relative input paths against it. A project
+  loaded this way remembers its root, so it can be saved again.
+
+**Format 2:** `project.toml` gains `[components]` (block labels per
+component) and `[inputs]` (SHA-256 per copy); grids sit under
+`grids/<component>/`. Format 1 still loads.
+
+**Verdict for `tests/spec/test_project_components.py`: 14 passed,
+0 skipped, 0 xfailed** (T2; `scripts/check_spec.py` reports all files ok).
+All 12 `@PENDING` lines are removed. Full suite: 1431 passed, 0 xfailed.
+
+**Existing tests updated to the format change (`tests/test_project.py`).**
+Their intent is unchanged; the format is not:
+- the round trip compares the loaded history with the saved journal, which
+  now reads `inputs/`;
+- the tampered-grid check reads `grids/main/`;
+- the CLI replay checks that the saved journal keeps the state commands,
+  reads its input copies and loads bit-identically. It no longer requires
+  that journal to equal the CLI's, which keeps its output commands.
+
+**Unit tests:**
+- the journal lines of the new commands and arguments;
+- `save` copies a collar's file once and drops output commands, with two
+  components;
+- `resolve_input`.

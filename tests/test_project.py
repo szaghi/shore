@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import trimesh
 from typer.testing import CliRunner
 
 from shore.cli import app
@@ -207,13 +208,16 @@ class TestPersistence:
         p.save(tmp_path / "proj")
         assert (tmp_path / "proj" / "adjacency.json").exists()
         q = Project.load(tmp_path / "proj")
-        assert [c.to_source() for c in q.history] == [c.to_source() for c in p.history]
+        # the saved journal reads the project's own copy of the STL (ADR 0016)
+        saved = (tmp_path / "proj" / "journal.py").read_text()
+        assert "p.load_geometry('inputs/00_sphere.stl')" in saved
+        assert q.journal() == saved
 
     def test_load_detects_tampered_grid(self, sphere_stl, tmp_path):
         p = _sphere_project(sphere_stl)
         p.march()
         d = p.save(tmp_path / "proj")
-        grid = d / "grids" / "0000.npz"
+        grid = d / "grids" / "main" / "0000.npz"
         with np.load(grid) as g:
             nodes = g["nodes"].copy()
         nodes[0, 0, 0, 0] += 1e-12
@@ -273,8 +277,63 @@ class TestCliJournal:
             r = runner.invoke(app, ["run", str(journal), "--save-project", str(tmp_path / "p")])
         assert r.exit_code == 0, r.output
         assert _digest(list(out.iterdir())) == first
-        assert (tmp_path / "p" / "journal.py").read_text() == journal.read_text()
+        # the saved project keeps the state commands, reading its own input copies
+        saved = (tmp_path / "p" / "journal.py").read_text()
+        assert "inputs/00_" in saved and "p.write_" not in saved
+        state = [ln for ln in journal.read_text().splitlines() if not ln.startswith("p.write_")]
+        assert len(saved.splitlines()) == len(state)
+        Project.load(tmp_path / "p")  # replays bit-identically from the copies
 
     def test_run_missing_journal(self, tmp_path):
         r = runner.invoke(app, ["run", str(tmp_path / "nope.py")])
         assert r.exit_code == 1
+
+
+class TestComponentsAndInputs:
+    """Named geometries, components and portable inputs (ADR 0016) beyond the spec."""
+
+    def test_journal_lines(self):
+        from shore.project import UseComponent, WriteXall
+
+        assert LoadGeometry("s.stl").to_source() == "p.load_geometry('s.stl')"
+        assert LoadGeometry("s.stl", name="b").to_source() == "p.load_geometry('s.stl', name='b')"
+        assert UseComponent("collar").to_source() == "p.use_component('collar')"
+        assert WriteXall("run", np=4).to_source() == "p.write_xall('run', np=4)"
+        line = BuildTopology("ogrid", 5, params={"ni": 9}, geometry="b").to_source()
+        assert line == "p.build_topology('ogrid', nk=5, geometry='b', ni=9)"
+
+    def test_save_copies_a_collar_file_once_and_drops_outputs(self, tmp_path):
+        box = trimesh.creation.box(extents=(4.0, 4.0, 1.0))
+        box.apply_translation((0.0, 0.0, -0.5))
+        box.export(str(tmp_path / "box.stl"))
+        post = trimesh.creation.cylinder(radius=0.5, height=1.6, sections=48)
+        post.apply_translation((0.0, 0.0, 0.2))
+        post.export(str(tmp_path / "post.stl"))
+        p = Project()
+        p.load_geometry(tmp_path / "box.stl")
+        collar = {
+            "seed": (0.55, 0.0, 0.02), "n_loop": 16, "ds_surface": 0.02, "growth_surface": 1.15,
+            "m_a": 5, "m_b": 5, "ds_wall": 1e-3, "growth_wall": 1.25, "nk": 8,
+        }  # fmt: skip
+        p.build_collar(str(tmp_path / "post.stl"), **collar)
+        p.write_geo(tmp_path / "out" / "c")
+        p.use_component("again")
+        p.build_collar(str(tmp_path / "post.stl"), **collar)
+        d = p.save(tmp_path / "proj")
+        assert sorted(f.name for f in (d / "inputs").iterdir()) == ["00_box.stl", "01_post.stl"]
+        saved = (d / "journal.py").read_text()
+        assert saved.count("p.build_collar('inputs/01_post.stl'") == 2
+        assert "p.write_geo" not in saved
+        q = Project.load(d)
+        assert list(q.components) == ["main", "again"]
+
+    def test_resolve_input(self, tmp_path):
+        from shore.project.commands import input_root, resolve_input
+
+        assert resolve_input("a.stl") == "a.stl"
+        token = input_root.set(tmp_path)
+        try:
+            assert resolve_input("inputs/a.stl") == str(tmp_path / "inputs" / "a.stl")
+            assert resolve_input("/abs/a.stl") == "/abs/a.stl"
+        finally:
+            input_root.reset(token)
