@@ -92,3 +92,40 @@ runs long operations without blocking the UI.
   and `cc.par` to the current implementation on every worked example.
 - A journal recorded from a scripted session replays to bit-identical output.
 - Undo followed by redo of a march restores the node arrays bit-identically.
+
+## Results (2026-10-26, first slice)
+
+Implemented in `shore.project` (`Project`, the commands, `CancelToken`,
+`run_journal`) and `shore.pipeline` (topology construction moved out of the
+CLI, the one code path for both), with `shore mesh --journal` and
+`shore run`. Tests: `tests/test_project.py`.
+
+| Check | Result |
+|---|---|
+| `shore mesh` re-expressed over commands | 68/68 golden output files byte-identical to the pre-refactor CLI: cubed-sphere (geometric, and tanh + normal blending), O-grid, C-grid 3-block, blunt 4-block, with tip caps, CH, OH, each with its adjacency sidecar |
+| Journal replay (`shore mesh --journal` then `shore run`) | byte-identical outputs for cubed-sphere, C-grid, CH |
+| Undo + redo of `march` | node arrays bit-identical both ways |
+| Cancel mid-march, failed march | grid restored, nothing recorded |
+| Save then load | load replays the journal and verifies every grid bit for bit; a 1e-12 tamper is detected |
+
+What differs from the decision above:
+
+- **Loading is a replay.** `Project.load` re-runs `journal.py` instead of
+  deserialising state. The saved `grids/*.npz` are checked against the
+  replay, so every load is also the determinism test. The cost is a re-run.
+  The alternative, reconstructing topology objects from saved state, was
+  rejected because the OH/CH topologies hold build state their marchers
+  need.
+- **The command set is the `mesh` pipeline only:** `LoadGeometry`,
+  `BuildTopology`, `March`, `Snap`, `WriteGeo`, `WriteAdjacency`.
+- **Output commands are journaled but never undone.** `undo` reverts the
+  last state-changing command and drops the outputs written after it from
+  the history.
+- **Parameter names are checked against the named parameters** of the
+  topology `build` methods. Their trailing `**kwargs` would otherwise
+  swallow a misspelt journal argument.
+- **Undo snapshots** are `.npz` files in a per-project temporary directory,
+  deleted by `Project.close()`.
+
+Still open: re-expressing the other CLI commands (`primitive`, `split`,
+`cap-tip`, `grd`, `cc-par`, `proc-input`, `balance`) as commands.

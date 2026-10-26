@@ -86,3 +86,20 @@ crosses itself and SHORE aborts on a negative Jacobian.
   so acceptance rests on the metric tests above, with fixed inputs and
   thresholds frozen *before* implementation (ai-research-verification
   discipline).
+
+## Finding (2026-10-26): smoothing folds thin first layers
+
+While capturing phase-3 golden outputs, the current (algebraic) marcher
+failed with a negative Jacobian at layer k=1 on a 6-block cubed sphere
+(icosphere STL, `--ni 10 --nj 12`) whenever the first step was small:
+`ds = 1e-3` geometric, or a tanh law whose first step is 5.6e-3. The
+failure persists at `--smooth 0.05 --smooth-iters 1` and disappears with
+`--smooth 0`. Likely mechanism (a hypothesis that fits the on/off evidence,
+not yet confirmed by instrumenting the marcher): the Laplacian smoother
+moves layer-k nodes tangentially by a fraction of the *cell* size,
+independent of the *step* size, so a first layer thinner than that motion
+folds. A CFD mesher must march exactly this case (y+ ~ 1). Fix options for
+this ADR's work, after confirming the mechanism:
+- scale the smoothing displacement by the local step / cell-size ratio;
+- smooth only the tangential increment of the new layer;
+- adopt the hyperbolic scheme, whose dissipation is built in.

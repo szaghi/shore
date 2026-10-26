@@ -30,12 +30,7 @@ from shore.config import (
 from shore.mesh import (
     Body,
     CGridTipCap,
-    CGridTopology,
-    CHTopology,
-    CubedSphereTopology,
     Mesh,
-    OGridTopology,
-    OHTopology,
     Spacing1D,
     check_geo,
     export_geo,
@@ -52,6 +47,7 @@ from shore.primitive import (
     HGridRectMesh,
     HGridTubeMesh,
 )
+from shore.project import Project
 
 app = typer.Typer(
     name="shore",
@@ -684,6 +680,13 @@ def mesh(
             ),
         ),
     ] = None,
+    journal: Annotated[
+        Path | None,
+        typer.Option(
+            "--journal",
+            help="Also write the run as a replayable Python journal (`shore run`).",
+        ),
+    ] = None,
     verbose: _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL -> structured volume -> geo files.
@@ -877,9 +880,9 @@ def mesh(
         )
 
     theta = _resolve_theta(theta_cap, theta_cap_deg)
-    spacing_k = _build_spacing_k(
-        volume_k_spacing, volume_k_beta, volume_k_thickness, nk, ds, growth
-    )
+    # validate --volume-k-* up front (prints the CLI error and exits); the
+    # BuildTopology command builds the same Spacing1D from the same values
+    _build_spacing_k(volume_k_spacing, volume_k_beta, volume_k_thickness, nk, ds, growth)
     out_stem = output or _default_output(input, "")
 
     # --- load body ---
@@ -888,193 +891,197 @@ def mesh(
     # tessellation).  Skip the trimesh.repair pass to avoid the optional
     # networkx dependency.
     _skip_hygiene = topology in ("cgrid", "ch")
+    proj = Project()
     if verbose:
         with _progress() as prog:
             t = prog.add_task("Loading body  ", total=1, info="")
-            body = Body.from_file(input, skip_hygiene=_skip_hygiene)
-            prog.update(t, advance=1, info=f"{len(body.mesh.faces)} triangles")
+            proj.load_geometry(input, skip_hygiene=_skip_hygiene)
+            assert proj.body is not None
+            prog.update(t, advance=1, info=f"{len(proj.body.mesh.faces)} triangles")
     else:
-        body = Body.from_file(input, skip_hygiene=_skip_hygiene)
+        proj.load_geometry(input, skip_hygiene=_skip_hygiene)
 
     # --- build topology + march ---
     _theta_topo = theta if theta is not None else 0.05 * np.pi
-    topo: CubedSphereTopology | OGridTopology | CGridTopology | CHTopology | OHTopology
-    if topology == "cubed_sphere":
-        topo = CubedSphereTopology()
-    elif topology == "ogrid":
-        topo = OGridTopology()
-    elif topology == "cgrid":
-        topo = CGridTopology()
-    elif topology == "ch":
+    options: dict[str, object] = {}
+    if topology == "ch":
         # Freestream is optional: pass it only if any component was given.
         _fs = (ch_freestream_x, ch_freestream_y, ch_freestream_z)
         _freestream = (
-            np.array([v if v is not None else 0.0 for v in _fs], dtype=float)
+            tuple(float(v) if v is not None else 0.0 for v in _fs)
             if any(v is not None for v in _fs)
             else None
         )
-        topo = CHTopology(
-            chord_min=ch_chord_min,
-            chord_max=ch_chord_max,
-            normal_min=ch_normal_min,
-            normal_max=ch_normal_max,
-            nk_channel=nk_channel,
-            freestream_world=_freestream,
-            span_axis=span_axis,
-            k_law_channel=k_law_channel,
-            k_beta_channel=k_beta_channel,
-            i_split_body_upper=ch_i_split_body_upper,
-            i_split_body_lower=ch_i_split_body_lower,
-            ni_outflow=ch_ni_outflow,
-            c1_seam=c1_seam_channel,
-        )
-    else:  # oh
-        topo = OHTopology(
-            box_vmin=(oh_box_xmin, oh_box_ymin, oh_box_zmin),
-            box_vmax=(oh_box_xmax, oh_box_ymax, oh_box_zmax),
-            nk_channel=nk_channel,
-            k_law_channel=k_law_channel,
-            k_beta_channel=k_beta_channel,
-            c1_seam=c1_seam_channel,
-        )
+        options = {
+            "chord_min": ch_chord_min,
+            "chord_max": ch_chord_max,
+            "normal_min": ch_normal_min,
+            "normal_max": ch_normal_max,
+            "nk_channel": nk_channel,
+            "freestream_world": _freestream,
+            "span_axis": span_axis,
+            "k_law_channel": k_law_channel,
+            "k_beta_channel": k_beta_channel,
+            "i_split_body_upper": ch_i_split_body_upper,
+            "i_split_body_lower": ch_i_split_body_lower,
+            "ni_outflow": ch_ni_outflow,
+            "c1_seam": c1_seam_channel,
+        }
+    elif topology == "oh":
+        options = {
+            "box_vmin": (oh_box_xmin, oh_box_ymin, oh_box_zmin),
+            "box_vmax": (oh_box_xmax, oh_box_ymax, oh_box_zmax),
+            "nk_channel": nk_channel,
+            "k_law_channel": k_law_channel,
+            "k_beta_channel": k_beta_channel,
+            "c1_seam": c1_seam_channel,
+        }
+    params: dict[str, object]
+    if topology == "cgrid":
+        if cap_tips not in ("none", "jlo", "jhi", "both"):
+            _err.print(
+                f"[red]Error:[/red] --cap-tips must be 'none' / 'jlo' / "
+                f"'jhi' / 'both', got {cap_tips!r}."
+            )
+            raise typer.Exit(1) from None
+        params = {
+            "ni_body": ni_body,
+            "ni_wake": ni_wake,
+            "n_stations": n_stations,
+            "wake_length": wake_length,
+            "wake_growth": wake_growth,
+            "span_axis": span_axis,
+            "te_dihedral_deg": te_dihedral_deg,
+            "blocks": cgrid_blocks,
+            "cap_tips": cap_tips,
+            "cap_te_thickness": cap_te_thickness,
+            "cap_te_thickness_frac": cap_te_thickness_frac,
+            "cap_le_frac": cap_le_frac,
+            "cap_te_frac": cap_te_frac,
+            "cap_tip_inset": cap_tip_inset,
+            "cap_n_cap_j": cap_n_cap_j,
+            "cap_j_spacing": cap_j_spacing_cgrid,
+            "cap_j_beta": cap_j_beta_cgrid,
+            "cap_nk": cap_nk,
+        }
+    elif topology == "ch":
+        params = {
+            "ni_body": ni_body,
+            "ni_wake": ni_wake,
+            "n_stations": n_stations,
+            "wake_length": wake_length,
+            "wake_growth": wake_growth,
+            "te_dihedral_deg": te_dihedral_deg,
+        }
+    else:
+        params = {
+            "ni": ni,
+            "nj": nj,
+            "theta_cap": _theta_topo,
+            "i_spacing": surface_i_spacing,
+            "i_beta": surface_i_beta,
+            "j_spacing": surface_j_spacing,
+            "j_beta": surface_j_beta,
+        }
     try:
-        if topology == "cgrid":
-            if cap_tips not in ("none", "jlo", "jhi", "both"):
-                _err.print(
-                    f"[red]Error:[/red] --cap-tips must be 'none' / 'jlo' / "
-                    f"'jhi' / 'both', got {cap_tips!r}."
-                )
-                raise typer.Exit(1) from None
-            blocks = topo.build(
-                surface=None,
-                nk=nk,
-                mesh=body.mesh,
-                spacing_k=spacing_k,
-                ni_body=ni_body,
-                ni_wake=ni_wake,
-                n_stations=n_stations,
-                wake_length=wake_length,
-                wake_growth=wake_growth,
-                span_axis=span_axis,
-                te_dihedral_deg=te_dihedral_deg,
-                blocks=cgrid_blocks,
-                cap_tips=cap_tips,
-                cap_te_thickness=cap_te_thickness,
-                cap_te_thickness_frac=cap_te_thickness_frac,
-                cap_le_frac=cap_le_frac,
-                cap_te_frac=cap_te_frac,
-                cap_tip_inset=cap_tip_inset,
-                cap_n_cap_j=cap_n_cap_j,
-                cap_j_spacing=cap_j_spacing_cgrid,
-                cap_j_beta=cap_j_beta_cgrid,
-                cap_nk=cap_nk,
-            )
-        elif topology == "ch":
-            blocks = topo.build(
-                surface=None,
-                nk=nk,
-                mesh=body.mesh,
-                spacing_k=spacing_k,
-                ni_body=ni_body,
-                ni_wake=ni_wake,
-                n_stations=n_stations,
-                wake_length=wake_length,
-                wake_growth=wake_growth,
-                te_dihedral_deg=te_dihedral_deg,
-            )
-        else:
-            blocks = topo.build(
-                surface=None,
-                nk=nk,
-                ni=ni,
-                nj=nj,
-                spacing_k=spacing_k,
-                projector=body.projector,
-                theta_cap=_theta_topo,
-                i_spacing=surface_i_spacing,
-                i_beta=surface_i_beta,
-                j_spacing=surface_j_spacing,
-                j_beta=surface_j_beta,
-            )
+        proj.build_topology(
+            topology,
+            nk=nk,
+            ds=ds,
+            growth=growth,
+            k_law=volume_k_spacing,
+            k_beta=volume_k_beta,
+            k_thickness=volume_k_thickness,
+            options=options,
+            **params,
+        )
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    m = Mesh(body=body, blocks=blocks, topology=topo)
+    try:
+        if verbose:
+            with _progress() as prog:
+                t = prog.add_task("Marching      ", total=nk - 1, info="")
 
-    steps = spacing_k.build_steps(nk)
+                def _cb(fraction: float, message: str) -> None:
+                    prog.update(t, advance=1, info=message)
 
-    if verbose:
-        with _progress() as prog:
-            t = prog.add_task("Marching      ", total=nk - 1, info="")
-
-            def _cb(k: int, jmin: float) -> None:
-                prog.update(t, advance=1, info=f"jmin={jmin:.2e}")
-
-            try:
-                m.march(
-                    ds=ds,
-                    growth=growth,
-                    smooth_strength=smooth,
-                    smooth_iters=smooth_iters,
-                    steps=steps,
-                    layer_callback=_cb,
-                    blend_normals_k=blend_normals_k,
-                )
-            except Exception as exc:
-                _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
-                raise typer.Exit(1) from None
-    else:
-        try:
-            m.march(
-                ds=ds,
-                growth=growth,
-                smooth_strength=smooth,
-                smooth_iters=smooth_iters,
-                steps=steps,
-                blend_normals_k=blend_normals_k,
-            )
-        except Exception as exc:
-            _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
-            raise typer.Exit(1) from None
+                proj.march(smooth, smooth_iters, blend_normals_k, progress=_cb)
+        else:
+            proj.march(smooth, smooth_iters, blend_normals_k)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
 
     # --- write ---
-    if topology == "cubed_sphere":
-        m.write_geo(out_stem)
-        if verbose:
+    m = proj.mesh
+    assert m is not None
+    proj.write_geo(out_stem)
+    if verbose:
+        if topology == "cubed_sphere":
             nc = nj // 4 + 1
             _console.print(
                 f"[green]✓[/green] Wrote 6 .geo files  (sub: {ni}x{nc}x{nk}, caps: {nc}x{nc}x{nk})"
             )
-    elif len(m.blocks) == 1:
-        # Single-block O-grid / 1-block C-grid: write one
-        # ``<stem>.geo`` (no ``_<label>`` suffix).
-        from shore.io.geo import write_geo
-
-        single_path = out_stem if out_stem.suffix == ".geo" else out_stem.with_suffix(".geo")
-        write_geo(single_path, m.blocks[0].nodes)
-        if verbose:
+        elif len(m.blocks) == 1:
             shape = m.blocks[0].nodes.shape
-            _console.print(
-                f"[green]✓[/green] Wrote {single_path}  ({shape[0]}x{shape[1]}x{shape[2]})"
-            )
-    else:
-        # Multi-block C-grid (3-block sharp / 4-block blunt): one
-        # ``<stem>_<label>.geo`` per block, matching the cubed-sphere
-        # convention.
-        m.write_geo(out_stem)
-        if verbose:
+            single = out_stem if out_stem.suffix == ".geo" else out_stem.with_suffix(".geo")
+            _console.print(f"[green]✓[/green] Wrote {single}  ({shape[0]}x{shape[1]}x{shape[2]})")
+        else:
             n = len(m.blocks)
             labels = ", ".join(b.label for b in m.blocks)
             _console.print(f"[green]✓[/green] Wrote {n} .geo files ({labels})")
 
     if adjacency_json is not None:
-        from shore.io.adjacency import write_adjacency_json
-
-        adjacency_json.parent.mkdir(parents=True, exist_ok=True)
-        write_adjacency_json(m.blocks, adjacency_json)
+        proj.write_adjacency(adjacency_json)
         if verbose:
             _console.print(f"[green]✓[/green] Wrote {adjacency_json}")
+
+    if journal is not None:
+        proj.save_journal(journal)
+        if verbose:
+            _console.print(f"[green]✓[/green] Wrote {journal}  (replay: shore run {journal})")
+
+
+# ---------------------------------------------------------------------------
+# shore run
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def run(
+    journal: Annotated[
+        Path,
+        typer.Argument(help="Journal written by `shore mesh --journal` or Project.save_journal."),
+    ],
+    save_project: Annotated[
+        Path | None,
+        typer.Option("--save-project", help="Also save the resulting project directory."),
+    ] = None,
+) -> None:
+    """Replay a SHORE journal.
+
+    A journal is a Python script of Project method calls: replaying it
+    re-runs the same commands and rewrites the same outputs, bit for bit.
+    It is executed as Python, so run only journals you trust.
+    """
+    from shore.project import run_journal
+
+    if not journal.exists():
+        _err.print(f"[red]Error:[/red] journal not found: {_esc(str(journal))}")
+        raise typer.Exit(1)
+    try:
+        proj = run_journal(journal)
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    if save_project is not None:
+        proj.save(save_project)
+    _console.print(
+        f"[green]✓[/green] Replayed {len(proj.history)} commands from {_esc(str(journal))}"
+        + (f"; project saved to {_esc(str(save_project))}" if save_project else "")
+    )
 
 
 # ---------------------------------------------------------------------------

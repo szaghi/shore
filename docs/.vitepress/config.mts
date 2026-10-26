@@ -135,6 +135,7 @@ export default defineConfig({
             { text: 'shore primitive', link: '/reference/primitive' },
             { text: 'shore project',   link: '/reference/project' },
             { text: 'shore cap-tip',   link: '/reference/cap-tip' },
+            { text: 'shore run',       link: '/reference/run' },
           ],
         },
         {

@@ -164,6 +164,7 @@ wrap pins it to `pi/4`, emitting a `UserWarning` if set).
 | `-c` / `--config PATH` | — | Read parameter values from a TOML file (see [Config files](config)). Explicit CLI flags still override the file. |
 | `-o` / `--output PATH` | `<INPUT stem>` | Output stem. Multi-block topologies (`cubed_sphere`, `cgrid`, `ch`, `oh`) write one `<stem>_<label>.geo` per block; `ogrid` and `cgrid --cgrid-blocks 1` write one `<stem>.geo`. |
 | `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar describing the SHARED / DIRICHLET face graph (required by [`shore cc-par`](cc-par)). |
+| `--journal PATH` | — | Also write the run as a replayable Python journal; [`shore run`](run) reproduces the outputs bit for bit. |
 | `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats. |
 | `--help` | — | Show this help and exit. |
 
