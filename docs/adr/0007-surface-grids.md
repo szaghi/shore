@@ -122,3 +122,46 @@ reference is therefore exact and the work count is observable.
    example, a minimum angle no worse than TFI's)?
 4. Is the work budget of 10 points per node right? The measured need is
    about 1 for the evaluation, plus the metric lattice.
+
+## Kernel accepted (2026-10-26)
+
+`src/shore/surface/tfi.py` implements Decision 1. **Verdict for
+`tests/spec/test_surface_tfi.py`: 23 passed, 0 skipped, 0 xfailed** (T2,
+run independently; `scripts/check_spec.py` reports all files ok). All 13
+`@PENDING` lines in the module are removed; the parametrised cases share
+them. The CAD half is pending: it needs `Project.surface_grid`.
+
+Method:
+- the boundary is projected once (`exact=True`) to get its (u, v);
+- TFI in (u, v);
+- Winslow in (u, v) with Christoffel terms and linearly blended
+  Thomas-Middlecoff control functions (`|P|, |Q| <= 1.5`), solved by Picard
+  iteration with one SuperLU factorisation per step, shared by u and v;
+- one evaluation at the end, with the boundary rows copied from the input.
+
+The metric comes from a parameter lattice twice the grid's resolution
+(`lattice_refine = 2`), evaluated once. Its finite-difference derivatives
+are interpolated bilinearly.
+
+Measured margins (T1, `EllipticParams` defaults; the same values for every
+case):
+
+| Case | Measured | Required | Prototype |
+|---|---|---|---|
+| S3 distorted plane / cylinder | 0.00068 h / 0.00114 h (13 / 14 Picard steps) | <= 0.02 h | 0.0007 h / 0.0008 h |
+| S4 clustering | first cell 1.00000; 7e-13 h (1 step: exact) | 0.95-1.05; <= 0.05 h | exact |
+| S5 overhang | 0 folded, 5.42 deg (47 steps) | 0 folded, >= 2 deg | 5.4 deg |
+| S6 sphere patch | 0 folded; min corner angle 68.3 deg | 0 folded | (lat-lon TFI: 88.1 deg) |
+| S7 work | 5.19 points per node | <= 10 | |
+
+Unit checks in `tests/test_surface_tfi.py`:
+- the lattice derivatives (all five) match the exact sphere within 2e-3;
+- TFI is exact on bilinear data;
+- the control function equals the discrete `-x_ss / x_s` on a tanh row,
+  and the clamp holds;
+- geometry work is the same for 1 and 400 iterations.
+
+S6 note (review question 3): on the sphere, Winslow lowers the minimum
+corner angle from the lat-lon TFI's 88 deg to 68 deg. Winslow equalises
+the grid; it does not preserve angles. The spec asks only for validity
+there.

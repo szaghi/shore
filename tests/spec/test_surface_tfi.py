@@ -333,13 +333,11 @@ def sphere_patch_grid(n: int = 31) -> np.ndarray:
 
 
 class TestS1Tfi:
-    @PENDING
     def test_tensor_grid_identity_plane(self):
         grid = clustered_rectangle()
         g = kernel()(Plane(), FACE, boundary_of(grid), smoothing="none")
         assert np.abs(g.points - grid).max() <= 1e-12 * diag(grid)
 
-    @PENDING
     def test_interpolates_parameters_not_points(self):
         surf = Cylinder()
         u, v = np.meshgrid(one_sided(25, 2.0), two_sided(21, 1.5), indexing="ij")
@@ -364,7 +362,6 @@ SURFACES = {
 
 
 class TestS2Invariants:
-    @PENDING
     @pytest.mark.parametrize("smoothing", ["none", "elliptic"])
     @pytest.mark.parametrize("name", list(SURFACES))
     def test_boundary_surface_params(self, name, smoothing):
@@ -386,7 +383,6 @@ class TestS2Invariants:
 
 
 class TestS3Metric:
-    @PENDING
     @pytest.mark.parametrize("make_surface", [lambda: Plane(distorted=True), Cylinder])
     def test_recovers_uniform_physical_grid(self, make_surface):
         surf = make_surface()
@@ -403,7 +399,6 @@ class TestS3Metric:
 
 
 class TestS4Clustering:
-    @PENDING
     def test_tensor_rectangle_kept(self):
         ref = clustered_rectangle()
         g = kernel()(Plane(), FACE, boundary_of(ref))
@@ -419,7 +414,6 @@ class TestS4Clustering:
 
 
 class TestS5FoldRepair:
-    @PENDING
     def test_overhang(self):
         b = overhang_boundary()
         up = np.broadcast_to([0.0, 0.0, 1.0], b.shape)
@@ -437,7 +431,6 @@ class TestS5FoldRepair:
 
 
 class TestS6Sphere:
-    @PENDING
     def test_patch_valid(self):
         surf, grid = SpherePatch(), sphere_patch_grid()
         g = kernel()(surf, FACE, boundary_of(grid))
@@ -450,7 +443,6 @@ class TestS6Sphere:
 
 
 class TestS7Work:
-    @PENDING
     def test_geometry_queries_per_node(self):
         surf = Cylinder()
         ref = uniform_physical(surf, 41)
@@ -465,7 +457,6 @@ class TestS7Work:
 
 
 class TestS8Interface:
-    @PENDING
     def test_default_is_elliptic_and_deterministic(self):
         surf, grid = Cylinder(), uniform_physical(Cylinder(), 21)
         a = kernel()(surf, FACE, boundary_of(grid))
@@ -473,26 +464,22 @@ class TestS8Interface:
         np.testing.assert_array_equal(a.points, b.points)
         np.testing.assert_array_equal(a.params, b.params)
 
-    @PENDING
     def test_unknown_smoothing(self):
         grid = clustered_rectangle()
         with pytest.raises(ParameterError, match="smoothing"):
             kernel()(Plane(), FACE, boundary_of(grid), smoothing="laplace")
 
-    @PENDING
     @pytest.mark.parametrize("shape", [(41, 31, 2), (2, 31, 3), (41, 31)])
     def test_malformed_boundary(self, shape):
         with pytest.raises(ParameterError):
             kernel()(Plane(), FACE, np.zeros(shape))
 
-    @PENDING
     def test_boundary_off_surface(self):
         b = boundary_of(clustered_rectangle())
         b[0, 5, 2] += 1e-3  # one boundary node lifted off the plane
         with pytest.raises(ParameterError):
             kernel()(Plane(), FACE, b)
 
-    @PENDING
     def test_no_parametrisation(self):
         stl = StlGeometry(trimesh.creation.box(extents=(1.0, 1.0, 1.0)))
         grid = clustered_rectangle() - [0.5, 0.25, 0.5]  # on the box's z = -0.5 face
