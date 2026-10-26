@@ -104,3 +104,41 @@ the bounds are attainable and that the error cases discriminate.
    reaches 17 deg. Tighten it?
 4. Is the work budget of 4 projected points per node and layer right? The
    need is 2: the normals and the final projection.
+
+## Acceptance (2026-10-26): surface-marching spec met
+
+`src/shore/surface/march.py` implements the decision. It uses the
+prototype's defaults (`MarchParams`: area smoothing 0.5, `eps_implicit` 1,
+`eps_explicit` 0.5, convergence gain 16) and no excess correction.
+
+**Verdict for `tests/spec/test_surface_march.py`: 23 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 12
+`@PENDING` lines are removed; the parametrised cases share them. Full
+suite: 1269 passed, 0 xfailed.
+
+Measured (T1, the same defaults for every case):
+
+| Case | Measured | Required | Prototype |
+|---|---|---|---|
+| M1 / M2 | 5.6e-16 / 1.7e-16 | <= 1e-12 | the same |
+| M3 generator | 0.056 % | <= 0.5 % | 0.056 % |
+| M4 sphere equator | 3.50 % | <= 5 % | 3.5 % |
+| M5 helix | 0.018 / 0.036 deg | <= 0.5 / 1 | 0.02 / 0.04 |
+| M6 concave L | 0 folded, 23.9 deg | >= 5 deg | 17.0 deg |
+| M7 convex L | 0 folded, 45.0 deg | >= 30 deg | 45.0 deg |
+| M8 work | 1.00 projected point per node and layer | <= 4 | 2 |
+
+Two differences from the prototype:
+- **Work.** Each layer's final projection also returns the normals of the
+  next layer, so the geometry is queried once per node and layer
+  (`tests/test_surface_march.py` pins this exactly).
+- **Concave corner.** The contraction sensor reads the area-smoothed trial
+  layer; the prototype read the unsmoothed one. This raises the concave
+  corner's minimum angle from 17 to 23.9 deg.
+
+The kernel also marches on an STL body (`StlGeometry` icosphere, unit
+test).
+
+The review questions above are still open, the 5 % bound on converging
+fronts first among them. Changing any answer is a re-freeze. Next for
+collars: the intersection curve between components and the collar block.

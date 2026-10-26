@@ -253,7 +253,6 @@ def run(name: str) -> tuple[AnalyticBody, np.ndarray, np.ndarray]:
 
 
 class TestExact:
-    @PENDING
     def test_m1_line_on_plane(self):
         _, curve, g = run("line_plane")
         np.testing.assert_allclose(
@@ -261,14 +260,12 @@ class TestExact:
         )
         np.testing.assert_allclose(g[..., 1], np.broadcast_to(DIST, g.shape[:2]), atol=1e-12)
 
-    @PENDING
     def test_m2_ring_on_cylinder(self):
         _, curve, g = run("ring_cylinder")
         phi0 = np.arctan2(curve[:, 1], curve[:, 0])[:, None]
         assert np.abs(wrap(np.arctan2(g[..., 1], g[..., 0]) - phi0)).max() <= 1e-12
         np.testing.assert_allclose(g[..., 2], np.broadcast_to(DIST, g.shape[:2]), atol=1e-12)
 
-    @PENDING
     def test_m3_generator_on_cylinder(self):
         _, curve, g = run("generator_cylinder")
         geodesic = np.abs(np.arctan2(g[..., 1], g[..., 0]))  # from the generator at phi = 0
@@ -277,7 +274,6 @@ class TestExact:
             g[..., 2], np.broadcast_to(curve[:, 2:], g.shape[:2]), atol=1e-12
         )
 
-    @PENDING
     def test_m4_equator_on_sphere(self):
         _, curve, g = run("equator_sphere")
         lon0 = np.arctan2(curve[:, 1], curve[:, 0])[:, None]
@@ -292,14 +288,12 @@ class TestExact:
 
 
 class TestQuality:
-    @PENDING
     def test_m5_helix_orthogonal(self):
         surface, _, g = run("helix_cylinder")
         err = orthogonality_error(g)
         assert err.mean() <= 0.5 and err.max() <= 1.0
         assert (corner_sines(g, surface.normal(g)) <= 0).sum() == 0
 
-    @PENDING
     def test_m6_concave_corner(self):
         surface, curve, g = run("concave_l_plane")
         ref = pure_normal(surface, curve)
@@ -307,7 +301,6 @@ class TestQuality:
         assert (corner_sines(g, surface.normal(g)) <= 0).sum() == 0
         assert min_angle_deg(g, surface) >= 5.0
 
-    @PENDING
     def test_m7_convex_corner(self):
         surface, _, g = run("convex_l_plane")
         assert (corner_sines(g, surface.normal(g)) <= 0).sum() == 0
@@ -320,7 +313,6 @@ class TestQuality:
 
 
 class TestInvariants:
-    @PENDING
     @pytest.mark.parametrize("name", list(CASES))
     def test_m8_shape_curve_surface_orientation_work(self, name):
         make_surface, make_curve, periodic = CASES[name]
@@ -342,13 +334,11 @@ class TestInvariants:
 
 
 class TestInterface:
-    @PENDING
     def test_m9_defaults_and_determinism(self):
         a = kernel()(Cylinder(), helix(), STEPS)
         b = kernel()(Cylinder(), helix(), STEPS, periodic=False, entity=BODY)
         np.testing.assert_array_equal(a, b)
 
-    @PENDING
     @pytest.mark.parametrize(
         "steps", [np.array([]), np.array([0.01, -0.01]), np.zeros((2, 2)) + 0.01, [0.01, np.nan]]
     )
@@ -356,13 +346,11 @@ class TestInterface:
         with pytest.raises(ParameterError):
             kernel()(Plane(), line(), steps)
 
-    @PENDING
     @pytest.mark.parametrize("curve", [np.zeros((2, 3)), np.zeros((5, 2)), np.zeros(5)])
     def test_m9_bad_curve(self, curve):
         with pytest.raises(ParameterError):
             kernel()(Plane(), curve, STEPS)
 
-    @PENDING
     def test_m9_curve_off_surface(self):
         curve = line()
         curve[7, 2] = 1e-3
