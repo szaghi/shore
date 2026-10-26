@@ -35,6 +35,19 @@ jobs:
       - name: Run pytest with coverage
         run: pytest
 
+  test-cad:
+    # OCCT backend (shore[cad], ~70 MB of wheels): kept out of the default job
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + test + CAD deps
+        run: pip install -e ".[dev,cad]"
+      - name: Run geometry tests
+        run: pytest tests/test_geometry.py tests/test_geometry_occt.py --no-cov
+
   build:
     runs-on: ${{ matrix.os }}
     strategy:

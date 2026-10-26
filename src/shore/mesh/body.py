@@ -10,8 +10,10 @@ import numpy as np
 import trimesh
 
 from shore.exceptions import MeshInputError
+from shore.geometry.stl import StlGeometry
 from shore.surface.anchor import resolve_anchor
 from shore.surface.io import load_stl
+from shore.surface.projector import Projector
 from shore.surface.remesh import (
     project_caps_to_surface,
     sphere_latlon_directions,
@@ -69,11 +71,18 @@ class Body:
     # ------------------------------------------------------------------
 
     @functools.cached_property
-    def projector(self) -> object:
-        """Lazily constructed Projector — BVH built exactly once per Body."""
-        from shore.surface.projector import Projector
+    def geometry(self) -> StlGeometry:
+        """The body as a ``Geometry`` (STL backend), built once per Body."""
+        return StlGeometry(self.mesh)
 
-        return Projector(self.mesh, self.anchor)
+    @property
+    def projector(self) -> Projector:
+        """Projector for the body anchor — BVH built exactly once per Body.
+
+        Served by ``geometry.projector(anchor)``, so the ``Geometry`` and the
+        legacy projector share one BVH.
+        """
+        return self.geometry.projector(self.anchor)
 
     # ------------------------------------------------------------------
     # Projection
@@ -120,7 +129,7 @@ class Body:
             j_beta=j_beta,
             j_cluster_lon=j_cluster_lon,
         )
-        result = self.projector.project(dirs.reshape(-1, 3))  # type: ignore[union-attr]
+        result = self.projector.project(dirs.reshape(-1, 3))
         return result.locations.reshape(ni, nj, 3)
 
     def project_caps(

@@ -38,18 +38,28 @@ excluded (ADR 0006 sets Python + numpy only).
    geometry API the mesh core sees:
 
    ```python
+   @runtime_checkable
    class Geometry(Protocol):
-       def entities(self, kind: EntityKind) -> Sequence[EntityRef]: ...
-       def bbox(self) -> np.ndarray: ...                       # (2, 3)
-       def ray_cast(self, origins, dirs) -> RayHits: ...       # existing topologies
-       def project(self, points, entity: EntityRef | None, *, exact: bool = False
-                   ) -> Projection: ...                        # xyz, uv|t, dist, status
+       @property
+       def bounds(self) -> np.ndarray: ...                     # (2, 3)
+       def entities(self, kind: EntityKind) -> tuple[EntityRef, ...]: ...
+       def ray_cast(self, anchor, dirs, on_failure="raise"
+                    ) -> ProjectionResult: ...                 # existing templates
+       def project(self, points, entity: EntityRef | None = None, *,
+                   exact: bool = False) -> Projection: ...     # points, dist, normals, params
        def evaluate(self, entity: EntityRef, params) -> np.ndarray: ...
-       def normal(self, entity: EntityRef, uv) -> np.ndarray: ...
    ```
 
-   All arguments and results are numpy arrays (batched). `entity=None`
-   means "the whole body" (today's semantics).
+   All arguments and results are numpy arrays (batched), and leading
+   dimensions are preserved. `entity=None` means "the whole body" (today's
+   semantics). Two choices made at implementation (2026-10-26), relative to
+   the first draft of this record:
+   - **`ray_cast` takes one interior anchor**, with `Projector` semantics
+     and per-ray status. Every existing template casts that way. A
+     many-origin cast is added only when a caller needs one.
+   - **Normals come back in `Projection`** instead of from a separate
+     `normal(entity, uv)` call. STL has no (u, v), and every caller wants
+     the normal at a projected point.
 
 2. **Two backends.**
    - `StlGeometry`: today's `trimesh` + `Projector`, unchanged behaviour. It
@@ -68,7 +78,8 @@ excluded (ADR 0006 sets Python + numpy only).
      tier-1 (u, v). Used once at the end of each surface algorithm.
 
    The tessellation deflection is a geometry setting, recorded in the
-   project. Tier-1 error is bounded by it, and tier 2 removes it.
+   project. For queries near the surface, tier-1 error is a small multiple
+   of it, and tier 2 removes it. See Results below for the measured bound.
 
 4. **Optional dependency.** `shore[cad]` = `build123d`. The core imports
    `shore.geometry.occt` lazily. Without the extra, STEP input raises a
@@ -118,3 +129,28 @@ excluded (ADR 0006 sets Python + numpy only).
     deflection.
 - **Check:** IGES support in build123d 0.13. If absent, wrap
   `IGESControl_Reader` directly.
+
+## Results (2026-10-26, `OcctGeometry` in `src/shore/geometry/occt.py`)
+
+Measured on the development machine (WSL2, Python 3.12, OCCT 8.0 via
+cadquery-ocp 8.0.1, build123d 0.13.0), default deflection 10⁻³ × the bbox
+diagonal. Coverage is `tests/test_geometry_occt.py` (24 tests, run by the
+`test-cad` CI job).
+
+| Item | Result |
+|---|---|
+| IGES | build123d 0.13 has **no** IGES importer. IGES goes through OCP `IGESControl_Reader` and is then **sewn** (`BRepBuilderAPI_Sewing`), because IGES stores faces as independent trimmed surfaces: a box read back has 24 edges unsewn and 12 sewn |
+| Tier-2 accuracy | Exact: sphere radius error 2·10⁻¹⁶; at a 10³ offset, 6·10⁻¹⁴; box faces exact. Outward normals hold on REVERSED faces. A foot outside a trimmed face falls back to `BRepExtrema_DistShapeShape` and lands on the face boundary |
+| Tier-1 accuracy | Near the surface, error ≤ ~2× deflection. BRepMesh bounds edge sag by the deflection, but triangle interiors sag up to ~1.7× further (sphere: 0.006 at δ = 0.0035). For a query at distance h the error grows by about h × the facet normal error: 0.045 at h = 1 on the unit sphere. **Distant queries must use `exact=True`** |
+| Tier-1 (u, v) | Interpolated per node. At singular parameters (sphere poles, cone apexes, detected as a vanishing ∂S/∂u or ∂S/∂v), the singular corners are excluded from that parameter's interpolation. Without that, pole errors reached 0.06 |
+| **Tier-1 throughput** | **2.5·10⁴–1.3·10⁵ points/s** near the surface (trimesh `closest_point` with R-trees built once at load). **The 10⁶ points/s target is not met.** A vectorised custom index (KD-tree + certified candidate sets) was prototyped and dropped: with a warm R-tree trimesh was as fast or faster. An earlier "8·10³ points/s" figure was an artefact of timing cold R-tree builds |
+| Tier-2 throughput | 1.4·10³–4·10⁴ points/s (per-point OCP Newton + face classifier; slowest on the filleted box, where distant queries hit the trimmed-face fallback) |
+| Load | Box 0.04 s, sphere 0.05 s, box with all 12 edges filleted (26 faces) 0.25 s |
+
+Consequence for phase 4. Elliptic surface smoothing that re-projects 10⁵
+nodes per sweep for 100 sweeps (10⁷ queries) takes ~100 s at these rates.
+Before phase 4, do one of the following and measure it here:
+- smooth in (u, v) per face and evaluate only at the end;
+- project only nodes that moved more than a tolerance;
+- accept a compiled kernel in the core (the "Python + numpy only" rule of
+  ADR 0006 binds the GUI, not the mesher).
