@@ -59,6 +59,7 @@ and the layout Xall's Fortran reader expects.
 |---|---|
 | `GEO_FILES...` | One or more `.geo` input files. Block order in the `.grd` matches the order given here. |
 | `-o` / `--output PATH` | Output `.grd` file. The `.grd` extension is added automatically if absent. |
+| `--journal PATH` | Also write the run as a replayable journal ([`shore run`](run)). |
 
 ## Examples
 

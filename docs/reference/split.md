@@ -30,6 +30,7 @@ shore split [OPTIONS] -c CONFIG INPUTS...
 |---|---|
 | `-c` / `--config PATH` | TOML split config (`kind = "split"`) — required. |
 | `-o` / `--output PATH` | Output stem. Writes `<stem>_<label>.geo` per chunk plus `<stem>.adjacency.json`. Default: parent dir of the first input + the inferred base prefix. |
+| `--journal PATH` | Also write the run as a replayable journal ([`shore run`](run)). |
 | `--adjacency PATH` | Input `.adjacency.json` sidecar(s) describing the pre-existing inter-block seams of the input `.geo` files. **Repeatable** (one per component). Without it, `.geo` files carry only geometry, so every face defaults to FREE and the topology's SHARED/DIRICHLET seams are lost through the split. Pass each component's sidecar to seed and preserve its seams. |
 | `-v` / `--verbose` | Print every input block and every output file. |
 

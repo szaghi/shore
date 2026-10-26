@@ -127,5 +127,35 @@ What differs from the decision above:
 - **Undo snapshots** are `.npz` files in a per-project temporary directory,
   deleted by `Project.close()`.
 
-Still open: re-expressing the other CLI commands (`primitive`, `split`,
-`cap-tip`, `grd`, `cc-par`, `proc-input`, `balance`) as commands.
+## Results (2026-10-26, second slice)
+
+New commands: `BuildPrimitive`, `BuildTipCap`, `LoadBlocks`, `Split`,
+`WriteGrd`, `WriteCcPar` and `WriteProcInput`. `shore primitive *`,
+`shore cap-tip`, `shore split`, `shore grd`, `shore cc-par` and
+`shore proc-input` run over a `Project` and accept `--journal`.
+`shore.pipeline` gained `build_primitive`, `load_blocks` (with
+`common_base_stem`), `apply_splits` and `build_tip_cap`, moved out of the
+CLI.
+
+| Check | Result |
+|---|---|
+| Goldens captured before the change: `examples/05-chimera-assembly/chimera_assembly.sh` end to end (mesh, flat-caps, boxes, grd, cc-par with `--meta`/`--boxes`/`--free-bc`, proc-input with `--meta`, the three merges), all five primitives with sidecars, split of the wall with sidecar, both tip caps | 66/66 files byte-identical |
+| `--journal` then `shore run`, for each re-expressed command | byte-identical |
+| One `Project` journal: mesh, march, split, geo, adjacency, grd, cc.par, proc.input | replays byte-identically; its Xall files equal the stand-alone CLI's |
+
+Decisions:
+
+- **The Xall writers stay file-based.** `write_grd` packs from `.geo`
+  files, exactly like `shore grd`, so a `.grd` carries the `.geo` print
+  precision. Packing from in-memory float64 would have silently changed
+  every `.grd`.
+- **Some commands stay outside the project.** The `*-merge` commands,
+  `balance`, `boxes-from-stl` / `boxes-export`, the `body` / `profile`
+  generators and `info` / `check` / `export` / `view` either span
+  components or only inspect, so they are not project commands.
+- **A split mesh cannot be marched.** `BuildState.marchable` is false after
+  `Split`, `LoadBlocks`, `BuildPrimitive` and `BuildTipCap`. The marchers
+  dispatch on the topology's original block layout.
+- **`.geo` naming is part of `WriteGeo`.** A primitive keeps its own rule
+  until a split. `per_block=True` gives `shore split` / `shore cap-tip`
+  naming. Otherwise `shore mesh`'s rule applies.

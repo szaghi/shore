@@ -43,6 +43,7 @@ shore cap-tip [OPTIONS] BODY_GEO
 | `--span-axis {x,y,z}` | `z` | World axis the wing spans along. Used by the LE-cut chord-axis detector. |
 | `-o` / `--output PATH` | `cap_<tip>` | Output stem.  Writes `<stem>_<label>.geo` per cap sub-block. |
 | `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (for `shore cc-par` consumption). |
+| `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 
 ## Output
 

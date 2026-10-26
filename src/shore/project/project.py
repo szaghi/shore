@@ -30,19 +30,26 @@ from shore.exceptions import MeshInputError, ParameterError
 from shore.mesh.body import Body
 from shore.mesh.mesh import Mesh
 from shore.project.commands import (
+    BuildPrimitive,
     BuildState,
+    BuildTipCap,
     BuildTopology,
     CancelToken,
     Command,
     Context,
+    LoadBlocks,
     LoadGeometry,
     March,
     ProgressFn,
     Snap,
+    Split,
     Undo,
     UndoCache,
     WriteAdjacency,
+    WriteCcPar,
     WriteGeo,
+    WriteGrd,
+    WriteProcInput,
 )
 
 PROJECT_FORMAT = 1
@@ -60,6 +67,7 @@ class Project:
         self.body: Body | None = None
         self.mesh: Mesh | None = None
         self.build: BuildState | None = None
+        self.last_result: Any = None  # what the last command reported (paths, summaries)
         self.undo_cache = UndoCache(Path(undo_root) if undo_root else None)
         self._done: list[tuple[Command, Undo | None]] = []
         self._redo: list[Command] = []
@@ -113,9 +121,46 @@ class Project:
         """Project associated nodes onto their geometry."""
         self.execute(Snap(exact))
 
-    def write_geo(self, stem: str | Path) -> None:
-        """Write the ``.geo`` files (``shore mesh`` naming)."""
-        self.execute(WriteGeo(str(stem)))
+    def build_primitive(self, kind: str, **params: Any) -> None:
+        """Build a parametric primitive (``box``, ``annulus``, ``flat_caps``,
+        ``h_grid_rect``, ``h_grid_tube``); see ``shore.pipeline.build_primitive``."""
+        self.execute(BuildPrimitive(kind, params))
+
+    def build_tip_cap(self, body_geo: str | Path, **options: Any) -> None:
+        """Wing-tip cap from a C-grid body ``.geo``; options as ``BuildTipCap``."""
+        self.execute(BuildTipCap(str(body_geo), **options))
+
+    def load_blocks(
+        self, geo_paths: list[str | Path], adjacency: list[str | Path] | tuple = ()
+    ) -> None:
+        """Replace the mesh with blocks read from ``.geo`` files (+ sidecars)."""
+        self.execute(LoadBlocks(tuple(map(str, geo_paths)), tuple(map(str, adjacency))))
+
+    def split(self, splits: list[tuple[str, str, list[int] | tuple[int, ...]]]) -> None:
+        """Split blocks by ``(label, axis, at)`` directives."""
+        self.execute(
+            Split(tuple((str(lb), str(ax), tuple(int(i) for i in at)) for lb, ax, at in splits))
+        )
+
+    def write_geo(self, stem: str | Path, per_block: bool = False) -> None:
+        """Write the ``.geo`` files (see ``WriteGeo`` for the naming rules)."""
+        self.execute(WriteGeo(str(stem), per_block))
+
+    def write_grd(self, path: str | Path, geo_paths: list[str | Path]) -> None:
+        """Pack ``.geo`` files into an Xall ``.grd``."""
+        self.execute(WriteGrd(str(path), tuple(map(str, geo_paths))))
+
+    def write_cc_par(self, adjacency: str | Path, path: str | Path, **options: Any) -> None:
+        """Write an Xall ``cc.par``; options as ``WriteCcPar``."""
+        if "boxes" in options:
+            options["boxes"] = tuple(options["boxes"] or ())
+        if "multigrid_levels" in options:
+            options["multigrid_levels"] = tuple(options["multigrid_levels"])
+        self.execute(WriteCcPar(str(adjacency), str(path), **options))
+
+    def write_proc_input(self, grd: str | Path, path: str | Path, **options: Any) -> None:
+        """Write an Xall ``proc.input``; options as ``WriteProcInput``."""
+        self.execute(WriteProcInput(str(grd), str(path), **options))
 
     def write_adjacency(self, path: str | Path) -> None:
         """Write the ``.adjacency.json`` sidecar."""

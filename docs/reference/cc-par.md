@@ -430,6 +430,7 @@ output, not as a writer input.
 | `--mgl INT INT` | `4 1` | Multigrid levels: total, finest active. |
 | `--boundary-layer-thickness FLOAT` | `-0.1` | Header line 9. |
 | `--numerical-beach FLOAT` | `-1.0` | Header line 10. |
+| `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 
 ### `--meta` format
 

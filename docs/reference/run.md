@@ -53,7 +53,37 @@ p.redo()
 p.save("wing.shore")
 ```
 
-Every change goes through a command (`LoadGeometry`, `BuildTopology`,
-`March`, `Snap`, `WriteGeo`, `WriteAdjacency`). `undo` reverts the last
+Every change goes through a command:
+
+| Group | Commands |
+|---|---|
+| Build a mesh | `LoadGeometry`, `BuildTopology`, `March`, `Snap`, `BuildPrimitive`, `BuildTipCap`, `LoadBlocks` |
+| Transform it | `Split` |
+| Write outputs | `WriteGeo`, `WriteAdjacency`, `WriteGrd`, `WriteCcPar`, `WriteProcInput` |
+
+`shore mesh`, `shore primitive *`, `shore cap-tip`, `shore split`,
+`shore grd`, `shore cc-par` and `shore proc-input` all run over a `Project`
+and accept `--journal`. One script can carry a whole Xall component:
+
+```python
+from pathlib import Path
+from shore.project import Project
+
+p = Project()
+p.load_geometry("sphere.stl")
+p.build_topology("cubed_sphere", nk=13, ni=30, nj=40, ds=0.01, growth=1.1)
+p.march()
+p.split([(lbl, "k", (6,)) for lbl in ("sub0", "sub1", "sub2", "sub3", "cap_north", "cap_south")])
+p.write_geo("out/wall", per_block=True)
+p.write_adjacency("out/wall.adjacency.json")
+p.write_grd("out/wall.grd", sorted(Path("out").glob("wall_*.geo")))
+p.write_cc_par("out/wall.adjacency.json", "out/wall.cc.par", grd_filename="wall.grd")
+p.write_proc_input("out/wall.grd", "out/wall.proc.input", np=4)
+```
+
+`write_grd` packs from the `.geo` files, as `shore grd` does, so the
+`.grd` carries the `.geo` print precision. The `*-merge` commands,
+`balance`, `boxes-*`, the `body`/`profile` generators and the inspection
+commands are file tools outside the project. `undo` reverts the last
 state-changing command and drops any outputs written after it. A failed or
 cancelled `march` leaves the grid as it was before the call.

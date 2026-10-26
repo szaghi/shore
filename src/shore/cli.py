@@ -29,8 +29,6 @@ from shore.config import (
 )
 from shore.mesh import (
     Body,
-    CGridTipCap,
-    Mesh,
     Spacing1D,
     check_geo,
     export_geo,
@@ -39,13 +37,6 @@ from shore.mesh import (
     info_surface,
     view_geo_file,
     view_surface_file,
-)
-from shore.primitive import (
-    AnnularCylinderMesh,
-    BoxMesh,
-    FlatCapsCylinder,
-    HGridRectMesh,
-    HGridTubeMesh,
 )
 from shore.project import Project
 
@@ -109,6 +100,10 @@ _DS = Annotated[float, typer.Option(help="First-layer thickness (same units as t
 _GROWTH = Annotated[float, typer.Option(help="Geometric growth ratio between successive layers.")]
 _SMOOTH = Annotated[float, typer.Option(help="Laplacian smooth strength per layer [0-1].")]
 _SITERS = Annotated[int, typer.Option(help="Laplacian sweeps per layer.")]
+_JOURNAL = Annotated[
+    Path | None,
+    typer.Option("--journal", help="Also write the run as a replayable journal (`shore run`)."),
+]
 _BLEND_K = Annotated[
     int,
     typer.Option(
@@ -691,13 +686,7 @@ def mesh(
             ),
         ),
     ] = None,
-    journal: Annotated[
-        Path | None,
-        typer.Option(
-            "--journal",
-            help="Also write the run as a replayable Python journal (`shore run`).",
-        ),
-    ] = None,
+    journal: _JOURNAL = None,
     verbose: _VERBOSE = False,
 ) -> None:
     """Full pipeline: STL -> structured volume -> geo files.
@@ -1497,12 +1486,13 @@ def _resolve_axis_cli(spec: str | None) -> str | tuple[float, float, float] | No
 
 
 def _emit_primitive_writeback(
-    primitive_obj: BoxMesh | AnnularCylinderMesh | FlatCapsCylinder,
+    proj: Project,
+    journal: Path | None,
     output: Path | None,
     default_name: str,
     adjacency_json: Path | None = None,
 ) -> None:
-    """Resolve output path and call write_geo on the primitive.
+    """Write the primitive's ``.geo`` files (and sidecar, journal) via *proj*.
 
     When ``adjacency_json`` is set, also emit a ``.adjacency.json``
     sidecar describing the SHARED / DIRICHLET face graph (for
@@ -1510,21 +1500,22 @@ def _emit_primitive_writeback(
     annulus) emit a sidecar with one block and no connection patches.
     """
     out = output if output is not None else Path(f"{default_name}.geo")
-    primitive_obj.write_geo(out)
-    if isinstance(primitive_obj, FlatCapsCylinder):
+    proj.write_geo(out)
+    assert proj.mesh is not None
+    if len(proj.mesh.blocks) > 1:
         stem = out.with_suffix("") if out.suffix == ".geo" else out
-        for blk in primitive_obj.blocks:
+        for blk in proj.mesh.blocks:
             _console.print(f"[green]wrote[/green] {stem}_{blk.label}.geo")
     else:
         target = out if out.suffix == ".geo" else out.with_suffix(".geo")
         _console.print(f"[green]wrote[/green] {target}")
 
     if adjacency_json is not None:
-        from shore.io.adjacency import write_adjacency_json
-
-        adjacency_json.parent.mkdir(parents=True, exist_ok=True)
-        write_adjacency_json(primitive_obj.blocks, adjacency_json)
+        proj.write_adjacency(adjacency_json)
         _console.print(f"[green]wrote[/green] {adjacency_json}")
+    if journal is not None:
+        proj.save_journal(journal)
+        _console.print(f"[green]wrote[/green] {journal}")
 
 
 def _load_prim_config(path: Path | None) -> PrimitiveConfig | None:
@@ -1600,6 +1591,7 @@ def primitive_box(
             help="Also write a .adjacency.json sidecar (for shore cc-par).",
         ),
     ] = None,
+    journal: _JOURNAL = None,
 ) -> None:
     """Build a Cartesian box primitive (single block)."""
     cfg = _load_prim_config(config)
@@ -1628,7 +1620,9 @@ def primitive_box(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        prim = BoxMesh.build(
+        proj = Project()
+        proj.build_primitive(
+            "box",
             vmin=tuple(vmin),
             vmax=tuple(vmax),
             ni=ni,
@@ -1645,7 +1639,9 @@ def primitive_box(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    _emit_primitive_writeback(prim, output, default_name="box", adjacency_json=adjacency_json)
+    _emit_primitive_writeback(
+        proj, journal, output, default_name="box", adjacency_json=adjacency_json
+    )
 
 
 # ----- shore primitive annulus -------------------------------------------
@@ -1698,6 +1694,7 @@ def primitive_annulus(
             help="Also write a .adjacency.json sidecar (for shore cc-par).",
         ),
     ] = None,
+    journal: _JOURNAL = None,
 ) -> None:
     """Build an annular-cylinder primitive (single block, optionally periodic-j)."""
     cfg = _load_prim_config(config)
@@ -1733,7 +1730,9 @@ def primitive_annulus(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        prim = AnnularCylinderMesh.build(
+        proj = Project()
+        proj.build_primitive(
+            "annulus",
             r_in=r_in,
             r_out=r_out,
             z0=z0,
@@ -1756,7 +1755,9 @@ def primitive_annulus(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    _emit_primitive_writeback(prim, output, default_name="annulus", adjacency_json=adjacency_json)
+    _emit_primitive_writeback(
+        proj, journal, output, default_name="annulus", adjacency_json=adjacency_json
+    )
 
 
 # ----- shore primitive flat-caps -----------------------------------------
@@ -1820,6 +1821,7 @@ def primitive_flat_caps(
             help="Also write a .adjacency.json sidecar (for shore cc-par).",
         ),
     ] = None,
+    journal: _JOURNAL = None,
 ) -> None:
     """Build a 5-block flat-caps cylinder (no central hole - Chimera-free background)."""
     cfg = _load_prim_config(config)
@@ -1857,7 +1859,9 @@ def primitive_flat_caps(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        prim = FlatCapsCylinder.build(
+        proj = Project()
+        proj.build_primitive(
+            "flat_caps",
             r_out=r_out,
             z0=z0,
             z1=z1,
@@ -1878,7 +1882,9 @@ def primitive_flat_caps(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    _emit_primitive_writeback(prim, output, default_name="flat_caps", adjacency_json=adjacency_json)
+    _emit_primitive_writeback(
+        proj, journal, output, default_name="flat_caps", adjacency_json=adjacency_json
+    )
 
 
 # ----- shore primitive h-grid-rect ---------------------------------------
@@ -1924,6 +1930,7 @@ def primitive_h_grid_rect(
             help="Also write a .adjacency.json sidecar (for shore cc-par).",
         ),
     ] = None,
+    journal: _JOURNAL = None,
 ) -> None:
     """Build a rectangular-duct H-grid (single block, internal flow).
 
@@ -1932,7 +1939,9 @@ def primitive_h_grid_rect(
     prismatic ducts; the analytic baseline for internal flow.
     """
     try:
-        prim = HGridRectMesh.build(
+        proj = Project()
+        proj.build_primitive(
+            "h_grid_rect",
             length=length,
             width=width,
             height=height,
@@ -1952,7 +1961,7 @@ def primitive_h_grid_rect(
         raise typer.Exit(1) from None
 
     _emit_primitive_writeback(
-        prim, output, default_name="h_grid_rect", adjacency_json=adjacency_json
+        proj, journal, output, default_name="h_grid_rect", adjacency_json=adjacency_json
     )
 
 
@@ -2006,6 +2015,7 @@ def primitive_h_grid_tube(
             help="Also write a .adjacency.json sidecar (for shore cc-par).",
         ),
     ] = None,
+    journal: _JOURNAL = None,
 ) -> None:
     """Build a circular-bore H-grid (single block, j-periodic).
 
@@ -2019,7 +2029,9 @@ def primitive_h_grid_tube(
     you want a non-singular cross-section.
     """
     try:
-        prim = HGridTubeMesh.build(
+        proj = Project()
+        proj.build_primitive(
+            "h_grid_tube",
             length=length,
             radius=radius,
             n_axial=n_axial,
@@ -2036,7 +2048,7 @@ def primitive_h_grid_tube(
         raise typer.Exit(1) from None
 
     _emit_primitive_writeback(
-        prim, output, default_name="h_grid_tube", adjacency_json=adjacency_json
+        proj, journal, output, default_name="h_grid_tube", adjacency_json=adjacency_json
     )
 
 
@@ -2168,6 +2180,7 @@ def cap_tip(
             help="Also write the .adjacency.json sidecar (for shore cc-par).",
         ),
     ] = None,
+    journal: _JOURNAL = None,
 ) -> None:
     """Build a wing-tip cap from a C-grid body block's .geo file.
 
@@ -2216,119 +2229,44 @@ def cap_tip(
     # Load the body block, extract the spanwise-extreme cross-section
     # at the wall (k=0).
     # ------------------------------------------------------------
-    from shore.io.geo import read_geo
-    from shore.topology.cgrid_cap import find_symmetric_le_cuts
-
+    proj = Project()
     try:
-        body = read_geo(body_geo)
-    except Exception as exc:
-        _err.print(f"[red]Error:[/red] could not read body geo: {_esc(str(exc))}")
-        raise typer.Exit(1) from None
-
-    if body.ndim != 4 or body.shape[3] != 3:
-        _err.print(
-            f"[red]Error:[/red] body geo has shape {body.shape}; expected (ni, n_stations, nk, 3)."
-        )
-        raise typer.Exit(1) from None
-    if body.shape[1] < 2:
-        _err.print(
-            f"[red]Error:[/red] body has {body.shape[1]} spanwise stations; "
-            f"need >= 2 to infer the outward span direction."
-        )
-        raise typer.Exit(1) from None
-
-    j_extreme = 0 if tip == "jlo" else body.shape[1] - 1
-    j_inboard = 1 if tip == "jlo" else body.shape[1] - 2
-    cross_section = body[:, j_extreme, 0, :].copy()  # (ni, 3) at the wall (k=0)
-    cross_section_inboard = body[:, j_inboard, 0, :]
-
-    inboard_dir = cross_section_inboard.mean(axis=0) - cross_section.mean(axis=0)
-    inboard_norm = float(np.linalg.norm(inboard_dir))
-    if inboard_norm < 1e-12:
-        _err.print(
-            "[red]Error:[/red] adjacent spanwise stations have coincident "
-            "centroids — cannot infer span direction."
-        )
-        raise typer.Exit(1) from None
-    span_dir = -inboard_dir / inboard_norm
-    span_axis_idx = "xyz".index(span_axis)
-
-    # Sharp/blunt detection here is informational only — CGridTipCap
-    # auto-rounds sharp inputs (default) or rejects them under
-    # --no-auto-round-te.  The body's wake_base block (separate from
-    # the airfoil cross-section blunt-or-not) is not currently passed
-    # through the CLI; the cap is always built without a cap_wake_base
-    # sub-block when driven from the CLI.
-
-    # ------------------------------------------------------------
-    # Resolve LE-cut indices, default tip_inset, default nk.
-    # ------------------------------------------------------------
-    try:
-        le_up, le_lo = find_symmetric_le_cuts(
-            cross_section, le_frac=le_frac, span_axis_world=span_axis_idx
-        )
-        te_up, te_lo = find_symmetric_le_cuts(
-            cross_section, le_frac=te_frac, span_axis_world=span_axis_idx
-        )
-    except Exception as exc:
-        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
-        raise typer.Exit(1) from None
-
-    if tip_inset is None:
-        # Default: 1e-3 * chord (chord = max in-plane extent).
-        extents = cross_section.max(axis=0) - cross_section.min(axis=0)
-        extents[span_axis_idx] = -np.inf
-        chord_len = float(extents.max())
-        tip_inset = 1e-3 * chord_len
-        _console.print(f"[dim]auto tip_inset = {tip_inset:.6g}[/dim]")
-    if nk is None:
-        nk = int(body.shape[2])
-        _console.print(f"[dim]auto nk = {nk} (matches body)[/dim]")
-
-    # ------------------------------------------------------------
-    # Build the cap mesh.
-    # ------------------------------------------------------------
-    try:
-        # If the user passed --te-thickness explicitly, that overrides
-        # --te-thickness-frac.  Otherwise the chord-fraction default applies.
-        if te_thickness is not None:
-            _te_frac = None  # absolute thickness wins
-        else:
-            _te_frac = te_thickness_frac
-        topo = CGridTipCap(
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            te_cut_upper_idx=te_up,
-            te_cut_lower_idx=te_lo,
-            span_dir=tuple(span_dir.tolist()),
+        proj.build_tip_cap(
+            body_geo,
+            tip=tip,
+            le_frac=le_frac,
+            te_frac=te_frac,
+            span_axis=span_axis,
             tip_inset=tip_inset,
+            nk=nk,
             n_cap_j=n_cap_j,
             cap_j_spacing=cap_j_spacing,
             cap_j_beta=cap_j_beta,
-            is_blunt=False,
             auto_round_te=not no_auto_round_te,
             te_thickness=te_thickness,
-            te_thickness_frac=_te_frac,
+            te_thickness_frac=te_thickness_frac,
         )
-        cap_mesh = Mesh.from_array(surface=cross_section, topology=topo, nk=nk)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
+    resolved = proj.last_result or {}
+    if "tip_inset" in resolved:
+        _console.print(f"[dim]auto tip_inset = {resolved['tip_inset']:.6g}[/dim]")
+    if "nk" in resolved:
+        _console.print(f"[dim]auto nk = {resolved['nk']} (matches body)[/dim]")
 
-    # ------------------------------------------------------------
-    # Write outputs.
-    # ------------------------------------------------------------
     out_stem = output if output is not None else Path(f"cap_{tip}")
-    cap_mesh.write_geo(out_stem)
-    for blk in cap_mesh.blocks:
+    proj.write_geo(out_stem, per_block=True)
+    assert proj.mesh is not None
+    for blk in proj.mesh.blocks:
         _console.print(f"[green]wrote[/green] {out_stem.parent / out_stem.name}_{blk.label}.geo")
 
     if adjacency_json is not None:
-        from shore.io.adjacency import write_adjacency_json
-
-        adjacency_json.parent.mkdir(parents=True, exist_ok=True)
-        write_adjacency_json(cap_mesh.blocks, adjacency_json)
+        proj.write_adjacency(adjacency_json)
         _console.print(f"[green]wrote[/green] {adjacency_json}")
+    if journal is not None:
+        proj.save_journal(journal)
+        _console.print(f"[green]wrote[/green] {journal}")
 
 
 # ---------------------------------------------------------------------------
@@ -2356,27 +2294,6 @@ def _blocks_from_adjacency_shapes(adjacency_path):
         blocks.append(HexBlock(label=b["label"], nodes=np.zeros((ni, nj, nk, 3))))
     wire_blocks_from_adjacency(blocks, payload, source=str(adjacency_path))
     return blocks
-
-
-def _apply_split_rounds(blocks, directives):
-    """Apply BlockSplit *directives* to *blocks* in one ``split_blocks`` pass.
-
-    ``split_blocks`` now natively handles multi-axis-per-block and
-    auto-propagates cuts across SHARED/DIRICHLET seams, so no per-axis
-    rounds or manual co-split expansion are needed — directives go straight
-    through.  (Name kept for the call site; it is now a thin validating
-    wrapper.)
-    """
-    from shore.exceptions import ParameterError
-    from shore.split import split_blocks
-
-    input_labels = {blk.label for blk in blocks}
-    for d in directives:
-        if d.label not in input_labels:
-            raise ParameterError(
-                f"split: no block named {d.label!r} in the input (have {sorted(input_labels)!r})"
-            )
-    return split_blocks(blocks, directives)
 
 
 @app.command()
@@ -2425,6 +2342,7 @@ def split(
         ),
     ] = None,
     verbose: _VERBOSE = False,
+    journal: _JOURNAL = None,
 ) -> None:
     """Split structured blocks along ijk vertex indices, preserving adjacency.
 
@@ -2454,83 +2372,38 @@ def split(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
 
-    # Build HexBlocks from the input .geo files.  Block label = filename
-    # stem; if a stem looks like ``<base>_<label>``, the suffix is used.
-    from shore.io.adjacency import write_adjacency_json
-    from shore.io.geo import read_geo, write_geo
-    from shore.mesh.block import HexBlock
-    from shore.split import BlockSplit
+    # Blocks from the input .geo files (labels: file stems minus their common
+    # ``<base>_`` prefix, e.g. ``sphere_sub0.geo`` -> ``sub0``), with the
+    # pre-existing inter-block seams wired from the input sidecar(s) so the
+    # split preserves them (the geometry-only .geo blocks are all FREE).
+    from shore.pipeline import common_base_stem
 
-    # Determine block labels.  When all inputs share a common
-    # ``<base>_`` prefix, strip it so the labels match the topology
-    # builder's labels (e.g. ``sphere_sub0.geo`` → label ``sub0``).
-    # Otherwise fall back to the full stem of each input.
-    stems = [p.stem for p in inputs]
-    if len(stems) >= 2:
-        # Longest common ``<base>_`` prefix among all stems, ending
-        # at the last underscore boundary.
-        common = stems[0]
-        for s in stems[1:]:
-            i = 0
-            limit = min(len(common), len(s))
-            while i < limit and common[i] == s[i]:
-                i += 1
-            common = common[:i]
-        # Trim back to the last underscore (so the prefix is full segments).
-        if "_" in common:
-            base_stem = common.rsplit("_", 1)[0] + "_"
-        else:
-            base_stem = ""
-    else:
-        # Single input: strip up to and including the *last* underscore
-        # if present, so e.g. ``background_box.geo`` → label ``box``.
-        base_stem = stems[0].rsplit("_", 1)[0] + "_" if "_" in stems[0] else ""
-
-    blocks: list[HexBlock] = []
-    for p, stem in zip(inputs, stems, strict=True):
-        nodes = read_geo(p)
-        label = stem[len(base_stem) :] if base_stem and stem.startswith(base_stem) else stem
-        blocks.append(HexBlock(label=label, nodes=nodes))
-
+    base_stem = common_base_stem([p.stem for p in inputs])
+    proj = Project()
+    try:
+        proj.load_blocks(inputs, adjacency or ())
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+    assert proj.mesh is not None
     if verbose:
-        _console.print(f"Read {len(blocks)} input block(s):")
-        for blk in blocks:
+        _console.print(f"Read {len(proj.mesh.blocks)} input block(s):")
+        for blk in proj.mesh.blocks:
             _console.print(f"  {blk.label:24s} {blk.nodes.shape}")
-
-    # Wire pre-existing inter-block seams from the input sidecar(s) so the
-    # split preserves them (otherwise the geometry-only .geo blocks are all
-    # FREE and the SHARED/DIRICHLET graph is lost).
-    if adjacency:
-        from shore.io.adjacency import read_adjacency_json, wire_blocks_from_adjacency
-
-        for adj_path in adjacency:
-            try:
-                payload = read_adjacency_json(adj_path)
-                wire_blocks_from_adjacency(blocks, payload, source=str(adj_path))
-            except Exception as exc:
-                _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
-                raise typer.Exit(1) from None
-        if verbose:
+        if adjacency:
             n_seam = sum(
                 1
-                for blk in blocks
+                for blk in proj.mesh.blocks
                 for f in blk.faces()
                 if f.bc.name in ("SHARED", "DIRICHLET", "PERIODIC")
             )
             _console.print(f"Wired {n_seam} connection face(s) from {len(adjacency)} sidecar(s).")
 
-    directives = [BlockSplit(label=d.label, axis=d.axis, at=d.at) for d in cfg.splits]
-    # split_blocks applies at most one axis per block per call.  A plan may
-    # cut a block on several axes (e.g. a background brick on i, j and k); apply
-    # those in rounds, one axis-set per round, feeding each round's chunks into
-    # the next.  Each round preserves the previous round's seams (split_blocks
-    # carries SHARED/DIRICHLET partners through), so the result is the full
-    # multi-axis decomposition.  Between rounds a later directive for an
-    # already-split block is expanded onto every chunk derived from it (chunk
-    # labels are ``<orig>__<axis><k>``), since the original label no longer
-    # exists.
+    # split_blocks handles several axes per block and propagates cuts across
+    # SHARED/DIRICHLET seams, so the directives go straight through.
+    directives = [(d.label, d.axis, d.at) for d in cfg.splits]
     try:
-        new_blocks = _apply_split_rounds(blocks, directives)
+        proj.split(directives)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
@@ -2541,20 +2414,18 @@ def split(
             cfg.output if cfg.output is not None else (inputs[0].parent / (base_stem or "split"))
         )
 
-    out_dir = output.parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Write one .geo per output block, plus the adjacency JSON.
-    for blk in new_blocks:
-        target = out_dir / f"{output.name}_{blk.label}.geo"
-        write_geo(target, blk.nodes)
-        if verbose:
-            _console.print(f"  wrote {target}")
-
-    adj_path = out_dir / f"{output.name}.adjacency.json"
-    write_adjacency_json(new_blocks, adj_path)
+    # One .geo per output block, plus the adjacency JSON.
+    proj.write_geo(output, per_block=True)
+    assert proj.mesh is not None
+    if verbose:
+        for blk in proj.mesh.blocks:
+            _console.print(f"  wrote {output.parent / f'{output.name}_{blk.label}.geo'}")
+    adj_path = output.parent / f"{output.name}.adjacency.json"
+    proj.write_adjacency(adj_path)
+    if journal is not None:
+        proj.save_journal(journal)
     _console.print(
-        f"[green]✓[/green] Wrote {len(new_blocks)} blocks "
+        f"[green]✓[/green] Wrote {len(proj.mesh.blocks)} blocks "
         f"+ {adj_path.name} ({len(directives)} split directive(s))"
     )
 
@@ -2579,6 +2450,7 @@ def grd(
         Path,
         typer.Option("-o", "--output", help="Output .grd file path."),
     ],
+    journal: _JOURNAL = None,
 ) -> None:
     """Pack one or more .geo files into a single Xall binary .grd file.
 
@@ -2589,8 +2461,6 @@ def grd(
     Block ordering in the .grd matches the order of the input files, which
     must agree with the ordering used when generating the companion cc.par.
     """
-    from shore.io.grd import write_grd
-
     if not inputs:
         _err.print("[red]Error:[/red] no input .geo files given.")
         raise typer.Exit(1) from None
@@ -2602,13 +2472,16 @@ def grd(
             _err.print(f"[red]Error:[/red] input is not a .geo file: {p}")
             raise typer.Exit(1) from None
 
+    proj = Project()
     try:
-        out = write_grd(output, inputs)
+        proj.write_grd(output, inputs)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
+    if journal is not None:
+        proj.save_journal(journal)
 
-    _console.print(f"[green]✓[/green] Wrote {out} ({len(inputs)} blocks)")
+    _console.print(f"[green]✓[/green] Wrote {proj.last_result} ({len(inputs)} blocks)")
 
 
 # ---------------------------------------------------------------------------
@@ -2699,6 +2572,7 @@ def cc_par(
             help="Header numerical-beach extension (line 10).",
         ),
     ] = -1.0,
+    journal: _JOURNAL = None,
 ) -> None:
     """Convert a SHORE .adjacency.json sidecar to an Xall cc.par file.
 
@@ -2715,8 +2589,6 @@ def cc_par(
     import json as _json
 
     from shore.exceptions import ParameterError
-    from shore.io.adjacency import read_adjacency_json
-    from shore.io.cc_par import BlockMeta, write_cc_par
 
     if not adjacency.exists():
         _err.print(f"[red]Error:[/red] {adjacency} not found.")
@@ -2776,45 +2648,36 @@ def cc_par(
             )
             raise typer.Exit(1) from None
 
-    payload = read_adjacency_json(adjacency)
-    meta = {}
-    for blk in payload["blocks"]:
-        lbl = blk["label"]
-        ov = meta_overrides.get(lbl, {})
-        meta[lbl] = BlockMeta(
-            level=ov.get("level", 1),
-            group=ov.get("group", 0),
-            priority=ov.get("priority", 1),
-            comment=ov.get("comment", lbl),
-            free_face_bc=ov.get("free_face_bc", free_face_bc),
-        )
-
-    boxes_arg = None
     if boxes_payload is not None:
         from shore.io.boxes import box_from_json
 
         try:
-            boxes_arg = [box_from_json(entry) for entry in boxes_payload]
+            for entry in boxes_payload:
+                box_from_json(entry)  # validate up front, for a --boxes error message
         except (ParameterError, TypeError, ValueError) as exc:
             _err.print(f"[red]Error:[/red] --boxes: {_esc(str(exc))}")
             raise typer.Exit(1) from None
 
+    proj = Project()
     try:
-        out = write_cc_par(
-            payload,
+        proj.write_cc_par(
+            adjacency,
             output,
             grd_filename=grd_filename,
             output_basename=output_basename,
+            free_face_bc=free_face_bc,
             multigrid_levels=multigrid_levels,
             boundary_layer_thickness=boundary_layer_thickness,
             numerical_beach=numerical_beach,
-            block_metadata=meta,
-            boxes=boxes_arg,
+            meta=meta_overrides,
+            boxes=boxes_payload or (),
         )
-    except ParameterError as exc:
+    except (ParameterError, ValueError) as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
-    _console.print(f"[green]✓[/green] Wrote {out}")
+    if journal is not None:
+        proj.save_journal(journal)
+    _console.print(f"[green]✓[/green] Wrote {proj.last_result}")
 
 
 # ---------------------------------------------------------------------------
@@ -2970,6 +2833,7 @@ def proc_input(
             help="Free-form text written on header line 1 of proc.input.",
         ),
     ] = "generated by SHORE",
+    journal: _JOURNAL = None,
 ) -> None:
     """Write a proc.input file from a .grd, with greedy weight-balanced ranks.
 
@@ -3044,21 +2908,15 @@ def proc_input(
         if "body" in v:
             body_assignment[k] = int(v["body"])
 
-    from shore.io.proc_input import write_proc_input
-
+    proj = Project()
     try:
-        out, summary = write_proc_input(
-            grd,
-            output,
-            np=np,
-            proc_assignment=proc_assignment or None,
-            group_assignment=group_assignment or None,
-            body_assignment=body_assignment or None,
-            header_comment=header_comment,
-        )
+        proj.write_proc_input(grd, output, np=np, meta=overrides, header_comment=header_comment)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
+    out, summary = proj.last_result
+    if journal is not None:
+        proj.save_journal(journal)
 
     _console.print(f"[green]✓[/green] Wrote {out}")
     if np > 1:

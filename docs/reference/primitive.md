@@ -39,6 +39,8 @@ shore primitive box [OPTIONS]
 |---|---|---|
 | `-c` / `--config PATH` | — | TOML primitive config (`type = "box"`) |
 | `-o` / `--output PATH` | `box.geo` | Output `.geo` file |
+| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (for `shore cc-par`) |
+| `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 | `--min FLOAT FLOAT FLOAT` | `0 0 0` | Minimum corner of the box |
 | `--max FLOAT FLOAT FLOAT` | `1 1 1` | Maximum corner; each component must strictly exceed the corresponding `--min` component |
 | `--ni INTEGER` | 40 | Node count along i (x-axis) |
@@ -79,6 +81,8 @@ shore primitive annulus [OPTIONS]
 |---|---|---|
 | `-c` / `--config PATH` | — | TOML primitive config (`type = "annulus"`) |
 | `-o` / `--output PATH` | `annulus.geo` | Output `.geo` file |
+| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (for `shore cc-par`) |
+| `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 | `--r-in FLOAT` | 0.5 | Inner radius |
 | `--r-out FLOAT` | 2.0 | Outer radius (must exceed `--r-in`) |
 | `--z0 FLOAT` | 0.0 | Axial start along `--axis` |
@@ -135,6 +139,8 @@ shore primitive flat-caps [OPTIONS]
 |---|---|---|
 | `-c` / `--config PATH` | — | TOML primitive config (`type = "flat_caps"`) |
 | `-o` / `--output PATH` | `flat_caps` | Output stem; writes `<stem>_center.geo` + `<stem>_sub_e.geo` / `_sub_n.geo` / `_sub_w.geo` / `_sub_s.geo` |
+| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (for `shore cc-par`) |
+| `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 | `--r-out FLOAT` | 2.0 | Outer radius |
 | `--z0` / `--z1 FLOAT` | 0 / 1 | Axial extent along `--axis` |
 | `--axis TEXT` | `z` | Cylinder axis: `x` / `y` / `z` or `"vx vy vz"` |
@@ -199,6 +205,7 @@ shore primitive h-grid-rect [OPTIONS]
 | `--i-spacing` / `--j-spacing` / `--k-spacing` | `uniform` | Per-axis spacing law (`uniform` / `tanh` / `tanh2`) |
 | `--i-beta` / `--j-beta` / `--k-beta` | 3.0 | Clustering strength for `tanh` / `tanh2` |
 | `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (single block, no SHARED) |
+| `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 
 ### Examples
 
@@ -242,6 +249,7 @@ shore primitive h-grid-tube [OPTIONS]
 | `--i-spacing` / `--k-spacing` | `uniform` | Streamwise / radial spacing law (`uniform` / `tanh` / `tanh2`) |
 | `--i-beta` / `--k-beta` | 3.0 | Clustering strength |
 | `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (single block, j-periodic) |
+| `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 
 The circumferential direction (`j`) is uniform by construction —
 clustering on a periodic axis is unsupported.
