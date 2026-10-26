@@ -1,4 +1,4 @@
-# Frozen acceptance specs (ADR 0005 re-frozen 2026-10-26; ADR 0007 frozen 2026-10-26). Checked by scripts/check_spec.py.
+# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0008 frozen 2026-10-26). Checked by scripts/check_spec.py.
 # Spec modules are hashed with their @PENDING lines removed.
 3c6fbe392a7ef5d28034141a61e1c03227da2b1dd5dbb315f819493fe8320aef  tests/spec/test_hyperbolic_marching.py
 ae38c25896db5e94b8f55f23a94bba05d7d80a76d0eb5f5729ec9c3cecec12b7  tests/spec/__init__.py
@@ -6,3 +6,4 @@ ae38c25896db5e94b8f55f23a94bba05d7d80a76d0eb5f5729ec9c3cecec12b7  tests/spec/__i
 7debc4fd34924072b50f2016120df9e7f1745db04d240369d2b7f342d5657dc9  src/shore/quality.py
 3e28cae345e5b086d0e3a85d09d29f8683e3493c7bf21d2703c1249bad62aff4  tests/spec/test_surface_tfi.py
 23016719b758317d8d58490c23daee99f6c489dd8aab34bcaf5fdd1bf0ab1003  tests/spec/test_surface_tfi_cad.py
+4bbef32501e2c9b4fb690bdc177ecf583334cd1f02c933e693a021753c00432d  tests/spec/test_surface_march.py

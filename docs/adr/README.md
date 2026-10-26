@@ -15,6 +15,7 @@ by a later record that supersedes it.
 | [0005](./0005-marching-schemes.md) | Name the current marcher "algebraic"; add a true hyperbolic scheme | Proposed |
 | [0006](./0006-gui-stack.md) | GUI: PySide6 + pygfx/wgpu, desktop, Python + numpy only | Proposed |
 | [0007](./0007-surface-grids.md) | Surface grids: TFI + elliptic smoothing in (u, v) per face | Proposed |
+| [0008](./0008-surface-marching.md) | Hyperbolic surface marching: the collar-grid kernel | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
