@@ -464,6 +464,7 @@ class Mesh:
         steps: np.ndarray | None = None,
         layer_callback: Callable[[int, float], None] | None = None,
         blend_normals_k: int = 0,
+        smooth_mode: str = "limited",
     ) -> None:
         """Extrude all blocks simultaneously by hyperbolic marching.
 
@@ -489,6 +490,15 @@ class Mesh:
             the blend weight is ``alpha = 1 - k / blend_normals_k`` so k=0
             uses pure STL normals and the blend reaches zero at
             k=blend_normals_k.  Requires ``self.body.mesh``.
+        smooth_mode :
+            ``'limited'`` (default): the Laplacian smoothing motion is
+            limited per node where it would damage the layer (it may pull a
+            node back by at most a quarter of the step, and move it sideways
+            by at most a quarter of the step); elsewhere it is unchanged, so grids that marched
+            cleanly before are identical. ``'legacy'``: never limit (kept to
+            reproduce old grids); on curved walls the layer shrinks inward by
+            about ``smooth_strength * h**2 * curvature`` and folds layers
+            thinner than that.
 
         Raises
         ------
@@ -519,6 +529,7 @@ class Mesh:
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -533,6 +544,7 @@ class Mesh:
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -544,6 +556,7 @@ class Mesh:
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -554,6 +567,7 @@ class Mesh:
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -564,6 +578,7 @@ class Mesh:
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -583,6 +598,7 @@ class Mesh:
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
+        smooth_mode: str = "limited",
     ) -> None:
         """Simultaneous marching for the 6-block CubedSphereTopology."""
         self._march_caps_blocks(
@@ -590,6 +606,7 @@ class Mesh:
             ds=ds,
             growth=growth,
             smooth_strength=smooth_strength,
+            smooth_mode=smooth_mode,
             smooth_iters=smooth_iters,
             steps=steps,
             layer_callback=layer_callback,
@@ -606,6 +623,7 @@ class Mesh:
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
+        smooth_mode: str = "limited",
     ) -> None:
         """Simultaneous marching for a 6-block cubed-sphere wrap.
 
@@ -670,6 +688,7 @@ class Mesh:
                     periodic=(False, False),
                     normals_override=normals_override,
                     ghost_rows=ghost,
+                    smooth_mode=smooth_mode,
                 )
                 # Note: a previous "pole-row STL-normal override" used to run
                 # here whenever do_blend was True, on the assumption that the
@@ -755,6 +774,7 @@ class Mesh:
                 pole="north",
                 normals_override=cap_north_no,
                 ghost_rows=cap_north_ghost,
+                smooth_mode=smooth_mode,
             )
             new_cap_south = _march_cap_layer(
                 cs_k,
@@ -765,6 +785,7 @@ class Mesh:
                 pole="south",
                 normals_override=cap_south_no,
                 ghost_rows=cap_south_ghost,
+                smooth_mode=smooth_mode,
             )
 
             jmin_cap_n = _check_jacobian(
@@ -805,6 +826,7 @@ class Mesh:
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
+        smooth_mode: str = "limited",
     ) -> None:
         """Hyperbolic march for the 3-block C-grid (upper / body / lower).
 
@@ -888,6 +910,7 @@ class Mesh:
                 periodic=periodic,
                 normals_override=_blend(u_k, upper_ghost) if do_blend_now else None,
                 ghost_rows=upper_ghost,
+                smooth_mode=smooth_mode,
             )
             new_b = _march_one_layer(
                 b_k,
@@ -897,6 +920,7 @@ class Mesh:
                 periodic=periodic,
                 normals_override=_blend(b_k, body_ghost) if do_blend_now else None,
                 ghost_rows=body_ghost,
+                smooth_mode=smooth_mode,
             )
             new_l = _march_one_layer(
                 l_k,
@@ -906,6 +930,7 @@ class Mesh:
                 periodic=periodic,
                 normals_override=_blend(l_k, lower_ghost) if do_blend_now else None,
                 ghost_rows=lower_ghost,
+                smooth_mode=smooth_mode,
             )
 
             # ----- re-stitch SHARED TE columns ----------------------
@@ -968,6 +993,7 @@ class Mesh:
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
+        smooth_mode: str = "limited",
     ) -> None:
         """Hyperbolic march for ``CGridTopology`` (1, 3, or 4 blocks; or
         4 + N cap blocks under the conformal-cap path).
@@ -986,6 +1012,7 @@ class Mesh:
                 ds=ds,
                 growth=growth,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
@@ -1020,6 +1047,7 @@ class Mesh:
                 layer,
                 step=step,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 periodic=periodic,
                 normals_override=normals_override,
@@ -1049,6 +1077,7 @@ class Mesh:
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
         blend_normals_k: int = 0,
+        smooth_mode: str = "limited",
     ) -> None:
         """Single-block hyperbolic march for ``OGridTopology``.
 
@@ -1084,6 +1113,7 @@ class Mesh:
                 layer,
                 step=step,
                 smooth_strength=smooth_strength,
+                smooth_mode=smooth_mode,
                 smooth_iters=smooth_iters,
                 periodic=periodic,
                 normals_override=normals_override,

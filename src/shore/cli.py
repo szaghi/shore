@@ -608,6 +608,17 @@ def mesh(
     growth: _GROWTH = 1.15,
     smooth: _SMOOTH = 0.2,
     smooth_iters: _SITERS = 2,
+    smooth_mode: Annotated[
+        str,
+        typer.Option(
+            "--smooth-mode",
+            help=(
+                "limited (default): limit the smoothing motion where it would fold or "
+                "over-skew a layer; legacy: unlimited (reproduces pre-0.2 grids, folds "
+                "thin first layers)."
+            ),
+        ),
+    ] = "limited",
     theta_cap: _THETA_CAP = None,
     theta_cap_deg: _THETA_CAP_DEG = None,
     cap_pull: _CAP_PULL = None,
@@ -743,6 +754,12 @@ def mesh(
     growth = _pick("growth", growth, cfg.march.growth if cfg else None)
     smooth = _pick("smooth", smooth, cfg.march.smooth if cfg else None)
     smooth_iters = _pick("smooth_iters", smooth_iters, cfg.march.smooth_iters if cfg else None)
+    smooth_mode = _pick("smooth_mode", smooth_mode, cfg.march.smooth_mode if cfg else None)
+    if smooth_mode not in ("limited", "legacy"):
+        _err.print(
+            f"[red]Error:[/red] --smooth-mode must be 'limited' or 'legacy', got {smooth_mode!r}."
+        )
+        raise typer.Exit(1)
     blend_normals_k = _pick(
         "blend_normals_k", blend_normals_k, cfg.march.blend_normals_k if cfg else None
     )
@@ -1007,9 +1024,9 @@ def mesh(
                 def _cb(fraction: float, message: str) -> None:
                     prog.update(t, advance=1, info=message)
 
-                proj.march(smooth, smooth_iters, blend_normals_k, progress=_cb)
+                proj.march(smooth, smooth_iters, blend_normals_k, smooth_mode, progress=_cb)
         else:
-            proj.march(smooth, smooth_iters, blend_normals_k)
+            proj.march(smooth, smooth_iters, blend_normals_k, smooth_mode)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None

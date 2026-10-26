@@ -162,6 +162,70 @@ def _laplacian_smooth(
     return smoothed
 
 
+SMOOTH_MODES = ("limited", "legacy")
+
+
+def _limit_smoothing(
+    raw: np.ndarray,
+    smoothed: np.ndarray,
+    normals: np.ndarray,
+    step: float,
+    max_pullback: float = 0.25,
+    max_skew: float = 0.25,
+) -> np.ndarray:
+    """Limit the Laplacian smoothing motion where it would damage the layer.
+
+    Smoothing node *positions* on a curved layer also moves them along the
+    normal: the layer shrinks toward its centre of curvature by about
+    ``strength * h**2 * kappa``, independently of the marching step. When
+    that inward motion exceeds the step the new layer falls behind the
+    previous one and the cells fold (negative Jacobian at small first
+    steps); large tangential motion over a thin layer skews it.
+
+    Per node, the smoothing motion ``smoothed - raw`` is split into normal
+    and tangential parts and limited:
+
+    - the normal part may pull the node back by at most
+      ``max_pullback * step``, so the layer always advances by at least
+      ``(1 - max_pullback) * step``;
+    - the tangential part is capped at ``max_skew * step``.
+
+    The defaults (0.25, 0.25) are the tightest limits that leave the
+    60x60x10 cubed-sphere regression grid bit-identical to unlimited
+    smoothing; on a coarse 10x12 sphere with a first step of 0.3 % of the
+    cell size they keep the worst wall-cell tilt at 19-24 degrees (8 degrees
+    unsmoothed, 64-68 degrees at (0.5, 1.0)).
+
+    Nodes where neither limit binds keep ``smoothed`` exactly, so grids that
+    marched cleanly before are unchanged.
+
+    Parameters
+    ----------
+    raw :
+        Layer after the normal step, before smoothing, (ni, nj, 3).
+    smoothed :
+        The same layer after the Laplacian sweeps.
+    normals :
+        Unit marching normals used for the step, (ni, nj, 3).
+    step :
+        Marching step of this layer.
+    max_pullback, max_skew :
+        Limits, in units of the step.
+    """
+    delta = smoothed - raw
+    dn = np.einsum("...j,...j->...", delta, normals)
+    dt = delta - dn[..., None] * normals
+    mag = np.linalg.norm(dt, axis=-1)
+    h = abs(step)
+    bind = (dn < -max_pullback * h) | (mag > max_skew * h)
+    if not bind.any():
+        return smoothed
+    dn_lim = np.maximum(dn, -max_pullback * h)
+    scale = np.where(mag > max_skew * h, max_skew * h / np.where(mag > 0.0, mag, 1.0), 1.0)
+    limited = raw + dn_lim[..., None] * normals + dt * scale[..., None]
+    return np.where(bind[..., None], limited, smoothed)
+
+
 # ---------------------------------------------------------------------------
 # STL surface normal query
 # ---------------------------------------------------------------------------

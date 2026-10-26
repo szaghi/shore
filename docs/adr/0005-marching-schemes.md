@@ -94,12 +94,40 @@ failed with a negative Jacobian at layer k=1 on a 6-block cubed sphere
 (icosphere STL, `--ni 10 --nj 12`) whenever the first step was small:
 `ds = 1e-3` geometric, or a tanh law whose first step is 5.6e-3. The
 failure persists at `--smooth 0.05 --smooth-iters 1` and disappears with
-`--smooth 0`. Likely mechanism (a hypothesis that fits the on/off evidence,
-not yet confirmed by instrumenting the marcher): the Laplacian smoother
-moves layer-k nodes tangentially by a fraction of the *cell* size,
-independent of the *step* size, so a first layer thinner than that motion
-folds. A CFD mesher must march exactly this case (y+ ~ 1). Fix options for
-this ADR's work, after confirming the mechanism:
-- scale the smoothing displacement by the local step / cell-size ratio;
-- smooth only the tangential increment of the new layer;
-- adopt the hyperbolic scheme, whose dissipation is built in.
+`--smooth 0`.
+
+**Mechanism (confirmed by instrumenting layer k=1 of sub-block 0, h = 0.32):**
+two sweeps at strength 0.2 move nodes *along the normal* by up to
+-3.7e-2, independent of the step. That is the Laplacian of positions on a
+convex surface, curvature shrinkage of about `strength * h**2 * kappa`.
+Their tangential motion is up to 1.8e-2. For any step below ~0.04, 16 nodes
+end behind the wall. A first guess that the tangential motion was
+responsible was wrong: the normal component dominates.
+
+**Fix (smoothing limiter, `smooth_mode='limited'`, the default):**
+`volume.hyperbolic._limit_smoothing` splits each node's smoothing motion
+into normal and tangential parts:
+- the normal part may pull the node back by at most 0.25 step;
+- the tangential part is capped at 0.25 step;
+- nodes within both limits keep the plain Laplacian result bit for bit.
+
+Two rejected alternatives:
+- Removing the normal component everywhere fixed the folds, but changed
+  every grid. On the 60x60x10 cubed-sphere regression grid it raised the
+  cap–equator C1 seam drift from 0.452 to 0.670 degrees.
+- Limits (0.5, 1.0) left the regression grid untouched, but tilted coarse
+  wall cells by 64–68 degrees.
+
+The chosen (0.25, 0.25) is the tightest pair that leaves the regression
+grid bit-identical.
+
+| Case | `legacy` | `limited` |
+|---|---|---|
+| 10x12 sphere: cubed `ds` 1e-3, 1e-5; tanh first step 5.6e-3; O-grid `ds` 1e-3 | negative Jacobian at k=1 | marches; worst wall-cell tilt 19–24 deg (8 deg unsmoothed) |
+| 60x60x10 cubed-sphere regression grid | — | bit-identical to `legacy` |
+| `shore mesh` goldens with smoothing on (cubed, O-grid, OH at `ds` 0.05) | — | change: the limiter binds on those coarse grids |
+| all 68 goldens with `--smooth-mode legacy` | byte-identical to the pre-fix CLI | — |
+
+Regression tests: `tests/test_smoothing.py`. The limiter treats the
+symptom inside the algebraic scheme. The hyperbolic scheme of this ADR
+remains the structural answer for near-wall orthogonality.

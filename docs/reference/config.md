@@ -75,6 +75,7 @@ ds              = 1.0e-3             # first-layer thickness (geometric)
 growth          = 1.15               # geometric growth ratio
 smooth          = 0.2                # Laplacian blend strength [0–1]
 smooth_iters   = 2                   # Laplacian sweeps per layer
+smooth_mode    = "limited"           # limited | legacy
 blend_normals_k = 0                  # STL-normal blend window (0 = off)
 
 [surface]
@@ -144,6 +145,7 @@ just the alias map.
 | `march.growth` | `--growth` |
 | `march.smooth` | `--smooth` |
 | `march.smooth_iters` | `--smooth-iters` |
+| `march.smooth_mode` | `--smooth-mode` |
 | `march.blend_normals_k` | `--blend-normals-k` |
 | `surface.i_spacing` | `--surface-i-spacing` |
 | `surface.i_beta` | `--surface-i-beta` |

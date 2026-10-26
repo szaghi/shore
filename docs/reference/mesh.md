@@ -98,6 +98,7 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 |---|---|---|
 | `--smooth FLOAT` | 0.2 | Laplacian blend strength per layer [0–1] |
 | `--smooth-iters INTEGER` | 2 | Laplacian sweeps applied after each layer |
+| `--smooth-mode TEXT` | `limited` | `limited`: per node, smoothing may pull the layer back by at most ¼ of the step and move it sideways by at most ¼ of the step, so small first steps cannot fold; nodes within those limits are smoothed exactly as before. `legacy`: unlimited (reproduces grids made before this option; folds thin first layers on curved walls). |
 | `--blend-normals-k INTEGER` | 0 | Number of layers over which to blend STL surface normals into the grid-computed normals (0 = off; useful for sharp-feature bodies) |
 
 ### Topology

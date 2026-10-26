@@ -97,13 +97,16 @@ class Project:
         smooth_strength: float = 0.2,
         smooth_iters: int = 2,
         blend_normals_k: int = 0,
+        smooth_mode: str = "limited",
         *,
         progress: ProgressFn | None = None,
         cancel: CancelToken | None = None,
     ) -> None:
         """Extrude the blocks from the wall; *progress* / *cancel* are hooks."""
         self.execute(
-            March(smooth_strength, smooth_iters, blend_normals_k), progress=progress, cancel=cancel
+            March(smooth_strength, smooth_iters, blend_normals_k, smooth_mode),
+            progress=progress,
+            cancel=cancel,
         )
 
     def snap(self, exact: bool = False) -> None:

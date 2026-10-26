@@ -147,10 +147,10 @@ class TestLongCommands:
     def test_failed_march_restores(self, sphere_stl):
         p = Project()
         p.load_geometry(sphere_stl)
-        p.build_topology("cubed_sphere", nk=6, ni=10, nj=12)  # ds=1e-3 folds this grid
+        p.build_topology("cubed_sphere", nk=6, ni=10, nj=12)
         before = _nodes(p)
-        with pytest.raises(MarchingError):
-            p.march()
+        with pytest.raises(MarchingError):  # unlimited smoothing folds ds=1e-3 here
+            p.march(smooth_mode="legacy")
         for a, b in zip(_nodes(p), before, strict=True):
             np.testing.assert_array_equal(a, b)
 

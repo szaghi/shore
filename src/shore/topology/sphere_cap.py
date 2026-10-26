@@ -34,8 +34,13 @@ import warnings
 
 import numpy as np
 
-from shore.exceptions import MarchingError
-from shore.volume.hyperbolic import _compute_normals, _laplacian_smooth
+from shore.exceptions import MarchingError, ParameterError
+from shore.volume.hyperbolic import (
+    SMOOTH_MODES,
+    _compute_normals,
+    _laplacian_smooth,
+    _limit_smoothing,
+)
 from shore.volume.jacobian import _jacobian_field_open
 
 # ---------------------------------------------------------------------------
@@ -114,6 +119,7 @@ def _march_one_layer(
     periodic: tuple[bool, bool],
     normals_override: np.ndarray | None = None,
     ghost_rows: dict[str, np.ndarray] | None = None,
+    smooth_mode: str = "limited",
 ) -> np.ndarray:
     """Advance one layer by hyperbolic extrusion + smoothing.
 
@@ -125,15 +131,30 @@ def _march_one_layer(
     ghost_rows :
         Optional virtual neighbour rows (per-face) for centred-difference
         normals at multi-block seams; see ``_compute_normals``.
+    smooth_mode :
+        ``'tangential'`` (default): keep only the tangential part of the
+        smoothing motion, capped by the step (``_limit_smoothing``).
+        ``'legacy'``: the full Laplacian motion (folds thin first layers).
     """
     if normals_override is not None:
         normals = normals_override
     else:
         normals = _compute_normals(layer, periodic=periodic, ghost_rows=ghost_rows)
-    new_layer = layer + step * normals
+    raw = layer + step * normals
+    new_layer = raw
     for _ in range(smooth_iters):
         new_layer = _laplacian_smooth(new_layer, smooth_strength, periodic=periodic)
-    return new_layer
+    return _apply_smooth_mode(raw, new_layer, normals, step, smooth_mode)
+
+
+def _apply_smooth_mode(
+    raw: np.ndarray, smoothed: np.ndarray, normals: np.ndarray, step: float, mode: str
+) -> np.ndarray:
+    if mode == "limited":
+        return _limit_smoothing(raw, smoothed, normals, step)
+    if mode == "legacy":
+        return smoothed
+    raise ParameterError(f"smooth_mode must be one of {SMOOTH_MODES}, got {mode!r}.")
 
 
 def _march_cap_layer(
@@ -145,6 +166,7 @@ def _march_cap_layer(
     pole: str = "north",
     normals_override: np.ndarray | None = None,
     ghost_rows: dict[str, np.ndarray] | None = None,
+    smooth_mode: str = "limited",
 ) -> np.ndarray:
     """Advance one cap layer with Dirichlet boundary pinning.
 
@@ -178,11 +200,14 @@ def _march_cap_layer(
         normals = normals_override
     else:
         normals = _compute_normals(layer, periodic=(False, False), ghost_rows=ghost_rows)
-    new_layer = layer + step * normals
+    raw = layer + step * normals
 
-    # 2. Laplacian smoothing passes (same as equatorial blocks).
+    # 2. Laplacian smoothing passes (same as equatorial blocks), constrained
+    #    by smooth_mode before the boundary re-pin below.
+    new_layer = raw
     for _ in range(smooth_iters):
         new_layer = _laplacian_smooth(new_layer, smooth_strength, periodic=(False, False))
+    new_layer = _apply_smooth_mode(raw, new_layer, normals, step, smooth_mode)
 
     # 3. Pin the 4 boundary edges to the equatorial values.
     #    This overwrites the smoothed boundary with the exact equatorial

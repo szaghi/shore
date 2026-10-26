@@ -221,6 +221,7 @@ class March(Command):
     smooth_strength: float = 0.2
     smooth_iters: int = 2
     blend_normals_k: int = 0
+    smooth_mode: str = "limited"
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         mesh, build = project.require_mesh()
@@ -240,6 +241,7 @@ class March(Command):
                 steps=build.spacing.build_steps(build.nk),
                 layer_callback=layer,
                 blend_normals_k=self.blend_normals_k,
+                smooth_mode=self.smooth_mode,
             )
         except BaseException:
             restore()  # a failed or cancelled march leaves no half-extruded grid

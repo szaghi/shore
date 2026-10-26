@@ -26,6 +26,7 @@ Schema (single body, ``version = 1``)
     growth        = 1.15                     # geometric growth ratio
     smooth        = 0.2                      # Laplacian blend strength
     smooth_iters  = 2                        # Laplacian sweeps per layer
+    smooth_mode   = "limited"                # limited | legacy (unlimited, folds thin layers)
     blend_normals_k = 0                      # STL-normal blend window (0 = off)
 
     [surface]
@@ -59,7 +60,9 @@ CONFIG_VERSION = 1
 _TOP_KEYS = frozenset({"version", "kind", "input", "output", "grid", "march", "surface", "volume"})
 _GRID_KEYS = frozenset({"ni", "nj", "nk", "theta_cap_deg", "theta_cap", "topology"})
 _MESH_TOPOLOGIES = frozenset({"cubed_sphere", "ogrid"})
-_MARCH_KEYS = frozenset({"ds", "growth", "smooth", "smooth_iters", "blend_normals_k"})
+_MARCH_KEYS = frozenset(
+    {"ds", "growth", "smooth", "smooth_iters", "smooth_mode", "blend_normals_k"}
+)
 _SURFACE_KEYS = frozenset({"i_spacing", "i_beta", "j_spacing", "j_beta"})
 _VOLUME_KEYS = frozenset({"k_spacing", "k_beta", "k_thickness"})
 
@@ -105,6 +108,7 @@ class MarchConfig:
     growth: float = 1.15
     smooth: float = 0.2
     smooth_iters: int = 2
+    smooth_mode: str = "limited"
     blend_normals_k: int = 0
 
 
@@ -307,8 +311,14 @@ def load_config(path: str | Path) -> MeshConfig:
             growth=m.get("growth", cfg.march.growth),
             smooth=m.get("smooth", cfg.march.smooth),
             smooth_iters=m.get("smooth_iters", cfg.march.smooth_iters),
+            smooth_mode=m.get("smooth_mode", cfg.march.smooth_mode),
             blend_normals_k=m.get("blend_normals_k", cfg.march.blend_normals_k),
         )
+        if cfg.march.smooth_mode not in ("limited", "legacy"):
+            raise ParameterError(
+                f"{p}:[march] smooth_mode must be 'limited' or 'legacy',"
+                f" got {cfg.march.smooth_mode!r}"
+            )
 
     if "surface" in raw:
         _reject_unknown_keys(raw["surface"], _SURFACE_KEYS, where=f"{p}:[surface]")

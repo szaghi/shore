@@ -666,13 +666,15 @@ class TestCGridMarchSingleBlock:
                 blocks=1,
             )
             m = Mesh(body=body, blocks=blocks, topology=topo)
-            # Crank smoothing so the LE inverts on first march.
+            # Crank unlimited (legacy) smoothing so the LE inverts on first
+            # march: this test exercises the Jacobian guard, not the smoother.
             with pytest.raises(MarchingError, match="Negative Jacobian"):
                 m.march(
                     ds=1e-3,
                     growth=1.15,
                     smooth_strength=0.5,
                     smooth_iters=4,
+                    smooth_mode="legacy",
                 )
 
 
