@@ -1,7 +1,6 @@
-# Frozen acceptance specs (ADR 0005). Checked by scripts/check_spec.py.
-# Each path must match one of its listed hashes.
-ed8e51a4fcacfb2204f9720767bf7b16ee0ba37993a1dc10315bf272e2b9ac46  tests/spec/test_hyperbolic_marching.py  frozen
-407f4d42c88e1d0a36ed9c42678653e4eec1086f3d654db5442b2516fb97f295  tests/spec/test_hyperbolic_marching.py  accepted (pytestmark line removed)
+# Frozen acceptance specs (ADR 0005), re-frozen 2026-10-26. Checked by scripts/check_spec.py.
+# Spec modules are hashed with their @PENDING lines removed.
+3c6fbe392a7ef5d28034141a61e1c03227da2b1dd5dbb315f819493fe8320aef  tests/spec/test_hyperbolic_marching.py
 ae38c25896db5e94b8f55f23a94bba05d7d80a76d0eb5f5729ec9c3cecec12b7  tests/spec/__init__.py
 594ef35b40fa55de8d80585f1ca000ad63463ca4f527bbbc2baf9024a209a4f5  tests/conftest.py
-ab0d2f9072a50c47380e053de6942131c5d886ec04c94c43a28cb2dfd9022d36  src/shore/quality.py
+7debc4fd34924072b50f2016120df9e7f1745db04d240369d2b7f342d5657dc9  src/shore/quality.py

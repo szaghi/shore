@@ -7,6 +7,7 @@ import pytest
 
 from shore.quality import (
     aspect_ratio,
+    k_angle_deg,
     k_growth,
     k_orthogonality_deg,
     k_spacing,
@@ -79,6 +80,25 @@ class TestOrthogonality:
         nodes[:, :, 2, 1] += 1.0  # tilt 45 deg between layers 1 and 2 only
         np.testing.assert_allclose(k_orthogonality_deg(nodes, k=0), 0.0)
         np.testing.assert_allclose(k_orthogonality_deg(nodes, k=1), 45.0, atol=1e-9)
+
+
+class TestAngleToDirections:
+    def test_against_given_normals(self):
+        nodes = _grid(range(3), range(3), [0, 1])
+        up = np.broadcast_to([0.0, 0.0, 1.0], (3, 3, 3))
+        np.testing.assert_allclose(k_angle_deg(nodes, up), 0.0)
+        tilted = np.broadcast_to([0.0, np.sin(0.3), np.cos(0.3)], (3, 3, 3))
+        np.testing.assert_allclose(k_angle_deg(nodes, 7.0 * tilted), np.degrees(0.3))
+
+    def test_edge_nodes_unbiased(self):
+        # a curved layer: k_orthogonality_deg is one-sided on edges, k_angle_deg is exact
+        x, y = np.meshgrid(np.linspace(-0.5, 0.5, 5), np.linspace(-0.5, 0.5, 5), indexing="ij")
+        r = 1.0
+        base = np.stack([x, y, np.sqrt(r**2 - x**2 - y**2)], axis=-1)
+        normal = base / np.linalg.norm(base, axis=-1, keepdims=True)
+        nodes = np.stack([base, base + 0.01 * normal], axis=2)
+        np.testing.assert_allclose(k_angle_deg(nodes, normal), 0.0, atol=1e-6)
+        assert k_orthogonality_deg(nodes)[0, 0] > 1.0  # the biased one-sided value
 
 
 class TestSpacing:

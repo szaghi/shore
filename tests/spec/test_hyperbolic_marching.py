@@ -1,14 +1,29 @@
 """FROZEN acceptance spec: hyperbolic volume marching (ADR 0005, roadmap phase 4).
 
-Frozen 2026-10-26, before any implementation. Implementing work may not edit
-this file, ``tests/spec/__init__.py``, ``tests/conftest.py``, the pytest
-configuration in ``pyproject.toml``, or ``src/shore/quality.py`` (the metric
-definitions the thresholds below are written in). The ONE permitted edit is
-deleting the ``pytestmark`` line below once the implementation passes; strict
-xfail makes a passing-but-still-marked suite fail. SHA-256 of this file and
-of ``quality.py`` are recorded in ADR 0005.
+Frozen 2026-10-26 before any implementation; RE-FROZEN 2026-10-26 (user
+decision) after implementation exposed three spec defects (ADR 0005):
 
-Verdict: ``pytest tests/spec`` must report 13 passed, 0 skipped, 0 xfailed.
+1. Wall orthogonality is measured against the body's surface normal,
+   orientation-free (``shore.quality.k_angle_deg``), not against the
+   one-sided layer normal, which is biased on block-edge nodes. Nodes where
+   the surface normal is undefined (the C-grid trailing edge and the wing-tip
+   edges) are excluded.
+2. Cases are marked pending individually (``@PENDING``) instead of the whole
+   module, so partial progress does not turn the suite red.
+3. H1's mean bound is anchored to pure normal extrusion on the same grid
+   (unsmoothed algebraic marching, computed in the test): no scheme that
+   marches along the discrete grid normal can do better. The original
+   "mean <= 3 deg" was below that reference (3.49 deg).
+
+Implementing work may not edit this file, ``tests/spec/__init__.py``,
+``tests/conftest.py``, the pytest configuration in ``pyproject.toml``, or
+``src/shore/quality.py``. The ONE permitted edit is deleting an ``@PENDING``
+line once that case passes (strict xfail turns a passing pending case into a
+failure). ``tests/spec/SHA256SUMS`` holds the hashes, taken with ``@PENDING``
+lines removed; ``scripts/check_spec.py`` checks them.
+
+Verdict for acceptance: ``pytest tests/spec`` reports 13 passed, 0 skipped,
+0 xfailed. At re-freeze: 11 passed, 2 xfailed (H2).
 
 Interface under test
 --------------------
@@ -18,20 +33,22 @@ Interface under test
 - ``Project.march(..., march_scheme=...)`` journals it; CLI
   ``shore mesh --march-scheme hyperbolic``.
 
-Thresholds and their reference (algebraic, limited smoothing, measured
-2026-10-26 with ``shore.quality`` on the same cases):
+Thresholds and references (measured 2026-10-26; "wall angle" = angle to the
+body's surface normal, see ``wall_orthogonality``; "algebraic" = default
+limited smoothing; "pure normal" = smoothing off, computed live for H1):
 
-| Case | Metric | Algebraic | Required (hyperbolic) |
+| Case | Metric | Reference | Required (hyperbolic) |
 |---|---|---|---|
-| H1 coarse sphere, ds 1e-3 | wall orthogonality mean / max (deg) | 12.15 / 18.4 | <= 3 / <= 10 |
-| H1 | first cell / ds | 0.751 .. 1.000 | 0.95 .. 1.05 |
-| H1 | outer-layer body distance / sum(steps) | 0.719 .. 1.000 | 0.90 .. 1.10 |
-| H2 60x60x10 regression grid | wall orthogonality mean / max | 2.01 / 5.9 | <= 2.0 / <= 5.9 |
-| H2 | min scaled Jacobian | 0.754 | >= 0.70 |
-| H2 | outer-layer distance / sum(steps) | 0.932 .. 1.000 | 0.95 .. 1.05 |
+| H1 coarse sphere, ds 1e-3 | wall angle, mean | pure normal 3.49 | <= 1.15 x pure normal |
+| H1 | wall angle, max (deg) | pure normal 7.8, algebraic 23.6 | <= 10 |
+| H1 | first cell / ds | algebraic 0.751 .. 1.000 | 0.95 .. 1.05 |
+| H1 | outer-layer body distance / sum(steps) | algebraic 0.719 .. 1.000 | 0.90 .. 1.10 |
+| H2 60x60x10 grid | wall angle mean / max (deg) | algebraic 2.05 / 4.6 | <= 2.0 / <= 4.6 |
+| H2 | min scaled Jacobian | algebraic 0.754 | >= 0.70 |
+| H2 | outer-layer distance / sum(steps) | algebraic 0.932 .. 1.000 | 0.95 .. 1.05 |
 | H3 plus prism (4 concave edges) | completes nk=15 | fails k=13 (legacy k=1) | yes, 0 folded |
 | H3 | outer-layer distance / sum(steps) | n/a | 0.50 .. 1.50 |
-| H4 3-block C-grid NACA 0012 | wall orthogonality mean / max | 0.48 / 18.2 | <= 1.0 / <= 20 |
+| H4 3-block C-grid NACA 0012 | wall angle, body interior | algebraic 0.32 / 9.6 | <= 1 / <= 20 |
 
 Out of scope of this spec: blunt-TE C-grids, CH/OH channel blocks (they do
 not march), stretched / non-star-shaped CAD bodies, grids finer than the
@@ -52,9 +69,9 @@ from shore.exceptions import ParameterError
 from shore.mesh import Body, CGridTopology, CubedSphereTopology, Mesh, OGridTopology
 from shore.mesh.spacing import Spacing1D
 from shore.project import Project
-from shore.quality import k_orthogonality_deg, k_spacing, summary
+from shore.quality import k_angle_deg, k_spacing, summary
 
-pytestmark = pytest.mark.xfail(strict=True, reason="spec frozen 2026-10-26; implementation pending")
+PENDING = pytest.mark.xfail(strict=True, reason="spec re-frozen 2026-10-26; implementation pending")
 
 HYP = {"march_scheme": "hyperbolic"}
 
@@ -87,8 +104,23 @@ def plus_prism(arm: float = 1.0, half_width: float = 0.3, half_height: float = 0
     return trimesh.Trimesh(verts, np.array(faces), process=True)
 
 
-def wall_orthogonality(mesh: Mesh) -> np.ndarray:
-    return np.concatenate([k_orthogonality_deg(b.nodes, 0).ravel() for b in mesh.blocks])
+def wall_orthogonality(
+    mesh: Mesh, labels: set[str] | None = None, interior_only: bool = False
+) -> np.ndarray:
+    """Angle (deg) between each first k-segment and the body's surface normal.
+
+    Orientation-free (the line, not its sense: marching into the body is
+    caught by the fold and thickness checks). *interior_only* drops each
+    block's edge rows, for bodies whose normal is undefined there.
+    """
+    out = []
+    for b in mesh.blocks:
+        if labels is not None and b.label not in labels:
+            continue
+        a = k_angle_deg(b.nodes, mesh.body.normals(b.nodes[:, :, 0]))
+        a = np.minimum(a, 180.0 - a)
+        out.append((a[1:-1, 1:-1] if interior_only else a).ravel())
+    return np.concatenate(out)
 
 
 def first_cell_ratio(mesh: Mesh, ds: float) -> np.ndarray:
@@ -148,9 +180,12 @@ class TestH1CoarseSphere:
     def test_valid(self, mesh):
         assert summary(mesh.blocks)["folded_cells"] == 0
 
-    def test_wall_orthogonality(self, mesh):
+    def test_wall_orthogonality(self, mesh, sphere_stl):
+        # reference: pure normal extrusion (unsmoothed algebraic) on the same grid
+        ref = Mesh.from_file(sphere_stl, CubedSphereTopology(), ni=10, nj=12, nk=self.NK)
+        ref.march(ds=self.DS, growth=self.GROWTH, smooth_strength=0.0)
         ortho = wall_orthogonality(mesh)
-        assert ortho.mean() <= 3.0
+        assert ortho.mean() <= 1.15 * wall_orthogonality(ref).mean()
         assert ortho.max() <= 10.0
 
     def test_first_cell_and_thickness(self, mesh):
@@ -188,12 +223,14 @@ class TestH2RegressionGrid:
         m.march(ds=0.02, growth=1.1, **HYP)
         return m
 
+    @PENDING
     def test_orthogonality_and_validity(self, mesh):
         ortho = wall_orthogonality(mesh)
         assert ortho.mean() <= 2.0
-        assert ortho.max() <= 5.9
+        assert ortho.max() <= 4.6
         assert summary(mesh.blocks)["scaled_jacobian_min"] >= 0.70
 
+    @PENDING
     def test_thickness(self, mesh):
         outer = outer_distance_ratio(mesh, (0.02 * 1.1 ** np.arange(9)).sum())
         assert outer.min() >= 0.95 and outer.max() <= 1.05
@@ -244,8 +281,9 @@ class TestH4CGrid:
         mesh = Mesh(body=body, blocks=blocks, topology=topo)
         mesh.march(ds=1e-3, growth=1.2, **HYP)
         assert summary(mesh.blocks)["folded_cells"] == 0
-        wing = [b for b in mesh.blocks if b.label == "body"]
-        ortho = np.concatenate([k_orthogonality_deg(b.nodes, 0).ravel() for b in wing])
+        # body block interior: its i-edges lie on the sharp TE and its j-edges on
+        # the wing-tip edges, where the surface normal is undefined
+        ortho = wall_orthogonality(mesh, labels={"body"}, interior_only=True)
         assert ortho.mean() <= 1.0
         assert ortho.max() <= 20.0
         assert_seams_coincide(mesh)

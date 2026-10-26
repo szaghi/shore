@@ -231,10 +231,12 @@ only (centroid ray-cast, like `cubed_sphere`).
 algorithm is implemented (ADR 0005; the `ai-research-verification`
 discipline). While implementing, do **not** edit `tests/spec/**`,
 `tests/conftest.py`, the pytest config or `src/shore/quality.py`. The only
-permitted edit is deleting a spec module's `pytestmark` xfail line once it
-passes. `python scripts/check_spec.py` verifies the hashes in
-`tests/spec/SHA256SUMS` (CI lint job). Report the verdict as counts
-(e.g. "13 passed, 0 skipped, 0 xfailed"), not "it passes".
+permitted edit is deleting a case's `@PENDING` (strict xfail) line once that
+case passes. `python scripts/check_spec.py` verifies the hashes in
+`tests/spec/SHA256SUMS` (spec modules hashed without `@PENDING` lines; CI
+lint job). Changing a threshold or metric is a re-freeze: a separate,
+user-approved commit (ADR 0005 records the first one). Report the verdict as
+counts (e.g. "13 passed, 0 skipped, 0 xfailed"), not "it passes".
 
 ### Test Suite
 

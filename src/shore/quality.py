@@ -12,6 +12,8 @@ marcher's orientation convention: a valid cell has a positive Jacobian
   k-segment to layer ``k + 1`` and the layer's normal ``t_i x t_j``
   (central-difference tangents). 0 is orthogonal; > 90 means the segment
   points back through the layer.
+- ``k_angle_deg``: the same angle against given directions (e.g. the body's
+  surface normals), unbiased at block-edge nodes.
 - ``k_spacing`` / ``k_growth``: k-segment lengths and their ratios.
 - ``aspect_ratio``: per cell, longest over shortest of its 12 edges.
 - ``summary``: the extremes of all of these for a list of blocks.
@@ -69,6 +71,26 @@ def k_orthogonality_deg(nodes: np.ndarray, k: int = 0) -> np.ndarray:
     n = _layer_normals(nodes[:, :, k])
     length = np.linalg.norm(seg, axis=-1)
     cos = np.einsum("...j,...j->...", seg, n) / np.where(length > 0.0, length, 1.0)
+    return np.degrees(np.arccos(np.clip(cos, -1.0, 1.0)))
+
+
+def k_angle_deg(nodes: np.ndarray, directions: np.ndarray, k: int = 0) -> np.ndarray:
+    """Angle (deg) between the k-segment ``k -> k+1`` and given *directions* (ni, nj, 3).
+
+    With the body's outward surface normals at layer 0 this is the wall
+    orthogonality against the true surface: unlike ``k_orthogonality_deg``
+    it is not biased at block-edge nodes, where a one-sided layer normal is
+    not the surface normal across the seam.
+    """
+    seg = nodes[:, :, k + 1] - nodes[:, :, k]
+    d = np.asarray(directions, dtype=np.float64)
+    d = d / np.where(
+        np.linalg.norm(d, axis=-1, keepdims=True) > 0.0,
+        np.linalg.norm(d, axis=-1, keepdims=True),
+        1.0,
+    )
+    length = np.linalg.norm(seg, axis=-1)
+    cos = np.einsum("...j,...j->...", seg, d) / np.where(length > 0.0, length, 1.0)
     return np.degrees(np.arccos(np.clip(cos, -1.0, 1.0)))
 
 

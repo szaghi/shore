@@ -190,3 +190,98 @@ at 1e-17. It is now "to round-off" (1e-12 × model diagonal).
 
 Out of scope (stated in the spec): blunt-TE C-grids, CH/OH channel blocks
 (they do not march), non-star-shaped CAD bodies, finer grids, run time.
+
+## Implementation status (2026-10-26): spec NOT yet accepted
+
+`volume/hyperbolic_scheme.py` implements the linearised Steger–Chaussee
+step. Per block layer it solves
+
+  `(I + C⁻¹A δξ + C⁻¹B δη − ε_i ∇²) Δr = r_ζ⁰ + ε_e T(∇² r)`
+
+as one sparse system (SuperLU, deterministic). Its parts:
+- volume smoothing, with the marching distance clipped to [½, 2] × step;
+- a front-convergence sensor;
+- implicit dissipation, and explicit dissipation restricted to the tangent
+  plane;
+- ramps of ρ (implicit) and ρ² (explicit), with ρ = min(1, step/h).
+
+Edge rows with a neighbour block (ghost rows) are unknowns; unconnected and
+pinned (cap) edges are Dirichlet. It is reached through
+`Mesh.march(march_scheme="hyperbolic")`, `Project.march`,
+`--march-scheme` and `[march] march_scheme`. The default stays `algebraic`,
+and the 66 pipeline goldens are byte-identical. Defaults (chosen by a sweep
+over all spec cases, none per case): `eps_implicit` 0.5, `eps_explicit`
+0.25, `volume_smoothing` 0.2, `convergence_gain` 16, `distance_clip` 2.
+
+Spec verdict: **10 of 13 pass, 3 fail** (T1: reproduced by scripts;
+`pytest tests/spec` reports the 10 as strict XPASS failures).
+
+| Case | Result |
+|---|---|
+| H3 plus prism, cubed-sphere and O-grid | pass: completes where algebraic fails |
+| H4 C-grid | pass |
+| H5 interface | pass |
+| H1 validity, first cell, thickness, seams, determinism | pass |
+| H1 orthogonality | fail: mean 5.9 / max 13.8 (required 3 / 10) |
+| H2 orthogonality and validity | fail: max 9.6 (<= 5.9), min scaled Jacobian 0.69 (>= 0.70); interior max 2.4 vs algebraic 3.7 |
+| H2 thickness | fail: 0.937 .. 1.075 (0.95 .. 1.05) |
+
+Spec defects found during implementation, for a deliberate re-freeze:
+
+1. **The orthogonality metric is wrong at block edges.**
+   `quality.k_orthogonality_deg` takes the layer normal from one-sided
+   differences on block-edge nodes, where the surface normal spans the
+   seam. Unsmoothed algebraic marching is exactly orthogonal in the
+   interior (0.00 deg), yet scores mean 9.4 / max 13.9 deg on edge nodes.
+   On H1's coarse grid edge nodes dominate, so **H1's mean <= 3 / max
+   <= 10 is unattainable for any seam-consistent scheme**. The angle to the
+   exact sphere normal is <= 7.8 deg. H2's max <= 5.9 is the same artefact.
+   Fix: measure against the body normal at the wall
+   (`body.geometry.project(...).normals`), or interior nodes only.
+2. **The H2 thickness floor is below what algebraic achieves.** The 0.95
+   floor (algebraic 0.932) is missed by both schemes away from block
+   corners. The cause is not the marching scheme and is not yet
+   identified. Investigate before fixing the band.
+3. **Module-level strict xfail is all-or-nothing.** Partial progress shows
+   as failures and turns CI red. Mark the cases individually.
+
+H2's min scaled Jacobian (0.69 < 0.70) and its 7 % thickness overshoot at
+block corners (volume smoothing) are genuine shortfalls of the scheme, not
+spec defects.
+
+## Re-freeze (2026-10-26, user decision)
+
+The spec was re-frozen as a deliberate, separate change to fix the three
+defects listed above.
+
+1. **Wall orthogonality is measured against the body's surface normal.** A
+   new frozen metric, `quality.k_angle_deg`, measures the angle between the
+   first k-segment and given directions. The spec takes the body's normals
+   at the wall, orientation-free. Nodes with an undefined normal (the
+   C-grid TE columns and the wing-tip stations) are excluded in H4. Before
+   the change, H4 read 17.6 / 88.7 deg for every scheme alike.
+2. **Per-case `@PENDING` strict-xfail markers** replace the module-level
+   `pytestmark`. `scripts/check_spec.py` hashes spec modules with `@PENDING`
+   lines removed: deleting one is the only permitted edit, and any other
+   change is reported as CHANGED (checked both ways).
+3. **H1's mean bound is anchored to pure normal extrusion**, computed live
+   in the test: <= 1.15 × the mean of unsmoothed algebraic marching on the
+   same grid. **This is a threshold change, not only a metric fix.** Under
+   the corrected metric, pure normal extrusion scores 3.49 deg on this
+   coarse faceted grid, because the discrete grid normal differs from the
+   STL surface normal. The original "<= 3" would have excluded even an
+   exact-normal march.
+
+H2's references are re-measured under the new metric: algebraic 2.05 /
+4.6 deg, so the bound is <= 2.0 / <= 4.6. H2's thickness band
+(0.95–1.05) is deliberately unchanged until the 0.93 floor is explained.
+
+Harness validation (T1): the helper reproduces the pure-normal reference
+(3.49 / 7.8) exactly, and reads a forced 20-degree tilt as 20.00 / 20.0.
+
+**Verdict at re-freeze: 11 passed, 2 xfailed.** Both H2 cases are pending:
+- orthogonality and validity (max 8.1 vs <= 4.6; scaled Jacobian 0.69 vs
+  >= 0.70);
+- thickness (0.937 .. 1.075 vs 0.95 .. 1.05).
+
+Acceptance remains 13 passed, 0 skipped, 0 xfailed.
