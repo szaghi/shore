@@ -150,9 +150,11 @@ class Project:
         growth_wall: float,
         nk: int,
         label: str = "collar",
+        plane: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None,
     ) -> None:
         """Collar block around the junction of the loaded body and the body in
-        file *other* (ADR 0010); replaces the mesh. See ``BuildCollar``."""
+        file *other* (ADR 0010); with *plane* the half-collar of a half model
+        (ADR 0013). Replaces the mesh. See ``BuildCollar``."""
         self.execute(
             BuildCollar(
                 str(other),
@@ -166,6 +168,7 @@ class Project:
                 growth_wall,
                 nk,
                 label,
+                None if plane is None else _plane_tuple(plane),
             )
         )
 
@@ -330,3 +333,12 @@ def run_journal(path: str | Path) -> Project:
     if not isinstance(project, Project):
         raise MeshInputError(f"{path}: journal does not define a Project named 'p'.")
     return project
+
+
+def _plane_tuple(plane: Any) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """``(point, normal)`` as plain float tuples, so the journal line replays."""
+    try:
+        point, normal = plane
+        return tuple(float(c) for c in point), tuple(float(c) for c in normal)  # type: ignore[return-value]
+    except (TypeError, ValueError):
+        raise ParameterError("plane must be (point, normal), two 3-vectors.") from None

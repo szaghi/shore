@@ -147,13 +147,11 @@ def j_angle_deg(nodes: np.ndarray) -> float:
 
 
 class TestHalfCollar:
-    @PENDING
     @pytest.mark.parametrize("name", list(HALF))
     def test_h1_wall_is_the_composed_half_surface(self, name):
         a, b, seed, block = half_collar(name)
         np.testing.assert_allclose(block.nodes[:, :, 0], expected_wall(a, b, seed), atol=1e-12)
 
-    @PENDING
     @pytest.mark.parametrize("name", list(HALF))
     def test_h2_half_of_the_mirrored_collar(self, name):
         from shore.collar import extrude_collar
@@ -165,7 +163,6 @@ class TestHalfCollar:
         assert whole.shape == (2 * MB + 1, 2 * (N_LOOP - 1), len(STEPS_K) + 1, 3)
         assert np.abs(block.nodes - whole[:, :N_LOOP]).max() <= 1e-9 * STEPS_K.sum()
 
-    @PENDING
     @pytest.mark.parametrize("name", list(HALF))
     def test_h3_valid_at_the_plane(self, name):
         a, b, _, block = half_collar(name)
@@ -182,7 +179,6 @@ class TestHalfCollar:
         dist = np.minimum(a.body.distance(outer), b.body.distance(outer)) / STEPS_K.sum()
         assert dist.min() >= 0.99 and dist.max() <= 1.01
 
-    @PENDING
     @pytest.mark.parametrize("name", list(HALF))
     def test_h4_topology(self, name):
         from shore.mesh.face import FaceBC
@@ -202,7 +198,6 @@ class TestHalfCollar:
 
 
 class TestObliquePlane:
-    @PENDING
     def test_h5_oblique_plane_warns(self):
         plane = ((0.5, 0.0, 0.0), (1.0, 0.0, 0.0))
         with pytest.warns(UserWarning):
@@ -219,7 +214,6 @@ class TestObliquePlane:
 
 
 class TestInterface:
-    @PENDING
     def test_h6_extrude_collar_is_the_accepted_volume_stage(self):
         from shore.collar import extrude_collar
         from tests.spec.test_collar import STEPS_K as K
@@ -228,7 +222,6 @@ class TestInterface:
         *_, block = collar("sphere_cylinder")
         np.testing.assert_array_equal(extrude_collar(block.nodes[:, :, 0], K, MB), block.nodes)
 
-    @PENDING
     def test_h6_bad_plane(self):
         make_a, make_b, seed, _, _ = HALF["plane_cylinder"]
         with pytest.raises(ParameterError):
@@ -244,7 +237,6 @@ class TestInterface:
 
 
 class TestOutput:
-    @PENDING
     def test_h7_adjacency_round_trip(self, tmp_path):
         from shore.io.adjacency import read_adjacency_json, write_adjacency_json
 
@@ -253,7 +245,6 @@ class TestOutput:
         faces = read_adjacency_json(tmp_path / "a.json")["blocks"][0]["faces"]
         assert faces["j_lo"]["bc"] == "SYMMETRY" and faces["j_hi"]["bc"] == "SYMMETRY"
 
-    @PENDING
     def test_h7_cc_par_symmetry_code(self, tmp_path):
         from shore.io.adjacency import read_adjacency_json, write_adjacency_json
         from shore.io.cc_par import write_cc_par
@@ -300,7 +291,6 @@ def stl_half(tmp_path_factory) -> dict[str, Path]:
 
 
 class TestCommand:
-    @PENDING
     def test_c1_builds_a_valid_half_collar(self, stl_half):
         from shore.mesh.face import FaceBC
         from shore.project import Project
@@ -317,7 +307,6 @@ class TestCommand:
         bcs = {f.name: f.bc for f in block.faces()}
         assert bcs["j_lo"] is FaceBC.SYMMETRY and bcs["j_hi"] is FaceBC.SYMMETRY
 
-    @PENDING
     def test_c2_journal_and_replay(self, stl_half, tmp_path):
         from shore.project import Project
 

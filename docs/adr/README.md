@@ -20,7 +20,7 @@ by a later record that supersedes it.
 | [0010](./0010-collar-block.md) | The collar block of two intersecting bodies | Accepted |
 | [0011](./0011-open-intersection-curves.md) | Open intersection curves ending on a symmetry plane | Accepted |
 | [0012](./0012-march-ends-on-a-plane.md) | Surface marching with ends on a symmetry plane | Accepted |
-| [0013](./0013-half-collar-block.md) | The half-collar block on a symmetry plane | Proposed |
+| [0013](./0013-half-collar-block.md) | The half-collar block on a symmetry plane | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

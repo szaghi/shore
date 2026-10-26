@@ -156,7 +156,7 @@ From `Xnavis-projects/overset/src/mod/modpar.f90` and
 | `12` | `isowal` | Isothermal wall. |
 | `13` | `isoina` | Inactive wall, isothermal. |
 | `-1` | `BC_NATURAL_WALL` | Natural-BC viscous wall. |
-| `-2` | symmetry | Symmetry plane. |
+| `-2` | symmetry | Symmetry plane (patch code `2`, see below). |
 | `-3` | inflow | Inflow. |
 | `-4` | inoutflow | In/outflow. |
 | `-5` | assigned inflow | Assigned-inflow. |
@@ -175,6 +175,13 @@ From `Xnavis-projects/overset/src/mod/modpar.f90` and
 | `70` | `estrap` | Extrapolation for moving bodies. |
 | `80` | `xedge` | Edge cell. |
 | **`≥ 100`** | **connection** | **Resolved one-to-one connection: orientation-coded, requires `family > 0`.** |
+
+The negative codes are the preprocessor's **internal** natural-BC codes
+(`BC_NATURAL_*` in `overset_exploded_block_object.F90`). A cc.par patch
+never carries them: it carries the natural BC's positive index *p* in
+`[1, nccnat = 19]`, which the preprocessor maps to `rcc(p) = -p`, and it
+rejects a face code below 1. So a symmetry plane is patch code `2`
+(SHORE's `FaceBC.SYMMETRY`), extrapolation `9`, inflow `3`.
 
 Codes ≥ 100 are not constants — they are *computed* from the
 orientation between two adjacent blocks (see next section). The

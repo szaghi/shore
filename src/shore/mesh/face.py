@@ -39,6 +39,7 @@ class FaceBC(enum.Enum):
     SHARED = "shared"  # shared with another block via numpy view
     DIRICHLET = "dirichlet"  # pinned from a partner face (cap boundaries)
     PERIODIC = "periodic"  # wraps to another face on the same block
+    SYMMETRY = "symmetry"  # lies on a symmetry plane (half models, ADR 0013)
 
 
 @dataclass(frozen=True)

@@ -51,3 +51,35 @@ class TestCommandErrors:
                 "other.stl", seed=(0, 0, 0), n_loop=8, ds_surface=0.1, growth_surface=1.0,
                 m_a=2, m_b=2, ds_wall=0.01, growth_wall=1.0, nk=3,
             )  # fmt: skip
+
+
+class TestExtrudeCollar:
+    def test_bad_wall_and_junction(self):
+        from shore.collar import extrude_collar
+
+        wall = np.zeros((5, 4, 3))
+        with pytest.raises(ParameterError):
+            extrude_collar(np.zeros((5, 4)), np.array([0.1]), 2)
+        with pytest.raises(ParameterError):
+            extrude_collar(wall, np.array([0.1]), 0)
+        with pytest.raises(ParameterError):
+            extrude_collar(wall, np.array([-0.1]), 2)
+
+    def test_end_angle(self):
+        from shore.collar import _end_angle_deg
+
+        theta = np.linspace(0.0, np.pi, 17)
+        arc = np.c_[np.cos(theta), np.sin(theta), 0.0 * theta]  # meets y = 0 at right angles
+        assert _end_angle_deg(arc, np.array([0.0, 1.0, 0.0])) < 0.5
+        assert _end_angle_deg(arc, np.array([1.0, 0.0, 0.0])) > 80.0
+
+
+class TestHalfCollarCommand:
+    def test_malformed_plane(self):
+        from shore.project import Project
+
+        with pytest.raises(ParameterError, match="plane"):
+            Project().build_collar(
+                "other.stl", seed=(0, 0, 0), n_loop=8, ds_surface=0.1, growth_surface=1.0,
+                m_a=2, m_b=2, ds_wall=0.01, growth_wall=1.0, nk=3, plane=(1.0, 2.0),
+            )  # fmt: skip

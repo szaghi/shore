@@ -64,6 +64,9 @@ Mapping from SHORE's ``FaceBC`` enum to ``cc.par`` BC codes:
   partner face's name (see :func:`_orientation_code_from_axis_map`).
 - ``PERIODIC``   → ``cc.par`` has no first-class periodic BC; emits
   ``40`` with a ``UserWarning``.
+- ``SYMMETRY``   → ``2`` (natural-BC index of the symmetry plane; the
+  preprocessor maps it to its internal ``BC_NATURAL_SIMMETRY = -2``)
+  + ``family = 0``.
 
 Limitations
 -----------
@@ -111,6 +114,7 @@ _FACE_NAMES: tuple[str, ...] = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi")
 
 _BC_WALL = 1  # parete (viscous wall)
 _BC_OFFGEN = 40  # offset for chimera cell-center BC; default for FREE faces
+_BC_SYMMETRY = 2  # natural BC index of the symmetry plane (internal code -2)
 
 # ---------------------------------------------------------------------------
 # Orientation-code derivation (Xall convention from overset/calcorn.f90 lines
@@ -435,6 +439,8 @@ def _resolve_patch(
         face_code = face_payload.get("bc_code")
         bc = face_code if face_code is not None else free_face_bc
         return _Patch(block_idx, face_idx, bc, 0, extents)
+    if bc_name == "SYMMETRY":
+        return _Patch(block_idx, face_idx, _BC_SYMMETRY, 0, extents)
     if bc_name == "PERIODIC":
         warnings.warn(
             f"cc.par: PERIODIC BC on {block_label!r}.{face_name} not "

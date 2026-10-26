@@ -452,8 +452,9 @@ class BuildCollar(Command):
     Body A is the project's geometry, body B is loaded from the file *other*
     (its path is what the journal records). Surface steps are
     ``ds_surface * growth_surface**j`` (*m_a* on A, *m_b* on B), wall-normal
-    steps ``ds_wall * growth_wall**k`` (*nk* of them). Replaces the mesh with
-    the one collar block, a separate Chimera component.
+    steps ``ds_wall * growth_wall**k`` (*nk* of them). With *plane*
+    (``(point, normal)``) the half-collar of a half model (ADR 0013). Replaces
+    the mesh with the one collar block, a separate Chimera component.
     """
 
     method: ClassVar[str] = "build_collar"
@@ -470,6 +471,7 @@ class BuildCollar(Command):
     growth_wall: float
     nk: int
     label: str = "collar"
+    plane: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         from shore.collar import build_collar
@@ -490,6 +492,7 @@ class BuildCollar(Command):
             steps_b=self.ds_surface * self.growth_surface ** np.arange(self.m_b),
             steps_k=self.ds_wall * self.growth_wall ** np.arange(self.nk),
             label=self.label,
+            plane=self.plane,
         )
         prev = (project.mesh, project.build)
         # no body association: k_lo lies on two bodies

@@ -21,10 +21,18 @@ bodies:
    outer boundary with the k schedule, then Winslow smoothing with
    Thomas-Middlecoff control functions (the clustering of the boundaries is
    kept, as in ADR 0007), solved by Picard iteration with SuperLU.
+
+Steps 2-4 are ``extrude_collar``. With ``plane`` (ADR 0013) the collar is
+the half-collar of a half model: the open curve of ``intersection_curve``
+(ADR 0011), both halves marched with their ends on the plane (ADR 0012),
+and the volume extruded from the wall mirrored across the plane into a
+closed loop, of which the first ``n_loop`` stations are kept; the j-faces
+are put on the plane and marked ``FaceBC.SYMMETRY``.
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -34,8 +42,9 @@ import scipy.sparse.linalg as spla
 from shore.exceptions import ParameterError
 from shore.geometry.base import Geometry
 from shore.mesh.block import HexBlock
-from shore.surface.intersect import intersection_loop
-from shore.surface.march import march_surface
+from shore.mesh.face import FaceBC
+from shore.surface.intersect import intersection_curve, intersection_loop
+from shore.surface.march import _Mirror, march_surface
 from shore.surface.tfi import _control
 from shore.volume.hyperbolic_scheme import hyperbolic_layer
 
@@ -48,6 +57,7 @@ class CollarParams:
     max_iterations: int = 400
     tolerance: float = 1e-12  # max node update, relative to the collar thickness
     control_limit: float = 1.5  # |P|, |Q| bound: keeps the 5-point operator an M-matrix
+    oblique_deg: float = 1.0  # warn when an open curve's end is this far off the plane normal
 
 
 DEFAULT = CollarParams()
@@ -64,6 +74,7 @@ def build_collar(
     steps_k: np.ndarray,
     label: str = "collar",
     params: CollarParams = DEFAULT,
+    plane: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> HexBlock:
     """The collar block around the junction of *body_a* and *body_b*.
 
@@ -83,17 +94,31 @@ def build_collar(
         Block label.
     params :
         Collar settings.
+    plane :
+        ``(point, normal)`` of a symmetry plane: build the half-collar of a
+        half model, on the seed's side. ``None``: the closed collar.
 
     Returns
     -------
     HexBlock
-        Nodes ``(len(steps_b) + len(steps_a) + 1, n_loop, len(steps_k) + 1, 3)``,
-        ``periodic_j``; face ``k_lo`` is WALL, the others FREE.
+        Nodes ``(len(steps_b) + len(steps_a) + 1, n_loop, len(steps_k) + 1, 3)``;
+        face ``k_lo`` is WALL. Closed collar: ``periodic_j``, the other faces
+        FREE. Half-collar: open in j, faces ``j_lo`` / ``j_hi`` on the plane
+        and SYMMETRY, the others FREE.
 
     Raises
     ------
     ParameterError
-        Malformed steps, ``n_loop < 3``, or no intersection near *seed*.
+        Malformed steps or plane, ``n_loop < 3``, or no intersection near
+        *seed*.
+
+    Warns
+    -----
+    UserWarning
+        The half-collar's curve meets the plane obliquely (its end tangent
+        more than ``params.oblique_deg`` off the plane normal): the bodies
+        are not mirror-symmetric there, and the block's quality is not
+        guaranteed.
     """
     if isinstance(n_loop, bool) or not isinstance(n_loop, (int, np.integer)) or n_loop < 3:
         raise ParameterError(f"n_loop must be an integer >= 3, got {n_loop!r}.")
@@ -102,21 +127,83 @@ def build_collar(
         for name, s in (("steps_a", steps_a), ("steps_b", steps_b), ("steps_k", steps_k))
     )
 
-    loop = intersection_loop(body_a, body_b, seed, int(n_loop))
-    on_a = march_surface(body_a, loop, steps_a, periodic=True)
-    on_b = march_surface(body_b, loop[::-1], steps_b, periodic=True)[::-1]
+    mirror = None if plane is None else _Mirror.of(plane)
+    if mirror is None:
+        curve = intersection_loop(body_a, body_b, seed, int(n_loop))
+        march = {"periodic": True}
+    else:
+        curve = intersection_curve(body_a, body_b, seed, int(n_loop), plane=plane)
+        if _end_angle_deg(curve, mirror.normal) > params.oblique_deg:
+            warnings.warn(
+                "the junction curve meets the symmetry plane obliquely: the bodies are not "
+                "mirror-symmetric there, and the half-collar's quality is not guaranteed.",
+                UserWarning,
+                stacklevel=2,
+            )
+        march = {"plane": plane}
+    on_a = march_surface(body_a, curve, steps_a, **march)
+    on_b = march_surface(body_b, curve[::-1], steps_b, **march)[::-1]
     wall = np.concatenate([on_b[:, ::-1], on_a[:, 1:]], axis=1)
     wall = np.ascontiguousarray(np.transpose(wall, (1, 0, 2))[:, ::-1])
-
     junction = len(steps_b)
+
+    if mirror is None:
+        nodes = extrude_collar(wall, steps_k, junction, params=params)
+        return HexBlock(label, nodes, periodic_i=False, periodic_j=True)
+    closed = np.concatenate([wall, mirror.reflect(wall[:, -2:0:-1])], axis=1)
+    nodes = extrude_collar(closed, steps_k, junction, params=params)[:, : int(n_loop)].copy()
+    nodes[:, [0, -1]] = mirror.onto(nodes[:, [0, -1]])
+    block = HexBlock(label, nodes, periodic_i=False, periodic_j=False)
+    block._set_face_bc("j_lo", FaceBC.SYMMETRY)
+    block._set_face_bc("j_hi", FaceBC.SYMMETRY)
+    return block
+
+
+def extrude_collar(
+    wall: np.ndarray, steps_k: np.ndarray, junction: int, *, params: CollarParams = DEFAULT
+) -> np.ndarray:
+    """The collar volume over a j-periodic *wall* (steps 2-4 of the method).
+
+    Parameters
+    ----------
+    wall : np.ndarray, shape (ni, nj, 3)
+        The collar wall: i from B's far edge through the junction row to A's
+        far edge, j around the loop (periodic, seam node not repeated).
+    steps_k :
+        Wall-normal steps.
+    junction :
+        The junction row (``len(steps_b)``), 0 < junction < ni - 1.
+    params :
+        Collar settings.
+
+    Returns
+    -------
+    np.ndarray, shape (ni, nj, len(steps_k) + 1, 3)
+        ``[:, :, 0]`` is *wall*.
+    """
+    w = np.ascontiguousarray(np.asarray(wall, dtype=np.float64))
+    if w.ndim != 3 or w.shape[2] != 3 or w.shape[1] < 3:
+        raise ParameterError(f"wall must have shape (ni, nj >= 3, 3), got {w.shape}.")
+    if not 0 < junction < w.shape[0] - 1:
+        raise ParameterError(f"junction must be an inner i row, got {junction}.")
+    steps_k = _steps("steps_k", steps_k)
     h = float(
         min(
-            np.linalg.norm(wall[junction + 1] - wall[junction], axis=-1).min(),
-            np.linalg.norm(wall[junction - 1] - wall[junction], axis=-1).min(),
+            np.linalg.norm(w[junction + 1] - w[junction], axis=-1).min(),
+            np.linalg.norm(w[junction - 1] - w[junction], axis=-1).min(),
         )
     )
-    nodes = _extrude(wall, steps_k, h, junction, params)
-    return HexBlock(label, nodes, periodic_i=False, periodic_j=True)
+    return _extrude(w, steps_k, h, junction, params)
+
+
+def _end_angle_deg(curve: np.ndarray, normal: np.ndarray) -> float:
+    """Largest angle between *normal* and the curve's second-order end tangents."""
+    worst = 0.0
+    for r0, r1, r2 in ((curve[0], curve[1], curve[2]), (curve[-1], curve[-2], curve[-3])):
+        t = -3.0 * r0 + 4.0 * r1 - r2
+        cos = abs(float(t @ normal)) / float(np.linalg.norm(t))
+        worst = max(worst, float(np.degrees(np.arccos(min(1.0, cos)))))
+    return worst
 
 
 def _steps(name: str, steps: np.ndarray) -> np.ndarray:
