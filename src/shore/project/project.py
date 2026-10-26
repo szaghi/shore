@@ -30,6 +30,7 @@ from shore.exceptions import MeshInputError, ParameterError
 from shore.mesh.body import Body
 from shore.mesh.mesh import Mesh
 from shore.project.commands import (
+    BuildCollar,
     BuildPrimitive,
     BuildState,
     BuildTipCap,
@@ -134,6 +135,39 @@ class Project:
         """Build a parametric primitive (``box``, ``annulus``, ``flat_caps``,
         ``h_grid_rect``, ``h_grid_tube``); see ``shore.pipeline.build_primitive``."""
         self.execute(BuildPrimitive(kind, params))
+
+    def build_collar(
+        self,
+        other: str | Path,
+        *,
+        seed: tuple[float, float, float],
+        n_loop: int,
+        ds_surface: float,
+        growth_surface: float,
+        m_a: int,
+        m_b: int,
+        ds_wall: float,
+        growth_wall: float,
+        nk: int,
+        label: str = "collar",
+    ) -> None:
+        """Collar block around the junction of the loaded body and the body in
+        file *other* (ADR 0010); replaces the mesh. See ``BuildCollar``."""
+        self.execute(
+            BuildCollar(
+                str(other),
+                tuple(float(c) for c in seed),  # type: ignore[arg-type]
+                n_loop,
+                ds_surface,
+                growth_surface,
+                m_a,
+                m_b,
+                ds_wall,
+                growth_wall,
+                nk,
+                label,
+            )
+        )
 
     def build_tip_cap(self, body_geo: str | Path, **options: Any) -> None:
         """Wing-tip cap from a C-grid body ``.geo``; options as ``BuildTipCap``."""

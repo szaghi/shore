@@ -131,7 +131,6 @@ def wrapped_jacobian(nodes: np.ndarray) -> np.ndarray:
 
 
 class TestCollar:
-    @PENDING
     @pytest.mark.parametrize("name", list(PAIRS))
     def test_k1_wall_is_the_composed_collar_surface(self, name):
         a, b, seed, block = collar(name)
@@ -141,7 +140,6 @@ class TestCollar:
         assert b.distance(wall[: MB + 1]).max() <= 1e-9 * diag
         assert a.distance(wall[MB:]).max() <= 1e-9 * diag
 
-    @PENDING
     @pytest.mark.parametrize("name", list(PAIRS))
     def test_k2_valid_volume(self, name):
         *_, block = collar(name)
@@ -149,14 +147,12 @@ class TestCollar:
         assert (sj <= 0.0).sum() == 0
         assert sj.min() >= 0.05
 
-    @PENDING
     @pytest.mark.parametrize("name", list(PAIRS))
     def test_k3_first_cell(self, name):
         *_, block = collar(name)
         first = k_spacing(block.nodes)[..., 0] / STEPS_K[0]
         assert first.min() >= 0.95 and first.max() <= 1.05
 
-    @PENDING
     @pytest.mark.parametrize("name", list(PAIRS))
     def test_k4_envelope(self, name):
         a, b, _, block = collar(name)
@@ -164,7 +160,6 @@ class TestCollar:
         dist = np.minimum(a.distance(outer), b.distance(outer)) / STEPS_K.sum()
         assert dist.min() >= 0.99 and dist.max() <= 1.01
 
-    @PENDING
     @pytest.mark.parametrize("name", list(PAIRS))
     def test_k5_topology(self, name):
         *_, block = collar(name)
@@ -182,7 +177,6 @@ class TestCollar:
 
 
 class TestInterface:
-    @PENDING
     def test_k6_deterministic(self):
         a, b, seed, block = collar("sphere_cylinder")
         again = kernel()(
@@ -190,7 +184,6 @@ class TestInterface:
         )
         np.testing.assert_array_equal(again.nodes, block.nodes)
 
-    @PENDING
     @pytest.mark.parametrize("bad", ["steps_a", "steps_k"])
     def test_k6_bad_steps(self, bad):
         make_a, make_b, seed, _, _ = PAIRS["plane_cylinder"]
@@ -199,7 +192,6 @@ class TestInterface:
         with pytest.raises(ParameterError):
             kernel()(make_a(), make_b(), np.asarray(seed), n_loop=N_LOOP, **steps)
 
-    @PENDING
     def test_k6_too_few_loop_nodes(self):
         make_a, make_b, seed, _, _ = PAIRS["plane_cylinder"]
         with pytest.raises(ParameterError):
@@ -233,7 +225,6 @@ def stl_files(tmp_path_factory) -> dict[str, Path]:
 
 
 class TestCommand:
-    @PENDING
     def test_c1_builds_a_valid_collar_component(self, stl_files):
         from shore.project import Project
 
@@ -245,7 +236,6 @@ class TestCommand:
         assert nodes.shape == (25, 48, 26, 3)
         assert (wrapped_jacobian(nodes) <= 0.0).sum() == 0
 
-    @PENDING
     def test_c2_journal_replay_and_undo(self, stl_files, tmp_path):
         from shore.project import Project
 

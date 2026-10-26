@@ -17,7 +17,7 @@ by a later record that supersedes it.
 | [0007](./0007-surface-grids.md) | Surface grids: TFI + elliptic smoothing in (u, v) per face | Proposed |
 | [0008](./0008-surface-marching.md) | Hyperbolic surface marching: the collar-grid kernel | Proposed |
 | [0009](./0009-intersection-curves.md) | Intersection loops of two bodies, for collar grids | Proposed |
-| [0010](./0010-collar-block.md) | The collar block of two intersecting bodies | Proposed |
+| [0010](./0010-collar-block.md) | The collar block of two intersecting bodies | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

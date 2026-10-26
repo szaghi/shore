@@ -446,6 +446,63 @@ class BuildTipCap(Command):
 
 
 @dataclass(frozen=True)
+class BuildCollar(Command):
+    """Collar block around the junction of the loaded body and *other* (ADR 0010).
+
+    Body A is the project's geometry, body B is loaded from the file *other*
+    (its path is what the journal records). Surface steps are
+    ``ds_surface * growth_surface**j`` (*m_a* on A, *m_b* on B), wall-normal
+    steps ``ds_wall * growth_wall**k`` (*nk* of them). Replaces the mesh with
+    the one collar block, a separate Chimera component.
+    """
+
+    method: ClassVar[str] = "build_collar"
+    positional: ClassVar[tuple[str, ...]] = ("other",)
+
+    other: str
+    seed: tuple[float, float, float]
+    n_loop: int
+    ds_surface: float
+    growth_surface: float
+    m_a: int
+    m_b: int
+    ds_wall: float
+    growth_wall: float
+    nk: int
+    label: str = "collar"
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.collar import build_collar
+        from shore.geometry import load_geometry
+
+        if project.body is None:
+            raise ParameterError("build_collar needs a body: call load_geometry first.")
+        for name in ("m_a", "m_b", "nk"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ParameterError(f"{name} must be an integer >= 1, got {value!r}.")
+        block = build_collar(
+            project.body.geometry,
+            load_geometry(self.other),
+            np.asarray(self.seed, dtype=np.float64),
+            n_loop=self.n_loop,
+            steps_a=self.ds_surface * self.growth_surface ** np.arange(self.m_a),
+            steps_b=self.ds_surface * self.growth_surface ** np.arange(self.m_b),
+            steps_k=self.ds_wall * self.growth_wall ** np.arange(self.nk),
+            label=self.label,
+        )
+        prev = (project.mesh, project.build)
+        # no body association: k_lo lies on two bodies
+        project.mesh = Mesh(body=None, blocks=[block], topology=None)  # type: ignore[arg-type]
+        project.build = BuildState("collar", self.nk + 1, marchable=False)
+
+        def restore() -> None:
+            project.mesh, project.build = prev
+
+        return Undo(restore)
+
+
+@dataclass(frozen=True)
 class LoadBlocks(Command):
     """Blocks from ``.geo`` files, wired from adjacency sidecars; replaces the mesh."""
 

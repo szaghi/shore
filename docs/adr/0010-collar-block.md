@@ -1,6 +1,6 @@
 # 0010 — The collar block of two intersecting bodies
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -136,3 +136,53 @@ interface. It passes 23 of the 26 cases. It fails exactly three:
 3. Body B enters the project by file path inside the command, and the
    project still holds one body. Multi-component projects (named
    geometries) would be the general answer. Defer?
+
+## Review decisions (2026-10-26, user)
+
+1. **One quality floor** (min scaled Jacobian >= 0.05). Per-junction floors
+   would freeze the prototype's numbers rather than a requirement; K2's
+   fold count catches regressions.
+2. **Thick collars at sharp junctions stay out of scope.** The likely fix,
+   offsetting in 3-D instead of per loop-station plane, is a follow-up with
+   its own prototype.
+3. **Multi-component projects deferred.** Known limitation: the journal
+   records body B by path, so a saved project replays only while that file
+   is still there.
+
+## Acceptance (2026-10-26): collar-block spec met
+
+`src/shore/collar.py` implements the decision; `Project.build_collar`
+(`BuildCollar`) wraps it. Differences from the prototype:
+- Winslow solved by Picard iteration with one SuperLU factorisation per
+  step for all loop-station sheets and the three coordinates at once,
+  converged to 1e-12 of the collar thickness (58-85 steps), instead of
+  4,000 Jacobi sweeps;
+- the swallowtail search is vectorised;
+- the junction spacing *h* is the smaller first surface step on either
+  side; the out-of-plane part of the offset follows the B / A split also
+  when `len(steps_a) != len(steps_b)`;
+- argument checks (`n_loop`, `steps_*`; `m_a`, `m_b`, `nk` and a loaded
+  body in the command). The collar mesh carries no body association: its
+  wall lies on two bodies.
+
+**Verdict for `tests/spec/test_collar.py`: 26 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 10
+`@PENDING` lines are removed. Full suite: 1324 passed, 0 xfailed.
+
+Measured (T1, the spec's settings):
+
+| Pair | Time | Folded | Min scaled Jacobian | First cell / `steps_k[0]` | Envelope / thickness |
+|---|---|---|---|---|---|
+| plane × cylinder | 1.7 s | 0 | 0.491 | 0.992-1.000 | 1.000-1.000 |
+| tilted plane × cylinder | 2.5 s | 0 | 0.081 | 0.984-1.000 | 0.998-1.000 |
+| cylinder × cylinder | 1.8 s | 0 | 0.532 | 0.985-1.000 | 0.998-1.002 |
+| sphere × offset cylinder | 1.6 s | 0 | 0.660 | 0.990-1.001 | 0.997-1.001 |
+| required | | 0 | >= 0.05 | 0.95-1.05 | 0.99-1.01 |
+
+The fully converged solve gives the tilted junction the prototype's
+0.081: the floor's 1.6× margin did not depend on stopping early.
+
+**Unit tests** (`tests/test_collar.py`): the swallowtail cut and the
+junction's image; a perturbed tensor-product sheet returns to the exact
+TFI solution under Winslow with Thomas-Middlecoff (1e-9); the command
+without a body.
