@@ -19,6 +19,7 @@ from shore.surface.remesh import (
     project_caps_to_surface,
     sphere_latlon_directions,
 )
+from shore.volume.hyperbolic import _stl_normals
 
 
 @dataclass
@@ -131,8 +132,19 @@ class Body:
         return AnchoredCaster(self.geometry, self.anchor, snap=True)
 
     def normals(self, points: np.ndarray) -> np.ndarray:
-        """Unit outward surface normals at the closest body points (..., 3)."""
-        return self.geometry.project(points).normals
+        """Unit outward surface normals at the closest body points (..., 3).
+
+        The marcher's normal blending (``blend_normals_k``) reads these. A CAD
+        body gives its exact geometry normals. An STL body gives the blend of
+        trimesh's vertex normals (``_stl_normals``), not the crease-aware
+        normals of ``StlGeometry`` (ADR 0014): those jump by the edge angle
+        across a sharp edge, and blended into the first marching steps they
+        fold the cells straddling it (ADR 0015).
+        """
+        if self.is_cad:
+            return self.geometry.project(points).normals
+        pts = np.asarray(points, dtype=np.float64)
+        return _stl_normals(self.mesh, pts.reshape(-1, 3)).reshape(pts.shape)
 
     # ------------------------------------------------------------------
     # Projection

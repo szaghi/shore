@@ -22,6 +22,7 @@ by a later record that supersedes it.
 | [0012](./0012-march-ends-on-a-plane.md) | Surface marching with ends on a symmetry plane | Accepted |
 | [0013](./0013-half-collar-block.md) | The half-collar block on a symmetry plane | Accepted |
 | [0014](./0014-crease-aware-stl-normals.md) | Crease-aware STL surface normals | Accepted |
+| [0015](./0015-stl-normals-for-marching-blend.md) | STL normals for the marcher's normal blending | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

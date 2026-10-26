@@ -141,3 +141,11 @@ job's verdict comes from CI.
 
 The existing check that `project` matches `_stl_normals` on the icosphere
 is renamed: it holds because no edge there is sharper than 30°.
+
+## Correction (2026-10-26, ADR 0015)
+
+The claim above that the legacy `shore mesh` path was untouched was wrong.
+The legacy marchers read STL normals through `Body.normals`, which called
+`StlGeometry`. Marches with `blend_normals_k > 0` on STLs with sharp edges
+changed, and on a cylinder the blended cubed-sphere march folded. ADR 0015
+restores the old normals for the blend.
