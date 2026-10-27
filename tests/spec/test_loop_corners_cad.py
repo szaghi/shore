@@ -61,7 +61,6 @@ def cad_wing(closed_te: bool):
 
 class TestCadWings:
     @pytest.mark.parametrize("closed_te", [True, False], ids=["sharp", "blunt"])
-    @PENDING
     def test_k6_cad_wing_through_a_plate(self, closed_te):
         from shore.surface.intersect import TraceParams, intersection_loop
 

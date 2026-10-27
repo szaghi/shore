@@ -33,6 +33,7 @@ resampling above, bit for bit.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -60,6 +61,10 @@ class TraceParams:
     refine_min: float = 1e-5  # ... or its segments are this short (a corner)
     curvature_window: float = 0.5  # curvature averaged over this fraction of a uniform cell
     max_cell_ratio: float = 1.2  # adjacent cells of the curvature distribution
+    # corners (ADR 0021)
+    corner_deg: float = 30.0  # a step whose tangent turns more is checked for a corner
+    corner_scale: float = 1e-6  # ... down to this step: a failure there is a corner
+    ring_iterations: int = 200  # alternating projections onto the curve and a sphere
 
 
 DEFAULT = TraceParams()
@@ -126,7 +131,9 @@ def intersection_loop(
     start = tracer.polish(x[None])[0]
     if not tracer.on_curve(start[None]).all():
         raise ParameterError(f"no intersection of the two bodies near the seed {x.tolist()}.")
-    polyline = tracer.trace(start)
+    polyline, corners = tracer.trace(start)
+    if corners:  # a node on every corner (ADR 0021)
+        return _resample(tracer, polyline, [0, *corners], n, spacing, curvature, closed=True)
 
     # resample by arc length (closing segment included) and polish onto both bodies
     if not default:
@@ -227,9 +234,16 @@ def intersection_curve(
         raise ParameterError(f"no intersection of the two bodies near the seed {x.tolist()}.")
     if float((start - point) @ oriented) <= params.on_curve * diag:
         raise ParameterError("the seed's junction point is not on the seed's side of the plane.")
-    ahead = tracer.trace_to_plane(start, 1.0, point, oriented)
-    behind = tracer.trace_to_plane(start, -1.0, point, oriented)
+    ahead, corners_ahead = tracer.trace_to_plane(start, 1.0, point, oriented)
+    behind, corners_behind = tracer.trace_to_plane(start, -1.0, point, oriented)
     polyline = np.vstack([behind[::-1], ahead[1:]])  # along n_b x n_a
+    if corners_ahead or corners_behind:  # a node on every corner (ADR 0021)
+        last = len(behind) - 1
+        corners = sorted([last - i for i in corners_behind] + [last + i for i in corners_ahead])
+        fixed = [0, *corners, len(polyline) - 1]
+        return _resample(
+            tracer, polyline, fixed, n, spacing, curvature, closed=False, plane=(point, normal)
+        )
 
     if not default:
         polyline = tracer.refine(polyline, closed=False)
@@ -264,6 +278,8 @@ class _Tracer:
     ) -> None:
         self.a, self.b, self.ea, self.eb = body_a, body_b, entity_a, entity_b
         self.diag, self.params = diag, params
+        self._sign = 1.0
+        self._plane: tuple[np.ndarray, np.ndarray] | None = None
 
     def polish(self, x: np.ndarray, tolerance: float | None = None) -> np.ndarray:
         """Alternating projections onto A and B until the points stop moving."""
@@ -276,10 +292,14 @@ class _Tracer:
                 break
         return x
 
-    def refine(self, polyline: np.ndarray, *, closed: bool) -> np.ndarray:
+    def refine(
+        self, polyline: np.ndarray, *, closed: bool, fixed: list[int] | None = None
+    ) -> np.ndarray:
         """Bisect the segments next to vertices that turn more than
         ``refine_turn_deg``, new points polished onto both bodies, until none
-        does or the segments reach ``refine_min`` (a corner)."""
+        does or the segments reach ``refine_min`` (a corner). With *fixed*
+        (vertex indices), returns ``(polyline, fixed)`` with them renumbered."""
+        index = None if fixed is None else np.asarray(fixed, dtype=np.int64)
         max_turn = np.radians(self.params.refine_turn_deg)
         min_len = self.params.refine_min * self.diag
         for _ in range(30):
@@ -294,10 +314,14 @@ class _Tracer:
                 0.5 * (pts[:-1][split] + pts[1:][split]), self.params.trace_tolerance
             )
             where = np.flatnonzero(split) + 1
+            if index is not None:
+                index = index + np.searchsorted(where, index, side="right")
             polyline = np.insert(pts, where, mids, axis=0)
             if closed:
                 polyline = polyline[:-1]
-        return polyline
+        if index is None:
+            return polyline
+        return polyline, [int(i) for i in index]  # type: ignore[return-value]
 
     def on_curve(self, x: np.ndarray) -> np.ndarray:
         tol = self.params.on_curve * self.diag
@@ -317,18 +341,33 @@ class _Tracer:
             )
         return t / norm
 
-    def trace(self, start: np.ndarray) -> np.ndarray:
-        """Predictor-corrector along n_b x n_a until the trace closes on *start*."""
+    def trace(self, start: np.ndarray) -> tuple[np.ndarray, list[int]]:
+        """Predictor-corrector along n_b x n_a until the trace closes on *start*.
+
+        Returns the polyline and the indices of its corners (ADR 0021).
+        """
+        self._sign = 1.0
         h = self.params.step * self.diag
-        points = [start]
+        points, corners = [start], []
         travelled = 0.0
+        t_next = None
         for _ in range(self.params.max_steps):
             x = points[-1]
+            t = self.direction(x) if t_next is None else t_next
+            t_next = None
             # a traced point only steers the next step: the output nodes are polished later
-            y = self.polish((x + h * self.direction(x))[None], self.params.trace_tolerance)[0]
+            y = self.polish((x + h * t)[None], self.params.trace_tolerance)[0]
+            if not self._good(x, t, y, h):
+                corner = self._fine(x, t, h / 16.0, 1.5 * h)
+                if corner is not None:
+                    c, t_next = corner
+                    travelled += float(np.linalg.norm(c - x))
+                    _add_corner(points, corners, c, self.params.on_curve * self.diag)
+                    continue
+                _check_progress(x, y, h)  # else a tight smooth bend: the plain step
             travelled += float(np.linalg.norm(y - x))
             if travelled > 4.0 * h and np.linalg.norm(y - start) < 1.5 * h:
-                return np.array(points)
+                return np.array(points), corners
             points.append(y)
         raise ParameterError(
             f"the intersection trace did not close within {self.params.max_steps} steps."
@@ -336,34 +375,157 @@ class _Tracer:
 
     def trace_to_plane(
         self, start: np.ndarray, sign: float, point: np.ndarray, normal: np.ndarray
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, list[int]]:
         """Trace along ``sign * n_b x n_a`` until the plane (*normal* to the kept side).
 
         A step that reaches the plane within the on-curve tolerance, or
         crosses it, ends the trace: on a half model the bodies stop at the
-        plane, so the trace lands on it and would stall there.
+        plane, so the trace lands on it and would stall there. Returns the
+        polyline and the indices of its corners (ADR 0021).
         """
+        self._sign = sign
+        self._plane = (point, normal)
         h = self.params.step * self.diag
         reach = self.params.on_curve * self.diag
-        points = [start]
+        points, corners = [start], []
         travelled = 0.0
-        for _ in range(self.params.max_steps):
-            x = points[-1]
-            y = self.polish((x + sign * h * self.direction(x))[None], self.params.trace_tolerance)
-            y = y[0]
-            if float((y - point) @ normal) <= reach:
-                points.append(self.end_on_plane(y, point, normal))
-                return np.array(points)
-            travelled += float(np.linalg.norm(y - x))
-            if travelled > 4.0 * h and np.linalg.norm(y - start) < 1.5 * h:
-                raise ParameterError(
-                    "the intersection curve closes without meeting the plane "
-                    "(use intersection_loop)."
-                )
-            points.append(y)
+        t_next = None
+        try:
+            for _ in range(self.params.max_steps):
+                x = points[-1]
+                t = sign * self.direction(x) if t_next is None else t_next
+                t_next = None
+                y = self.polish((x + h * t)[None], self.params.trace_tolerance)[0]
+                if float((y - point) @ normal) <= reach:
+                    points.append(self.end_on_plane(y, point, normal))
+                    return np.array(points), corners
+                if not self._good(x, t, y, h):
+                    corner = self._fine(x, t, h / 16.0, 1.5 * h)
+                    if corner is not None:
+                        c, t_next = corner
+                        travelled += float(np.linalg.norm(c - x))
+                        _add_corner(points, corners, c, self.params.on_curve * self.diag)
+                        continue
+                    stalled = np.linalg.norm(y - x) <= 0.5 * h
+                    if stalled and float((y - point) @ normal) <= h:  # on a half body's cut
+                        points.append(self.end_on_plane(y, point, normal))
+                        return np.array(points), corners
+                    _check_progress(x, y, h)
+                travelled += float(np.linalg.norm(y - x))
+                if travelled > 4.0 * h and np.linalg.norm(y - start) < 1.5 * h:
+                    raise ParameterError(
+                        "the intersection curve closes without meeting the plane "
+                        "(use intersection_loop)."
+                    )
+                points.append(y)
+        finally:
+            self._plane = None
         raise ParameterError(
             f"the intersection trace did not reach the plane within {self.params.max_steps} steps."
         )
+
+    # -- corners (ADR 0021) ----------------------------------------------------
+
+    def _tangent(self, x: np.ndarray) -> np.ndarray:
+        return self._sign * self.direction(x)
+
+    def _good(self, x: np.ndarray, t: np.ndarray, y: np.ndarray, h: float) -> bool:
+        """A plain step: it advanced, along *t*, and the tangent turned less
+        than ``corner_deg`` (else a corner, or a bend tighter than the step)."""
+        step = y - x
+        if np.linalg.norm(step) <= 0.5 * h or _angle_deg(step, t) >= self.params.corner_deg:
+            return False
+        try:
+            return _angle_deg(t, self._tangent(y)) < self.params.corner_deg
+        except ParameterError:
+            return False
+
+    def _fine(
+        self, x: np.ndarray, t: np.ndarray, h: float, length: float
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """Walk about *length* from *x* with step *h*, refining recursively where
+        a step fails; the first corner found (point, outgoing tangent), or None."""
+        travelled = 0.0
+        while travelled < length:
+            y = self.polish((x + h * t)[None], self.params.trace_tolerance)[0]
+            if self._plane is not None and float((y - self._plane[0]) @ self._plane[1]) <= h:
+                return None  # the plane comes first (a half body may end there)
+            if not self._good(x, t, y, h):
+                if h <= self.params.corner_scale * self.diag:
+                    return self._turn(x, t, h)
+                corner = self._fine(x, t, h / 16.0, 1.5 * h)
+                if corner is not None:
+                    return corner
+                _check_progress(x, y, h)
+            travelled += float(np.linalg.norm(y - x))
+            x, t = y, self._tangent(y)
+        return None
+
+    def _turn(self, x: np.ndarray, t1: np.ndarray, h: float) -> tuple[np.ndarray, np.ndarray]:
+        """The corner just ahead of *x* (incoming tangent *t1*), located, and the
+        outgoing tangent."""
+        back = x - 2.0 * h * t1
+        ahead = [q for q in self._ring(x, 2.0 * h, (t1, -t1)) if np.linalg.norm(q - back) > 0.5 * h]
+        if not ahead:
+            raise ParameterError(
+                f"the intersection curve has a corner near {x.tolist()} with no outgoing branch."
+            )
+        p = max(ahead, key=lambda q: float(np.linalg.norm(q - back)))
+        t2 = self._tangent(p)
+        c = self._locate(x, t1, p, t2)
+        if c is None:
+            raise ParameterError(
+                f"the intersection trace stalls near {x.tolist()} without a corner there."
+            )
+        return c, t2
+
+    def _locate(
+        self, x: np.ndarray, t1: np.ndarray, p: np.ndarray, t2: np.ndarray
+    ) -> np.ndarray | None:
+        """The corner between *x* (tangent *t1*) and *p* (tangent *t2*): the
+        crossing of the two branches' tangent lines, from points ever closer to
+        it; None when the branches turn less than ``corner_deg`` there."""
+        c = _crossing(x, t1, p, t2)
+        d = max(float(np.linalg.norm(c - x)), float(np.linalg.norm(c - p)))
+        while d > 1e-9 * self.diag:
+            d /= 8.0
+            ring = self._ring(c, d, (t1, -t1, t2, -t2))
+            before = [q for q in ring if (q - c) @ t1 < 0.0]
+            after = [q for q in ring if (q - c) @ t2 > 0.0]
+            if not before or not after:
+                break
+            p1 = min(before, key=lambda q: _angle_deg(self._tangent(q), t1))
+            p2 = min(after, key=lambda q: _angle_deg(self._tangent(q), t2))
+            t1, t2 = self._tangent(p1), self._tangent(p2)
+            if _angle_deg(t1, t2) < self.params.corner_deg:
+                return None
+            c = _crossing(p1, t1, p2, t2)
+        return self.polish(c[None])[0]
+
+    def _ring(self, c: np.ndarray, r: float, hints: tuple[np.ndarray, ...]) -> list[np.ndarray]:
+        """The curve's points at distance *r* from *c*: alternating projections
+        onto A, B and the sphere, from 26 directions and the *hints*."""
+        dirs = np.vstack([_DIRECTIONS, *(np.asarray(h)[None] / np.linalg.norm(h) for h in hints)])
+        x = c + r * dirs
+        tol = self.params.tolerance * self.diag
+        done = np.zeros(len(x), dtype=bool)
+        for _ in range(self.params.ring_iterations):
+            active = np.flatnonzero(~done)
+            if not len(active):
+                break
+            y = self.b.project(self.a.project(x[active], self.ea).points, self.eb).points
+            v = y - c
+            norm = np.linalg.norm(v, axis=1, keepdims=True)
+            y = np.where(norm > 0.0, c + r * v / np.where(norm > 0.0, norm, 1.0), y)
+            moved = np.linalg.norm(y - x[active], axis=1)
+            x[active] = y
+            done[active[moved <= tol]] = True
+        keep = done & self.on_curve(x) & (np.abs(np.linalg.norm(x - c, axis=1) - r) <= 1e-6 * r)
+        out: list[np.ndarray] = []
+        for q in x[keep]:
+            if all(np.linalg.norm(q - o) > 0.05 * r for o in out):
+                out.append(q)
+        return out
 
     def end_on_plane(self, x: np.ndarray, point: np.ndarray, normal: np.ndarray) -> np.ndarray:
         """Newton steps along the curve tangent onto the plane, polished onto both bodies."""
@@ -415,6 +577,80 @@ def _turning(polyline: np.ndarray, closed: bool) -> np.ndarray:
     c = np.einsum("ij,ij->i", t1, t2) / (np.linalg.norm(t1, axis=1) * np.linalg.norm(t2, axis=1))
     angle = np.arccos(np.clip(c, -1.0, 1.0))
     return angle if closed else np.r_[0.0, angle, 0.0]
+
+
+def _resample(
+    tracer: _Tracer,
+    polyline: np.ndarray,
+    fixed: list[int],
+    n: int,
+    spacing: Spacing1D | None,
+    curvature: float,
+    *,
+    closed: bool,
+    plane: tuple[np.ndarray, np.ndarray] | None = None,
+) -> np.ndarray:
+    """Nodes of a curve with fixed vertices (the start or ends, and corners):
+    each segment between them gets cells in proportion to its length (its
+    monitor integral with *curvature*) and the law of ADR 0020 by itself."""
+    params = tracer.params
+    polyline, fixed = tracer.refine(polyline, closed=closed, fixed=fixed)  # type: ignore[misc]
+    pts = np.vstack([polyline, polyline[:1]]) if closed else polyline
+    s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+    ends = [*fixed, len(pts) - 1] if closed else list(fixed)
+    total = n if closed else n - 1
+    if total < len(ends) - 1:
+        raise ParameterError(
+            f"n = {n} is too small for the {len(ends) - 1} segments between the curve's "
+            "corners: give each at least one cell."
+        )
+    kappa = None
+    if curvature > 0.0:
+        if closed:
+            kappa = _windowed_curvature(polyline, s, n, params)
+            kappa = np.r_[kappa, kappa[:1]]
+        else:
+            point, normal = plane  # type: ignore[misc]
+            inner = polyline[-2:0:-1]
+            loop = np.vstack([polyline, inner - 2.0 * ((inner - point) @ normal)[:, None] * normal])
+            closed_loop = np.vstack([loop, loop[:1]])
+            sl = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(closed_loop, axis=0), axis=1))]
+            kappa = _windowed_curvature(loop, sl, 2 * (n - 1), params)[: len(polyline)]
+        m = 1.0 + curvature * kappa * s[-1] / (2.0 * np.pi)
+        measure = np.r_[0.0, np.cumsum(0.5 * (m[1:] + m[:-1]) * np.diff(s))]
+    else:
+        measure = s
+    cells = _allocate(np.diff(measure[ends]), total)
+    target, node_of_fixed = [], []
+    for (a, b), count in zip(itertools.pairwise(ends), cells, strict=True):
+        node_of_fixed.append(sum(len(t) for t in target))
+        seg_s = s[a : b + 1] - s[a]
+        seg_k = None if kappa is None else kappa[a : b + 1]
+        x = _distribution(seg_s, int(count) + 1, spacing, curvature, seg_k, params, closed=False)
+        target.append(s[a] + x[:-1])
+    if not closed:
+        node_of_fixed.append(sum(len(t) for t in target))
+        target.append(s[-1:])
+    target = np.concatenate(target)
+    nodes = np.stack([np.interp(target, s, pts[:, k]) for k in range(3)], axis=-1)
+    free = np.ones(len(nodes), dtype=bool)
+    free[node_of_fixed] = False
+    nodes[free] = tracer.polish(nodes[free])
+    nodes[node_of_fixed] = pts[ends[: len(node_of_fixed)]]
+    return nodes
+
+
+def _allocate(measure: np.ndarray, total: int) -> np.ndarray:
+    """Cells per segment in proportion to *measure*, each at least one
+    (largest remainders)."""
+    share = measure / measure.sum() * total
+    cells = np.maximum(1, np.floor(share)).astype(np.int64)
+    while cells.sum() > total:
+        over = np.where(cells > 1, cells - share, -np.inf)
+        cells[int(np.argmax(over))] -= 1
+    while cells.sum() < total:
+        cells[int(np.argmax(share - cells))] += 1
+    return cells
 
 
 def _windowed_curvature(loop: np.ndarray, s: np.ndarray, n: int, params: TraceParams) -> np.ndarray:
@@ -477,3 +713,49 @@ def _distribution(
         x = np.r_[0.0, np.cumsum(h * (length / h.sum()))]
     law = xi if spacing is None else spacing.build(cells + 1, 0.0, 1.0)
     return np.interp(law, xi, x)
+
+
+# -- corners (ADR 0021) ----------------------------------------------------------
+
+_DIRECTIONS = np.array(
+    [
+        [i, j, k]
+        for i in (-1, 0, 1)
+        for j in (-1, 0, 1)
+        for k in (-1, 0, 1)
+        if (i, j, k) != (0, 0, 0)
+    ],
+    dtype=np.float64,
+)
+_DIRECTIONS /= np.linalg.norm(_DIRECTIONS, axis=1, keepdims=True)
+
+
+def _angle_deg(u: np.ndarray, v: np.ndarray) -> float:
+    c = float(u @ v) / (float(np.linalg.norm(u)) * float(np.linalg.norm(v)))
+    return float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0))))
+
+
+def _crossing(p1: np.ndarray, t1: np.ndarray, p2: np.ndarray, t2: np.ndarray) -> np.ndarray:
+    """Midpoint of the closest points of two lines (of parallel ones: of *p1*, *p2*)."""
+    w = p1 - p2
+    a, b, c = t1 @ t1, t1 @ t2, t2 @ t2
+    d, e = t1 @ w, t2 @ w
+    den = a * c - b * b
+    if den <= 1e-12 * a * c:
+        return 0.5 * (p1 + p2)
+    return 0.5 * (p1 + (b * e - c * d) / den * t1 + p2 + (a * e - b * d) / den * t2)
+
+
+def _check_progress(x: np.ndarray, y: np.ndarray, h: float) -> None:
+    if np.linalg.norm(y - x) <= 0.5 * h:
+        raise ParameterError(f"the intersection trace stalls near {x.tolist()} without a corner.")
+
+
+def _add_corner(points: list[np.ndarray], corners: list[int], c: np.ndarray, tol: float) -> None:
+    """Append corner *c*; a traced point already on it (a step that landed on
+    the corner) becomes the corner instead."""
+    if len(points) > 1 and np.linalg.norm(points[-1] - c) <= tol:
+        points[-1] = c
+    else:
+        points.append(c)
+    corners.append(len(points) - 1)

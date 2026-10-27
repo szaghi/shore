@@ -66,7 +66,11 @@ coordinate. On a half-collar the curvature is measured together with its
 mirror image, so the ends on the plane are clustered too.
 
 Junction curves with corners (a sharp or blunt trailing edge through a
-plate) are not supported yet: the curve tracer stops at the corner.
+plate, a prismatic strut) are traced: every corner, where the curve turns
+by 30 degrees or more, becomes a node, and each segment between corners
+(and the seed) gets cells in proportion to its length and the law by
+itself (ADR 0021). The collar block itself still folds at such corners:
+a collar that wraps a trailing edge is a later step.
 
 ## Projects
 

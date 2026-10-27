@@ -148,3 +148,72 @@ class TestCollarJournal:
             "post.stl", (0.5, 0.0, 0.0), 16, 0.02, 1.15, 5, 5, 1e-3, 1.25, 8, loop_curvature=1.0
         )
         assert "loop_curvature=1.0" in spaced.to_source()
+
+
+class TestCornerHelpers:
+    """Helpers of the corner-aware tracer (ADR 0021)."""
+
+    def test_crossing_of_two_lines(self):
+        from shore.surface.intersect import _crossing
+
+        c = _crossing(
+            np.array([0.0, 0, 0]),
+            np.array([1.0, 0, 0]),
+            np.array([1.0, 1, 0]),
+            np.array([0, 1.0, 0]),
+        )
+        np.testing.assert_allclose(c, [1.0, 0.0, 0.0], atol=1e-15)
+        # parallel lines: the midpoint of the two points
+        p = _crossing(
+            np.array([0.0, 0, 0]),
+            np.array([1.0, 0, 0]),
+            np.array([0.0, 2, 0]),
+            np.array([2.0, 0, 0]),
+        )
+        np.testing.assert_allclose(p, [0.0, 1.0, 0.0])
+
+    def test_allocate_keeps_one_cell_per_segment(self):
+        from shore.surface.intersect import _allocate
+
+        cells = _allocate(np.array([10.0, 0.01, 0.01, 10.0]), 20)
+        assert cells.sum() == 20 and cells.min() >= 1
+        assert list(cells) == [9, 1, 1, 9]
+        np.testing.assert_array_equal(_allocate(np.array([1.0, 2.0, 1.0]), 8), [2, 4, 2])
+
+    def test_add_corner_replaces_a_point_on_it(self):
+        from shore.surface.intersect import _add_corner
+
+        points, corners = [np.zeros(3), np.array([1.0, 0, 0])], []
+        _add_corner(points, corners, np.array([1.0, 0, 1e-12]), 1e-9)
+        assert len(points) == 2 and corners == [1] and points[1][2] == 1e-12
+        _add_corner(points, corners, np.array([2.0, 0, 0]), 1e-9)
+        assert len(points) == 3 and corners == [1, 2]
+
+    def test_refine_renumbers_fixed_vertices(self):
+        from shore.surface.intersect import DEFAULT, _Tracer
+
+        class Still:
+            bounds = np.array([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]])
+
+            def project(self, points, entity=None):
+                from shore.geometry import Projection
+
+                p = np.asarray(points, dtype=np.float64)
+                return Projection(p, np.zeros(len(p)), None, None, None)
+
+        square = np.array([[0.0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]])
+        tracer = _Tracer(Still(), Still(), None, None, 2.0 * np.sqrt(3.0), DEFAULT)
+        fine, fixed = tracer.refine(square, closed=True, fixed=[0, 1, 2, 3])
+        np.testing.assert_array_equal(fine[fixed], square)
+
+    def test_ring_finds_both_branches(self):
+        from shore.surface.intersect import DEFAULT, _Tracer
+        from tests.spec.test_intersection import CylinderZ, Plane
+
+        a, b = Plane(), CylinderZ()
+        tracer = _Tracer(a, b, None, None, float(np.linalg.norm([4.0, 4, 4])), DEFAULT)
+        ring = tracer._ring(np.array([1.0, 0, 0]), 0.1, ())
+        assert len(ring) == 2  # the unit circle crosses the sphere twice
+        for q in ring:
+            assert abs(np.linalg.norm(q - [1.0, 0, 0]) - 0.1) <= 1e-9
+            assert abs(np.hypot(q[0], q[1]) - 1.0) <= 1e-9 and abs(q[2]) <= 1e-12

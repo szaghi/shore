@@ -1,6 +1,6 @@
 # 0021 — Junction curves with corners
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-27
 
 ## Context
@@ -161,12 +161,52 @@ spin through 200 000 steps (minutes) before failing.
 - corners under 30°;
 - cusps.
 
-### Review questions
+### Review (2026-10-27, user decisions)
 
-1. **Expose the corners.** Should `intersection_loop` / `intersection_curve`
-   return the corner node indices, for example through `return_corners=True`?
-   The collar-at-corners step will need them.
-2. **The 30° threshold.** Is a fixed 30° right, or should it follow
-   `StlGeometry(crease_deg=...)`?
-3. **Next step:** a collar that wraps corners (the wing-plate junction), or
-   something else?
+1. Corner node indices are not exposed yet: the collar-at-corners ADR adds
+   the API when its consumer exists.
+2. The threshold stays a fixed 30° in `TraceParams.corner_deg` (CAD and
+   analytic bodies have no crease angle).
+3. Next step: a collar that wraps corners.
+
+## Acceptance (2026-10-27): junction curves with corners spec met
+
+**Kernel.** `_Tracer.trace` and `trace_to_plane` check each plain step
+(`_good`) and redo a failed one with `_fine`, a recursive walk of 1/16
+steps.
+- **Corner:** a failure at `corner_scale` is a corner. `_turn` leaves it
+  through `_ring`, and `_locate` places it.
+- **Tight bend:** a walk without a corner keeps the plain step, so smooth
+  traces are bit-identical.
+- **Dedup:** `_add_corner` replaces a traced point that sits on the corner.
+
+`refine` renumbers fixed vertices. `_resample` and `_allocate` give the
+segments their cells and laws.
+
+**Half models.** The first full-suite run failed ADR 0018's L2, a
+half-collar on STL half bodies: one step short of the plane the trace
+stalls on the cut edge of the open half body. It was taken for a corner
+with no way out. The fix:
+- a fine walk stops when the plane is within its step;
+- a stalled main step with the plane within one step ends on the plane,
+  as the old tracer eventually did.
+
+A step that turns more than 30° but still advances is not a stall: the
+half ellipse's tip is next to the plane, and its golden curve stays
+bit-identical.
+
+**Verdicts (T2; `scripts/check_spec.py` reports all files ok):**
+- `tests/spec/test_loop_corners.py`: **22 passed, 0 skipped, 0 xfailed**.
+- `tests/spec/test_loop_corners_cad.py`: **2 passed** (run locally with
+  `shore[cad]`; the CAD job runs it).
+- All 7 `@PENDING` lines are removed.
+
+**Unit tests** (`tests/test_intersection.py`):
+- line crossing, including the parallel fallback;
+- allocation with a minimum of one cell;
+- corner dedup;
+- `refine` keeps fixed vertices;
+- `_ring` finds both branches of a circle.
+
+**Docs.** `docs/reference/collar.md` states that corners are traced and
+that collars still fold there.

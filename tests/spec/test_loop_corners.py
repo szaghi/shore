@@ -250,7 +250,6 @@ def corner_nodes(nodes: np.ndarray, corners) -> tuple[np.ndarray, np.ndarray]:
 
 class TestCorners:
     @pytest.mark.parametrize("name", list(CORNER_PAIRS))
-    @PENDING
     def test_k1_loop_through_corners(self, name):
         make_a, make_b, seed, corners = CORNER_PAIRS[name]
         a, b = make_a(), make_b()
@@ -269,7 +268,6 @@ class TestCorners:
             ("lens", [0.3, 0.03, 0.0], 0.25, [[0.5, 0.0, 0.0]]),
         ],
     )
-    @PENDING
     def test_k2_open_curve_through_corners(self, name, seed, x0, corners):
         make_a, make_b, _, _ = CORNER_PAIRS[name]
         a, b = make_a(), make_b()
@@ -347,7 +345,6 @@ class TestSegments:
     @pytest.mark.parametrize(
         "law", [Spacing1D("uniform"), Spacing1D("tanh2", beta=2.0)], ids=["uniform", "tanh2"]
     )
-    @PENDING
     def test_k4_law_per_segment(self, law):
         make_a, make_b, seed, corners = CORNER_PAIRS["rectangle"]
         spacing = None if law.law == "uniform" else law
@@ -361,7 +358,6 @@ class TestSegments:
             frac = np.linalg.norm(row - row[0], axis=1) / np.linalg.norm(row[-1] - row[0])
             assert np.abs(frac - law.build(cells + 1, 0.0, 1.0)).max() <= 1e-9
 
-    @PENDING
     def test_k4_curvature_clusters_at_corners(self):
         make_a, make_b, seed, corners = CORNER_PAIRS["lens"]
         a, b = make_a(), make_b()
@@ -379,7 +375,6 @@ class TestSegments:
             if len(h) > 1:
                 assert np.max(np.maximum(h[1:] / h[:-1], h[:-1] / h[1:])) <= 1.21
 
-    @PENDING
     def test_k4_too_few_nodes(self):
         make_a, make_b, seed, _ = CORNER_PAIRS["rectangle"]
         with pytest.raises(ParameterError, match="corner"):  # the reason, not a failed trace
@@ -407,7 +402,6 @@ def stl_wing(closed_te: bool):
 
 class TestStlWings:
     @pytest.mark.parametrize("closed_te", [True, False], ids=["sharp", "blunt"])
-    @PENDING
     def test_k5_wing_through_a_plate(self, closed_te):
         plate, wing, te = stl_wing(closed_te)
         start = time.perf_counter()

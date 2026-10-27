@@ -28,7 +28,7 @@ by a later record that supersedes it.
 | [0018](./0018-cli-collars-and-projects.md) | CLI for collars and multi-component projects | Accepted |
 | [0019](./0019-deprecate-normal-blending.md) | Deprecate the marcher's normal blending (`blend_normals_k`) | Accepted |
 | [0020](./0020-junction-curve-spacing.md) | Spacing laws along the junction curve | Accepted |
-| [0021](./0021-junction-curves-with-corners.md) | Junction curves with corners | Proposed |
+| [0021](./0021-junction-curves-with-corners.md) | Junction curves with corners | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
