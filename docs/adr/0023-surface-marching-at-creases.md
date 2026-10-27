@@ -1,6 +1,6 @@
 # 0023 — Surface marching at creases
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-27
 
 ## Context
@@ -122,9 +122,24 @@ Validated with the prototype behind the interface: 22 passed.
 - the collar volume at corners;
 - marching speed on sliver STL triangles.
 
-### Review questions
+### Review (2026-10-27, user decisions)
 
-1. **The threshold.** Is 0.1 (about 6° of lean) right, given STL facets on
-   coarse meshes? It was never crossed on the golden set.
-2. **Next step:** the split collar (sharp TE, the volume at blunt TE
-   corners, concave corners, thick collars), or a 0.3.0 release first?
+1. The threshold stays at 0.1 (`MarchParams.crease_tolerance`).
+2. Next step: release 0.3.0, then the split collar.
+
+## Acceptance (2026-10-27): marching-at-creases spec met
+
+**Kernel.** In `_layer`, nodes with `|n · t̂| > crease_tolerance` get
+`n - (n · t̂) t̂`, normalised. That normal is used for the marching
+direction, the tangential Laplacian and the system's frame.
+
+**Verdict for `tests/spec/test_march_creases.py`: 22 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 5
+`@PENDING` lines are removed.
+
+**Unit test** (`tests/test_surface_march.py`): a square front around an STL
+square prism, whose corners all lie on 90° creases, marches nearly as a
+translation.
+- after the fix: drift 0.012, top layer at z = 0.497-0.517;
+- with the old marcher: drift 0.071, top layer at z = 0.507-0.583, which
+  fails the bounds of 0.02 and 0.48-0.53.

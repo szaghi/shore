@@ -111,13 +111,11 @@ def marches(kind: str, curvature: float):
 
 class TestCreases:
     @pytest.mark.parametrize("kind", ["prism", "stl"])
-    @PENDING
     def test_c1_uniform_no_flips(self, kind):
         a, b, _, on_a, on_b = marches(kind, 0.0)
         assert flipped(a, on_a) == 0
         assert flipped(b, on_b) == 0
 
-    @PENDING
     def test_c1_stl_curvature_no_flips(self):
         a, b, _, on_a, on_b = marches("stl", 1.0)
         assert flipped(a, on_a) == 0
@@ -129,12 +127,10 @@ class TestCreases:
         assert flipped(b, on_b) == 0
 
     @pytest.mark.parametrize("kind", ["prism", "stl"])
-    @PENDING
     def test_c2_uniform_drift(self, kind):
         _, _, loop, _, on_b = marches(kind, 0.0)
         assert np.abs(on_b[:, :, :2] - loop[::-1][:, None, :2]).max() <= 0.08
 
-    @PENDING
     def test_c2_stl_curvature_drift(self):
         _, _, loop, _, on_b = marches("stl", 1.0)
         assert np.abs(on_b[:, :, :2] - loop[::-1][:, None, :2]).max() <= 0.02
@@ -150,7 +146,6 @@ class TestCreases:
 
 
 class TestCollarWall:
-    @PENDING
     def test_c3_blunt_wing_collar_wall(self):
         from shore.collar import build_collar
         from shore.quality import scaled_jacobian

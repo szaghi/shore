@@ -63,3 +63,22 @@ class TestMirror:
         arc = np.c_[np.cos(theta), np.sin(theta), 0.0 * theta]  # ends on y = 0
         t = _central(arc, False, mirror)
         np.testing.assert_allclose(t[[0, -1], [0, 0]], 0.0, atol=1e-15)
+
+
+class TestCrease:
+    """The marching frame at a corner of the front on a crease (ADR 0023)."""
+
+    def test_square_prism_marches_nearly_as_a_translation(self):
+        # a square around a z-extruded square prism: every corner sits on a crease, where
+        # the node normal (one face's) leans 45 deg along the front tangent
+        side = np.linspace(-0.5, 0.5, 9)[:-1]
+        front = np.vstack(
+            [np.c_[side, -0.5 + 0 * side], np.c_[0.5 + 0 * side, side],
+             np.c_[-side, 0.5 + 0 * side], np.c_[-0.5 + 0 * side, -side]]
+        )  # fmt: skip
+        curve = np.c_[front, np.zeros(len(front))]
+        prism = StlGeometry(trimesh.creation.box(extents=(1.0, 1.0, 4.0)))
+        grid = march_surface(prism, curve, np.full(10, 0.05), periodic=True)
+        # nearly a translation (before the fix: 0.071 drift, top layer 0.507-0.583)
+        assert np.abs(grid[:, :, :2] - front[:, None]).max() <= 0.02
+        assert 0.48 <= grid[:, -1, 2].min() and grid[:, -1, 2].max() <= 0.53

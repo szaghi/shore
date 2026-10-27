@@ -56,6 +56,7 @@ class MarchParams:
     area_iters: int = 2
     convergence_gain: float = 16.0  # extra dissipation per unit of front contraction
     distance_clip: float = 2.0  # marching distance kept in [step / clip, step * clip]
+    crease_tolerance: float = 0.1  # |n . t| above this: n made orthogonal to t (ADR 0023)
     end_tolerance: float = 1e-14  # ends on surface and plane, relative to the model diagonal
     end_iterations: int = 100
 
@@ -241,6 +242,14 @@ def _layer(
     n_nodes = r.shape[0]
     t = _central(r, periodic, mirror)
     h = np.linalg.norm(t, axis=-1)
+    # at a crease (a corner of the front on an edge of the surface) the node's normal is
+    # one face's and leans along the front tangent; the scheme assumes n orthogonal to t
+    along = _dot(normal, t) / h
+    crease = np.abs(along) > params.crease_tolerance
+    if crease.any():
+        normal = normal.copy()
+        flat = normal[crease] - (along[crease] / h[crease])[:, None] * t[crease]
+        normal[crease] = flat / np.linalg.norm(flat, axis=-1, keepdims=True)
     b = np.cross(normal, t)
     b /= np.linalg.norm(b, axis=-1, keepdims=True)
     rho = np.minimum(1.0, step / h)
