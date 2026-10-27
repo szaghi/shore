@@ -4,6 +4,65 @@ All notable changes to SHORE are documented here.
 Versions follow [Semantic Versioning](https://semver.org/).
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.0] — 2026-10-27
+### Added
+- **geometry**: Add Geometry protocol with STL and OCCT backends
+
+- **mesh**: Accept STEP/IGES/BREP input across the meshing pipeline
+
+- **mesh**: Associate block entities with geometry ⚠ BREAKING CHANGE
+
+- **project**: Add command layer with replayable journal and shore run
+
+- **project**: Run the Xall pipeline commands over the command layer
+
+- **quality**: Add grid metrics and freeze hyperbolic-marching spec
+
+- **volume**: Add Steger-Chaussee hyperbolic marching scheme
+
+- **surface**: Add TFI and elliptic surface-grid kernel in (u, v)
+
+- **project**: Rebuild a block face on a CAD surface with surface_grid
+
+- **surface**: Add hyperbolic surface marching for collar grids
+
+- **surface**: Trace the intersection loop of two bodies for collars
+
+- **collar**: Build the collar block of two intersecting bodies
+
+- **surface**: Trace open intersection curves ending on a symmetry plane
+
+- **surface**: Hold surface-marching ends on a symmetry plane
+
+- **collar**: Build half-collar blocks on a symmetry plane
+
+- **project**: Hold several geometries and components in a portable project
+
+- **project**: Pass per-component Xall options through write_xall
+
+- **cli**: Build collars and multi-component projects from the CLI
+
+- **mesh**: Deprecate blend_normals_k and refuse it on C-grids
+
+
+### Documentation
+- **adr**: Add architecture decisions and GUI spike for the mesher roadmap
+
+
+### Fixed
+- **volume**: Limit Laplacian smoothing so thin first layers cannot fold ⚠ BREAKING CHANGE
+
+- **volume**: Keep hyperbolic explicit dissipation from acting across seams
+
+- **volume**: March the full step on convex walls in hyperbolic scheme
+
+- **surface**: Reject seam-crossing and singular faces in surface_grid
+
+- **geometry**: Give STL bodies crease-aware surface normals
+
+- **mesh**: Restore vertex normals for the marcher's normal blending
+
+
 ## [0.1.2] — 2026-06-22
 ### Added
 - **balance**: Multi-way equal-partition planner and multi-axis split
