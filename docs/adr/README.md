@@ -31,6 +31,7 @@ by a later record that supersedes it.
 | [0021](./0021-junction-curves-with-corners.md) | Junction curves with corners | Accepted |
 | [0022](./0022-collars-at-blunt-corners.md) | Graded spacing across corners; collars at blunt corners | Accepted |
 | [0023](./0023-surface-marching-at-creases.md) | Surface marching at creases | Accepted |
+| [0024](./0024-split-collar-at-sharp-corners.md) | The split collar at sharp corners | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
