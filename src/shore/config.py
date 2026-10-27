@@ -28,7 +28,7 @@ Schema (single body, ``version = 1``)
     smooth_iters  = 2                        # Laplacian sweeps per layer
     smooth_mode   = "limited"                # limited | legacy (unlimited, folds thin layers)
     march_scheme  = "algebraic"              # algebraic | hyperbolic (Steger-Chaussee)
-    blend_normals_k = 0                      # STL-normal blend window (0 = off)
+    blend_normals_k = 0                      # deprecated (ADR 0019); keep 0
 
     [surface]
     i_spacing = "uniform"                    # uniform | tanh | tanh2

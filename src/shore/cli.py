@@ -178,7 +178,8 @@ _BLEND_K = Annotated[
     int,
     typer.Option(
         "--blend-normals-k",
-        help="Layers over which to blend STL surface normals into grid normals (0 = off).",
+        help="Deprecated (ADR 0019): layers over which to blend body normals into the "
+        "marching direction (0 = off). No measured benefit; refused on C-grids.",
     ),
 ]
 _VERBOSE = Annotated[bool, typer.Option("--verbose", "-v", help="Show rich progress bar.")]
@@ -845,6 +846,12 @@ def mesh(
     blend_normals_k = _pick(
         "blend_normals_k", blend_normals_k, cfg.march.blend_normals_k if cfg else None
     )
+    if blend_normals_k > 0:
+        _err.print(
+            "[yellow]Warning:[/yellow] --blend-normals-k (and [march] blend_normals_k) is "
+            "deprecated (ADR 0019): it showed no benefit over the grid normals, is refused on "
+            "C-grid topologies, and will be removed. Use 0."
+        )
     surface_i_spacing = _pick(
         "surface_i_spacing", surface_i_spacing, cfg.surface.i_spacing if cfg else None
     )

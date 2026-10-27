@@ -48,6 +48,12 @@ from shore.volume.spacing import build_k_steps
 
 _K_EDGE_NAMES = ("i_lo_j_lo", "i_hi_j_lo", "i_lo_j_hi", "i_hi_j_hi")
 
+BLEND_DEPRECATION = (
+    "blend_normals_k is deprecated (ADR 0019): blending body normals into the marching "
+    "direction showed no benefit over the grid normals and is refused on C-grids; it will "
+    "be removed in a future release. Use blend_normals_k=0."
+)
+
 
 def _block_user_k_spacing(block: HexBlock) -> Spacing1D | None:
     """Return *block*'s k-spacing if user-overridden on every k-edge, else None.
@@ -491,7 +497,9 @@ class Mesh:
             grid-computed normals.  0 (default) disables blending.  At layer k
             the blend weight is ``alpha = 1 - k / blend_normals_k`` so k=0
             uses pure STL normals and the blend reaches zero at
-            k=blend_normals_k.  Requires ``self.body.mesh``.
+            k=blend_normals_k.  Requires ``self.body.mesh``.  **Deprecated**
+            (ADR 0019): it showed no benefit over the grid normals, and on
+            C-grid topologies it folds the wake cut, so it is refused there.
         smooth_mode :
             ``'limited'`` (default): the Laplacian smoothing motion is
             limited per node where it would damage the layer (it may pull a
@@ -515,6 +523,13 @@ class Mesh:
             If a negative-Jacobian cell is detected.
         NotImplementedError
             If the topology has no registered marcher.
+        ParameterError
+            ``blend_normals_k > 0`` on a C-grid topology (``cgrid``, ``ch``).
+
+        Warns
+        -----
+        DeprecationWarning
+            ``blend_normals_k > 0``.
         """
         if march_scheme not in ("algebraic", "hyperbolic"):
             raise ParameterError(
@@ -532,6 +547,15 @@ class Mesh:
         if isinstance(self.topology, CGridTipCap):
             # The tip cap is fully volumetric at build time — nothing to march.
             return
+
+        if blend_normals_k > 0:
+            if isinstance(self.topology, (CGridTopology, CHTopology)):
+                raise ParameterError(
+                    "blend_normals_k > 0 is not supported on C-grid topologies: the blend "
+                    "gives the off-body wake-cut nodes the trailing-edge normal and folds "
+                    "the first layer (ADR 0019). Use blend_normals_k=0."
+                )
+            warnings.warn(BLEND_DEPRECATION, DeprecationWarning, stacklevel=2)
 
         if isinstance(self.topology, OHTopology):
             # March the wrap (first 6 blocks) using the cubed-sphere marcher;

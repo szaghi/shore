@@ -114,7 +114,7 @@ def _stl_normals(
 
 Query surface normals at arbitrary world-space points by
 closest-point projection onto a `trimesh.Trimesh`. Used by the
-optional `--blend-normals-k` feature of `shore mesh` to mix
+deprecated `--blend-normals-k` feature of `shore mesh` (ADR 0019) to mix
 grid-computed normals with true STL surface normals near the wall.
 
 **Parameters**

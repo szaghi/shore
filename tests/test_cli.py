@@ -1116,3 +1116,19 @@ class TestCollarProjects:
         assert body.anchor_error is not None
         with pytest.raises(MeshInputError, match="anchor"):
             body.projector  # noqa: B018
+
+
+class TestBlendDeprecation:
+    """blend_normals_k on CH (ADR 0019): refused like the C-grid it wraps."""
+
+    def test_ch_blend_refused(self, naca0012_stl, tmp_path):
+        args = [
+            "mesh", str(naca0012_stl), "--topology", "ch", "--ni-body", "60", "--ni-wake", "15",
+            "--n-stations", "4", "--wake-length", "10.0", "--nk", "8", "--ds", "1e-3",
+            "--ch-chord-min", "-2.0", "--ch-chord-max", "15.0", "--ch-normal-min", "-2.5",
+            "--ch-normal-max", "2.5", "--nk-channel", "4", "-o", str(tmp_path / "w"),
+            "--blend-normals-k", "3",
+        ]  # fmt: skip
+        r = runner.invoke(app, args)
+        assert r.exit_code == 1
+        assert "C-grid" in r.output

@@ -164,7 +164,7 @@ is fully volumetric at build time and `march()` is a **silent no-op**.
 | `smooth_iters` | `int` | `2` | Number of Laplacian sweeps applied after each extrusion step. |
 | `steps` | `np.ndarray \| None` | `None` | Pre-computed per-layer step sizes, shape `(nk-1,)`. Highest precedence — overrides `ds`/`growth` and any per-edge `spacing_k`. |
 | `layer_callback` | `Callable[[int, float], None] \| None` | `None` | Called as `layer_callback(k, jmin_global)` after each accepted layer. The CLI's Rich progress bar uses this hook. |
-| `blend_normals_k` | `int` | `0` | Number of layers over which to blend STL surface normals into the grid-computed normals. `0` disables. At layer `k < blend_normals_k`, blend weight is `alpha = 1 - k / blend_normals_k`, so `k=0` extrudes along pure STL normals and the blend reaches zero at `k = blend_normals_k`. Useful for sharp-feature bodies. Requires `self.body.mesh`. |
+| `blend_normals_k` | `int` | `0` | Number of layers over which to blend STL surface normals into the grid-computed normals. `0` disables. At layer `k < blend_normals_k`, blend weight is `alpha = 1 - k / blend_normals_k`, so `k=0` extrudes along pure STL normals and the blend reaches zero at `k = blend_normals_k`. **Deprecated** (ADR 0019): it showed no benefit over the grid normals; `DeprecationWarning` for `> 0`, `ParameterError` on C-grid topologies. Requires `self.body.mesh`. |
 
 **k-step precedence**
 

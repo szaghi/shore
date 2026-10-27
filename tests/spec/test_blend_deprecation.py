@@ -84,7 +84,6 @@ def deprecations(record) -> list[str]:
 
 
 class TestWarning:
-    @PENDING
     @pytest.mark.parametrize("topology", ["ogrid", "cubed_sphere"])
     def test_b1_mesh_march_warns(self, sphere_stl, topology):
         mesh = sphere_project(sphere_stl, topology).mesh
@@ -94,7 +93,6 @@ class TestWarning:
         messages = deprecations(record)
         assert any("blend_normals_k" in m and "ADR 0019" in m for m in messages), messages
 
-    @PENDING
     def test_b2_project_march_and_replay_warn(self, sphere_stl, tmp_path):
         from shore.project import run_journal
 
@@ -121,7 +119,6 @@ MESH_ARGS = ["--topology", "ogrid", "--ni", "9", "--nj", "16", "--nk", "5", "--d
 
 
 class TestCli:
-    @PENDING
     def test_b3_cli_flag_notice(self, sphere_stl, tmp_path):
         from shore.cli import app
 
@@ -130,7 +127,6 @@ class TestCli:
         assert r.exit_code == 0, r.output
         assert "--blend-normals-k" in r.output and "deprecated" in r.output.lower()
 
-    @PENDING
     def test_b4_config_key_notice(self, sphere_stl, tmp_path):
         from shore.cli import app
 
@@ -162,7 +158,6 @@ class TestDefault:
 
 
 class TestCgrid:
-    @PENDING
     def test_b6_cgrid_blend_raises(self, naca0012_stl):
         from shore.project import Project
 
@@ -176,7 +171,6 @@ class TestCgrid:
                 p.march(blend_normals_k=3)
         assert all(np.array_equal(a, b.nodes) for a, b in zip(before, p.mesh.blocks, strict=True))
 
-    @PENDING
     def test_b7_cgrid_cli_exits(self, naca0012_stl, tmp_path):
         from shore.cli import app
 

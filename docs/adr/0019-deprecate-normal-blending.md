@@ -1,6 +1,6 @@
 # 0019 — Deprecate the marcher's normal blending (`blend_normals_k`)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 
 ## Context
@@ -91,3 +91,29 @@ reports 1 passed and 7 xfailed:
 **Out of scope:**
 - removing the option (a later release);
 - CH beyond sharing the C-grid code path (a unit test).
+
+## Acceptance (2026-10-26): deprecation spec met
+
+**`Mesh.march`.** For `blend_normals_k > 0` it raises `ParameterError` on
+`CGridTopology` / `CHTopology`, before any layer is marched (`Project`
+leaves the mesh unchanged). Otherwise it warns with
+`mesh.BLEND_DEPRECATION`, which names the option and this ADR, and marches
+as before.
+
+**`shore mesh`.** It prints the notice on stderr whenever the resolved
+`blend_normals_k` (flag or config) is positive.
+
+**Docs.** The flag's help, the config template comment,
+`docs/reference/mesh.md` (the example that recommended blending for sharp
+features is removed), `api-mesh.md`, `api-hyperbolic.md` and the running
+guide now mark it deprecated.
+
+**Verdict for `tests/spec/test_blend_deprecation.py`: 8 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 6
+`@PENDING` lines are removed. Full suite: 1465 passed, 0 xfailed. The
+existing tests that march with blending still pass; they now emit the
+deprecation warning, and they keep the deprecated path covered until it
+is removed.
+
+**Unit test** (`tests/test_cli.py`): a CH run with `--blend-normals-k 3`
+exits 1 naming the C-grid.
