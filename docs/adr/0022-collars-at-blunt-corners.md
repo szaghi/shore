@@ -1,6 +1,6 @@
 # 0022 — Graded spacing across corners; collars at blunt corners
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-27
 
 ## Context
@@ -149,11 +149,29 @@ the interface: 13 passed.
 - the STL wing collar;
 - ADR 0020 on smooth curves.
 
-### Review questions
+### Review (2026-10-27, user decisions)
 
-1. **ADR 0020's limiter on smooth curves.** Should a re-freeze replace it
-   with the graded spacing function? Its golden curve in ADR 0021 would
-   change, and saved projects with curvature collars would not replay.
-2. **Next step:** the surface marcher at a clustered leading edge (which
-   unblocks the wing-plate collar), or the split collar for sharp and
-   concave corners?
+1. ADR 0020's limiter on smooth curves is replaced later, in its own
+   re-freeze ADR. That ADR first measures how far clusters move on real
+   cases.
+2. Next step: surface marching at a clustered leading edge.
+
+## Acceptance (2026-10-27): corner-grading spec met
+
+**Kernel.** `_resample` with `curvature > 0` builds the monitor over the
+whole curve. `_graded_spacing` caps `C / m` by cones of slope `ln 1.2` in
+both directions (tripled for a loop), with C found by bisection on the
+cell count. Segments get cells by the integral of 1/g on a sampling at
+0.25 of the smallest spacing and are placed along it. With
+`curvature = 0`, ADR 0021's uniform cells per segment are unchanged.
+
+**Verdict for `tests/spec/test_corner_grading.py`: 13 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). The 3
+`@PENDING` lines are removed. ADR 0020's and 0021's specs pass unchanged.
+
+**Unit test** (`tests/test_intersection.py`): on open and closed curves,
+the graded spacing's slope is at most `ln 1.2`, the cell count is exact,
+and the cluster stays at the corner.
+
+**Docs.** `docs/reference/collar.md` gives the thickness limits at blunt
+corners.

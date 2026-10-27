@@ -620,13 +620,35 @@ def _resample(
         measure = np.r_[0.0, np.cumsum(0.5 * (m[1:] + m[:-1]) * np.diff(s))]
     else:
         measure = s
-    cells = _allocate(np.diff(measure[ends]), total)
+    if kappa is None:
+        cells = _allocate(np.diff(measure[ends]), total)
+        parts = [np.full(int(c), (s[b] - s[a]) / int(c)) for (a, b), c in
+                 zip(itertools.pairwise(ends), cells, strict=True)]  # fmt: skip
+    else:
+        # a graded spacing function over the whole curve, corners included (ADR 0022)
+        m = 1.0 + curvature * kappa * s[-1] / (2.0 * np.pi)
+        g = _graded_spacing(s, 1.0 / m, total, float(np.log(params.max_cell_ratio)), closed)
+        # integrate 1 / g finer than the cells: the polyline's vertices can be a trace
+        # step apart where the cells are much smaller
+        fine = np.unique(np.r_[s, np.arange(0.0, s[-1], 0.25 * g.min())])
+        gf = np.interp(fine, s, g)
+        sigma_f = np.r_[0.0, np.cumsum(0.5 * (1.0 / gf[1:] + 1.0 / gf[:-1]) * np.diff(fine))]
+        sigma = np.interp(s, fine, sigma_f)
+        cells = _allocate(np.diff(sigma[ends]), total)
+        parts = []
+        for (a, b), count in zip(itertools.pairwise(ends), cells, strict=True):
+            sel = (fine >= s[a]) & (fine <= s[b])
+            local = (sigma_f[sel] - sigma[a]) / (sigma[b] - sigma[a])
+            x = np.interp(np.linspace(0.0, 1.0, int(count) + 1), local, fine[sel] - s[a])
+            parts.append(np.diff(x))
     target, node_of_fixed = [], []
-    for (a, b), count in zip(itertools.pairwise(ends), cells, strict=True):
+    for (a, b), h in zip(itertools.pairwise(ends), parts, strict=True):
         node_of_fixed.append(sum(len(t) for t in target))
-        seg_s = s[a : b + 1] - s[a]
-        seg_k = None if kappa is None else kappa[a : b + 1]
-        x = _distribution(seg_s, int(count) + 1, spacing, curvature, seg_k, params, closed=False)
+        x = np.r_[0.0, np.cumsum(h)]
+        x[-1] = s[b] - s[a]
+        if spacing is not None:
+            xi = np.linspace(0.0, 1.0, len(x))
+            x = np.interp(spacing.build(len(x), 0.0, 1.0), xi, x)
         target.append(s[a] + x[:-1])
     if not closed:
         node_of_fixed.append(sum(len(t) for t in target))
@@ -638,6 +660,45 @@ def _resample(
     nodes[free] = tracer.polish(nodes[free])
     nodes[node_of_fixed] = pts[ends[: len(node_of_fixed)]]
     return nodes
+
+
+def _graded_spacing(
+    s: np.ndarray, shape: np.ndarray, cells: int, slope: float, closed: bool
+) -> np.ndarray:
+    """Spacing function at the vertices *s*: ``C * shape`` capped by cones of
+    *slope* (so adjacent cells differ by at most ``1 + slope``), with ``C``
+    such that the curve holds *cells* cells (ADR 0022)."""
+
+    def capped(c: float) -> np.ndarray:
+        g = c * shape
+        if closed:
+            length = s[-1]
+            ext_s = np.r_[s[:-1] - length, s[:-1], s[:-1] + length]
+            ext = np.r_[g[:-1], g[:-1], g[:-1]]
+        else:
+            ext_s, ext = s, g.copy()
+        for i in range(1, len(ext)):
+            ext[i] = min(ext[i], ext[i - 1] + slope * (ext_s[i] - ext_s[i - 1]))
+        for i in range(len(ext) - 2, -1, -1):
+            ext[i] = min(ext[i], ext[i + 1] + slope * (ext_s[i + 1] - ext_s[i]))
+        if closed:
+            mid = ext[len(s) - 1 : 2 * (len(s) - 1)]
+            return np.r_[mid, mid[:1]]
+        return ext
+
+    def count(c: float) -> float:
+        g = capped(c)
+        return float(np.sum(0.5 * (1.0 / g[1:] + 1.0 / g[:-1]) * np.diff(s)))
+
+    lo, hi = 1e-12, 1.0
+    while count(hi) > cells:
+        hi *= 2.0
+    for _ in range(200):
+        mid = np.sqrt(lo * hi)
+        lo, hi = (mid, hi) if count(mid) > cells else (lo, mid)
+        if hi / lo < 1.0 + 1e-12:
+            break
+    return capped(hi)
 
 
 def _allocate(measure: np.ndarray, total: int) -> np.ndarray:

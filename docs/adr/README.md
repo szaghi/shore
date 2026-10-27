@@ -29,7 +29,7 @@ by a later record that supersedes it.
 | [0019](./0019-deprecate-normal-blending.md) | Deprecate the marcher's normal blending (`blend_normals_k`) | Accepted |
 | [0020](./0020-junction-curve-spacing.md) | Spacing laws along the junction curve | Accepted |
 | [0021](./0021-junction-curves-with-corners.md) | Junction curves with corners | Accepted |
-| [0022](./0022-collars-at-blunt-corners.md) | Graded spacing across corners; collars at blunt corners | Proposed |
+| [0022](./0022-collars-at-blunt-corners.md) | Graded spacing across corners; collars at blunt corners | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

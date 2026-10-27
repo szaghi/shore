@@ -69,8 +69,12 @@ Junction curves with corners (a sharp or blunt trailing edge through a
 plate, a prismatic strut) are traced: every corner, where the curve turns
 by 30 degrees or more, becomes a node, and each segment between corners
 (and the seed) gets cells in proportion to its length and the law by
-itself (ADR 0021). The collar block itself still folds at such corners:
-a collar that wraps a trailing edge is a later step.
+itself (ADR 0021). With `--loop-curvature`, one graded spacing runs over the
+whole curve, so adjacent cells stay within 1.2x across the corners too
+(ADR 0022). The collar block is valid at convex corners of up to 90 degrees
+only while it stays thin: up to about 4.7 junction spacings with a uniform
+loop, about 1.9 with `--loop-curvature 1`. Thicker collars, concave and
+sharp corners (a trailing edge) still fold: a split collar is a later step.
 
 ## Projects
 

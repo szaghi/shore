@@ -112,7 +112,6 @@ def check_analytic(name: str) -> None:
 class TestGrading:
     @pytest.mark.parametrize("curvature", [1.0, 3.0])
     @pytest.mark.parametrize("closed_te", [False, True], ids=["blunt", "sharp"])
-    @PENDING
     def test_g1_stl_wing(self, closed_te, curvature):
         loop_kernel, _ = kernels()
         plate, wing, te = stl_wing(closed_te)
@@ -122,14 +121,12 @@ class TestGrading:
         assert corner_nodes(loop, te)[1].max() <= 1e-9 * diag
 
     @pytest.mark.parametrize("name", ["lens", "rectangle", "l_shape"])
-    @PENDING
     def test_g1_analytic_loops(self, name):
         check_analytic(name)
 
     def test_g1_box_edge_loop(self):
         check_analytic("box_edge")  # graded already: no segment much shorter than its cells
 
-    @PENDING
     def test_g1_open_curve(self):
         _, curve_kernel = kernels()
         make_a, make_b, _, _ = CORNER_PAIRS["rectangle"]

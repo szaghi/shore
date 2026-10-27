@@ -217,3 +217,21 @@ class TestCornerHelpers:
         for q in ring:
             assert abs(np.linalg.norm(q - [1.0, 0, 0]) - 0.1) <= 1e-9
             assert abs(np.hypot(q[0], q[1]) - 1.0) <= 1e-9 and abs(q[2]) <= 1e-12
+
+
+class TestGradedSpacing:
+    """The graded spacing function across corners (ADR 0022)."""
+
+    @pytest.mark.parametrize("closed", [True, False])
+    def test_slope_and_cell_count(self, closed):
+        from shore.surface.intersect import _graded_spacing
+
+        s = np.linspace(0.0, 2.0, 2001)
+        shape = np.ones_like(s)
+        shape[1000] = 1e-3  # a corner: the spacing wants to collapse there
+        slope = float(np.log(1.2))
+        g = _graded_spacing(s, shape, 64, slope, closed)
+        assert np.all(np.abs(np.diff(g)) <= slope * np.diff(s) + 1e-12)
+        cells = np.sum(0.5 * (1.0 / g[1:] + 1.0 / g[:-1]) * np.diff(s))
+        assert cells == pytest.approx(64.0, rel=1e-9)
+        assert g[1000] == pytest.approx(g.min())  # the cluster stays at the corner
