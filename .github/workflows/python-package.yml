@@ -22,7 +22,7 @@ jobs:
         run: ruff check src/ tests/
       - name: Format check
         run: ruff format --check src/ tests/
-      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0020)
+      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0021)
         run: python scripts/check_spec.py
 
   test:
@@ -49,7 +49,7 @@ jobs:
         run: pip install -e ".[dev,cad]"
       - name: Run geometry tests
         run: pytest tests/test_geometry.py tests/test_geometry_occt.py tests/test_cad_pipeline.py tests/spec/test_surface_tfi_cad.py
-          tests/test_association.py --no-cov
+          tests/spec/test_loop_corners_cad.py tests/test_association.py --no-cov
 
   build:
     runs-on: ${{ matrix.os }}
