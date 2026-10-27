@@ -235,3 +235,25 @@ class TestGradedSpacing:
         cells = np.sum(0.5 * (1.0 / g[1:] + 1.0 / g[:-1]) * np.diff(s))
         assert cells == pytest.approx(64.0, rel=1e-9)
         assert g[1000] == pytest.approx(g.min())  # the cluster stays at the corner
+
+
+class TestThinWedges:
+    """Corners of a fine sharp trailing edge on sliver STL triangles (ADR 0021 fixes)."""
+
+    @pytest.mark.parametrize("n_pts", [400])
+    def test_fine_sharp_te_traces(self, n_pts):
+        from shore.profiles import naca
+        from shore.shapes import extrude_section
+
+        section = naca("0012", n_pts=n_pts, closed_te=True)  # TE wedge ~16 deg
+        wing = extrude_section(section, span=1.0, n_stations=2, span_axis="z", end_caps=True)
+        wing.apply_translation((0.0, 0.0, -0.3))
+        plate = trimesh.creation.box(extents=(4.0, 4.0, 1.0))
+        plate.apply_translation((0.5, 0.0, -0.5))
+        inverted = wing.copy()
+        inverted.invert()
+        for mesh in (wing, inverted):  # either winding: it only reverses the trace
+            loop = intersection_loop(
+                StlGeometry(plate), StlGeometry(mesh), np.array([0.5, 0.06, 0.0]), 96
+            )
+            assert np.linalg.norm(loop - [1.0, 0.0, 0.0], axis=1).min() <= 1e-9

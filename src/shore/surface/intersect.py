@@ -464,13 +464,29 @@ class _Tracer:
     def _turn(self, x: np.ndarray, t1: np.ndarray, h: float) -> tuple[np.ndarray, np.ndarray]:
         """The corner just ahead of *x* (incoming tangent *t1*), located, and the
         outgoing tangent."""
-        back = x - 2.0 * h * t1
-        ahead = [q for q in self._ring(x, 2.0 * h, (t1, -t1)) if np.linalg.norm(q - back) > 0.5 * h]
-        if not ahead:
-            raise ParameterError(
-                f"the intersection curve has a corner near {x.tolist()} with no outgoing branch."
-            )
-        p = max(ahead, key=lambda q: float(np.linalg.norm(q - back)))
+        # hints: back along t1, and fanned around it in A's tangent plane, where the
+        # outgoing branch of a thin wedge lies (the 26 lattice directions miss it)
+        axis = self.a.project(x[None], self.ea).normals[0]
+        hints = [t1, -t1]
+        for deg in (5.0, 10.0, 15.0, 20.0, 30.0, 45.0):
+            for sign in (1.0, -1.0):
+                hints.append(-_rotate(t1, axis, np.radians(sign * deg)))
+        ring = self._ring(x, 2.0 * h, tuple(hints))
+        # the way out turns most from the incoming tangent; a thin wedge puts it close to
+        # the incoming branch, so distance alone cannot tell them apart
+        turned = [(q, _angle_deg(self._tangent(q), t1)) for q in ring]
+        out = [q for q, angle in turned if angle >= self.params.corner_deg]
+        if out:
+            p = max(out, key=lambda q: _angle_deg(self._tangent(q), t1))
+        else:
+            back = x - 2.0 * h * t1
+            ahead = [q for q in ring if np.linalg.norm(q - back) > 0.5 * h]
+            if not ahead:
+                raise ParameterError(
+                    f"the intersection curve has a corner near {x.tolist()} with no outgoing "
+                    "branch."
+                )
+            p = max(ahead, key=lambda q: float(np.linalg.norm(q - back)))
         t2 = self._tangent(p)
         c = self._locate(x, t1, p, t2)
         if c is None:
@@ -496,6 +512,8 @@ class _Tracer:
                 break
             p1 = min(before, key=lambda q: _angle_deg(self._tangent(q), t1))
             p2 = min(after, key=lambda q: _angle_deg(self._tangent(q), t2))
+            if np.linalg.norm(p1 - p2) <= 0.05 * d:
+                break  # below the on-curve tolerance the two branches merge: c stands
             t1, t2 = self._tangent(p1), self._tangent(p2)
             if _angle_deg(t1, t2) < self.params.corner_deg:
                 return None
@@ -509,6 +527,7 @@ class _Tracer:
         x = c + r * dirs
         tol = self.params.tolerance * self.diag
         done = np.zeros(len(x), dtype=bool)
+        last = np.full(len(x), np.inf)
         for _ in range(self.params.ring_iterations):
             active = np.flatnonzero(~done)
             if not len(active):
@@ -519,8 +538,17 @@ class _Tracer:
             y = np.where(norm > 0.0, c + r * v / np.where(norm > 0.0, norm, 1.0), y)
             moved = np.linalg.norm(y - x[active], axis=1)
             x[active] = y
+            last[active] = moved
             done[active[moved <= tol]] = True
         keep = done & self.on_curve(x) & (np.abs(np.linalg.norm(x - c, axis=1) - r) <= 1e-6 * r)
+        # a projection's own noise (sliver STL triangles) can sit above the tolerances:
+        # a point settled to a small fraction of r is good enough to steer the corner search
+        loose = 1e-2 * r
+        if not keep.all():
+            da = self.a.project(x, self.ea).distances
+            db = self.b.project(x, self.eb).distances
+            settled = (last <= loose) & (da <= loose) & (db <= loose)
+            keep |= settled & (np.abs(np.linalg.norm(x - c, axis=1) - r) <= loose)
         out: list[np.ndarray] = []
         for q in x[keep]:
             if all(np.linalg.norm(q - o) > 0.05 * r for o in out):
@@ -794,6 +822,12 @@ _DIRECTIONS /= np.linalg.norm(_DIRECTIONS, axis=1, keepdims=True)
 def _angle_deg(u: np.ndarray, v: np.ndarray) -> float:
     c = float(u @ v) / (float(np.linalg.norm(u)) * float(np.linalg.norm(v)))
     return float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0))))
+
+
+def _rotate(v: np.ndarray, axis: np.ndarray, angle: float) -> np.ndarray:
+    """*v* rotated by *angle* about the unit *axis* (Rodrigues)."""
+    k = axis / np.linalg.norm(axis)
+    return v * np.cos(angle) + np.cross(k, v) * np.sin(angle) + k * (k @ v) * (1.0 - np.cos(angle))
 
 
 def _crossing(p1: np.ndarray, t1: np.ndarray, p2: np.ndarray, t2: np.ndarray) -> np.ndarray:
