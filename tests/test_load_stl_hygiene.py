@@ -127,3 +127,18 @@ class TestNonWatertightWarning:
             load_stl(sphere_stl)
         msgs = [str(w.message) for w in caught if issubclass(w.category, UserWarning)]
         assert not any("watertight" in m.lower() for m in msgs)
+
+
+class TestNormalRepair:
+    def test_inconsistent_winding_repaired(self, tmp_path):
+        """fix_normals needs networkx for inconsistently wound meshes (a dependency)."""
+        mesh = trimesh.creation.box(extents=(1.0, 2.0, 3.0))
+        faces = mesh.faces.copy()
+        faces[:4] = faces[:4, ::-1]  # flip a few faces: winding no longer consistent
+        bad = trimesh.Trimesh(mesh.vertices, faces, process=False)
+        assert not bad.is_winding_consistent
+        path = tmp_path / "flipped.stl"
+        bad.export(path)
+        loaded = load_stl(path)
+        assert loaded.is_winding_consistent
+        assert loaded.volume == pytest.approx(6.0)
