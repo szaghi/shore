@@ -109,6 +109,24 @@ class TestLoad:
         with pytest.raises(MeshInputError):
             load_geometry(bad)
 
+    def test_corrupt_step_is_silent(self, tmp_path):
+        # OCCT prints parse errors through the C stdio buffer, flushed at exit
+        import subprocess
+        import sys
+
+        bad = tmp_path / "bad.step"
+        bad.write_text("not a step file\n")
+        code = (
+            "import sys; from shore.geometry import load_geometry\n"
+            f"try: load_geometry({str(bad)!r})\n"
+            "except Exception as e: print(type(e).__name__)\n"
+        )
+        run = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        )
+        assert run.stdout.strip() == "MeshInputError"
+        assert "StepFile" not in run.stdout + run.stderr
+
     @pytest.mark.parametrize(
         "part",
         [lambda: bd.Sphere(1), lambda: bd.fillet(bd.Box(1, 1, 1).edges(), 0.1)],

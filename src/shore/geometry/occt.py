@@ -35,8 +35,14 @@ loads in a subprocess (ADR 0006).
 
 from __future__ import annotations
 
+import contextlib
+import ctypes
 import functools
 import logging
+import os
+import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -80,6 +86,34 @@ _NEWTON_ITERS = 20
 
 def _xyz(p: gp_Pnt) -> tuple[float, float, float]:
     return p.X(), p.Y(), p.Z()
+
+
+@contextlib.contextmanager
+def _quiet_occt() -> Iterator[None]:
+    """Route OCCT's console output (C-level stdout/stderr) to the debug log.
+
+    The STEP/IGES readers print parse errors themselves, through the C stdio
+    buffer, which Python's capture never sees and which is flushed only at
+    process exit. A failed read is reported as ``MeshInputError`` anyway.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    saved = [os.dup(1), os.dup(2)]
+    with tempfile.TemporaryFile() as sink:
+        try:
+            os.dup2(sink.fileno(), 1)
+            os.dup2(sink.fileno(), 2)
+            yield
+        finally:
+            ctypes.CDLL(None).fflush(None)
+            os.dup2(saved[0], 1)
+            os.dup2(saved[1], 2)
+            for fd in saved:
+                os.close(fd)
+            sink.seek(0)
+            text = sink.read().decode(errors="replace").strip()
+            if text:
+                log.debug("OCCT reader output:\n%s", text)
 
 
 class OcctGeometry:
@@ -153,12 +187,15 @@ class OcctGeometry:
 
             reader = bd.import_step if suffix in (".step", ".stp") else bd.import_brep
             try:
-                shape = reader(str(path)).wrapped
+                with _quiet_occt():
+                    shape = reader(str(path)).wrapped
             except Exception as err:  # build123d raises bare ValueError/RuntimeError
                 raise MeshInputError(f"{path.name}: cannot read CAD file ({err}).") from err
         elif suffix in (".iges", ".igs"):
             reader = IGESControl_Reader()
-            if reader.ReadFile(str(path)) != IFSelect_RetDone:
+            with _quiet_occt():
+                status = reader.ReadFile(str(path))
+            if status != IFSelect_RetDone:
                 raise MeshInputError(f"{path.name}: cannot read IGES file.")
             reader.TransferRoots()
             # IGES stores faces as independent trimmed surfaces: sew them so
