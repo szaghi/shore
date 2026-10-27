@@ -1,4 +1,4 @@
-# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020, 0021 frozen 2026-10-27; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
+# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020, 0021, 0022 frozen 2026-10-27; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
 # Spec modules are hashed with their @PENDING lines removed.
 3c6fbe392a7ef5d28034141a61e1c03227da2b1dd5dbb315f819493fe8320aef  tests/spec/test_hyperbolic_marching.py
 ae38c25896db5e94b8f55f23a94bba05d7d80a76d0eb5f5729ec9c3cecec12b7  tests/spec/__init__.py
@@ -22,3 +22,4 @@ b1578316dbe77ba00ed92cfaf41f02ab50b2cf1cdb5b5d0fafefa8804c8669b3  tests/spec/tes
 9faa567fc7314d105536681a837e085e851681c1a21b447729ae6ec06a955193  tests/spec/test_loop_corners.py
 c2deab63d2ebd8ce0a1b36525f40ca0dc5e5426b1740486fb2b1834ef2dfa735  tests/spec/test_loop_corners_cad.py
 bcc58d38417724d29b4778bb4f3cb9136d8696a1b91894acb58ab9cb4926f24f  tests/spec/data/loop_bends_default.npz
+424bcc270b268cf988543499f37e4e951f94af4284348e1c8647f613b943c472  tests/spec/test_corner_grading.py
