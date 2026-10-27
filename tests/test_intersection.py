@@ -81,3 +81,70 @@ class TestOpenCurve:
         a, b = make_a(), make_b()
         curve = intersection_curve(a, b, np.array(seed), 33, plane=SYMMETRY)
         assert a.distance(curve[[0, -1]]).max() < 1e-11
+
+
+class TestDistribution:
+    """Helpers of the node distribution along the curve (ADR 0020)."""
+
+    def test_windowed_curvature_of_a_polygon_circle(self):
+        from shore.surface.intersect import DEFAULT, _windowed_curvature
+
+        t = np.linspace(0.0, 2.0 * np.pi, 400, endpoint=False)
+        loop = 2.0 * np.c_[np.cos(t), np.sin(t), 0.0 * t]
+        closed = np.vstack([loop, loop[:1]])
+        s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(closed, axis=0), axis=1))]
+        # windows shorter and longer than a segment: smooth either way
+        for n in (40, 2000):
+            k = _windowed_curvature(loop, s, n, DEFAULT)
+            np.testing.assert_allclose(k, 0.5, rtol=1e-4)
+
+    @pytest.mark.parametrize("closed", [True, False])
+    def test_limit_ratio(self, closed):
+        from shore.surface.intersect import _limit_ratio
+
+        h = np.array([1.0, 1.0, 0.01, 1.0, 1.0, 1.0, 0.5, 1.0])
+        out = _limit_ratio(h, 1.2, closed)
+        assert np.all(out <= h)
+        ring = np.r_[out, out[:1]] if closed else out
+        assert np.max(np.maximum(ring[1:] / ring[:-1], ring[:-1] / ring[1:])) <= 1.2 + 1e-12
+        assert out[2] == pytest.approx(0.01, rel=1e-14)  # the smallest cell is kept
+
+    def test_refine_stops_at_a_corner(self):
+        from shore.surface.intersect import DEFAULT, _Tracer
+
+        class Still:  # projection is the identity: refinement only bisects
+            bounds = np.array([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]])
+
+            def project(self, points, entity=None):
+                from shore.geometry import Projection
+
+                p = np.asarray(points, dtype=np.float64)
+                return Projection(p, np.zeros(len(p)), None, None, None)
+
+        square = np.array([[0.0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]])
+        tracer = _Tracer(Still(), Still(), None, None, 2.0 * np.sqrt(3.0), DEFAULT)
+        fine = tracer.refine(square, closed=True)
+        seg = np.linalg.norm(np.diff(np.vstack([fine, fine[:1]]), axis=0), axis=1)
+        assert seg.min() >= DEFAULT.refine_min * tracer.diag / 2.0
+        assert len(fine) < 4 * 2**20  # it terminates near the corners only
+
+    def test_tanh_is_allowed_on_an_open_curve_only(self):
+        from shore.mesh.spacing import Spacing1D
+        from shore.surface.intersect import _check_distribution
+
+        law = Spacing1D("tanh", beta=2.0)
+        assert _check_distribution(law, 0.0, ("uniform", "tanh", "tanh2")) is False
+        with pytest.raises(ParameterError):
+            _check_distribution(law, 0.0, ("uniform", "tanh2"))
+
+
+class TestCollarJournal:
+    def test_default_loop_keywords_stay_out_of_the_journal(self):
+        from shore.project.commands import BuildCollar
+
+        cmd = BuildCollar("post.stl", (0.5, 0.0, 0.0), 16, 0.02, 1.15, 5, 5, 1e-3, 1.25, 8)
+        assert "loop_" not in cmd.to_source()
+        spaced = BuildCollar(
+            "post.stl", (0.5, 0.0, 0.0), 16, 0.02, 1.15, 5, 5, 1e-3, 1.25, 8, loop_curvature=1.0
+        )
+        assert "loop_curvature=1.0" in spaced.to_source()

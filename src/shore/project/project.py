@@ -298,10 +298,15 @@ class Project:
         label: str = "collar",
         plane: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None,
         geometry: str = "body",
+        loop_law: str = "uniform",
+        loop_beta: float = 3.0,
+        loop_cluster_at: float | None = None,
+        loop_curvature: float = 0.0,
     ) -> None:
         """Collar block around the junction of *geometry* and *other*, a
         geometry name or a file path (ADR 0010, 0016); with *plane* the
-        half-collar of a half model (ADR 0013). Replaces the current
+        half-collar of a half model (ADR 0013); ``loop_*`` distribute the
+        nodes along the junction curve (ADR 0020). Replaces the current
         component's mesh. See ``BuildCollar``."""
         self.execute(
             BuildCollar(
@@ -318,6 +323,10 @@ class Project:
                 label,
                 None if plane is None else _plane_tuple(plane),
                 geometry,
+                loop_law,
+                float(loop_beta),
+                None if loop_cluster_at is None else float(loop_cluster_at),
+                float(loop_curvature),
             )
         )
 

@@ -529,8 +529,11 @@ class BuildCollar(Command):
     (its path is what the journal records). Surface steps are
     ``ds_surface * growth_surface**j`` (*m_a* on A, *m_b* on B), wall-normal
     steps ``ds_wall * growth_wall**k`` (*nk* of them). With *plane*
-    (``(point, normal)``) the half-collar of a half model (ADR 0013). Replaces
-    the mesh with the one collar block, a separate Chimera component.
+    (``(point, normal)``) the half-collar of a half model (ADR 0013). The
+    nodes along the junction curve follow ``Spacing1D(loop_law,
+    beta=loop_beta, cluster_at=loop_cluster_at)`` and *loop_curvature*
+    (ADR 0020). Replaces the mesh with the one collar block, a separate
+    Chimera component.
     """
 
     method: ClassVar[str] = "build_collar"
@@ -550,11 +553,25 @@ class BuildCollar(Command):
     label: str = "collar"
     plane: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
     geometry: str = "body"
+    loop_law: str = "uniform"
+    loop_beta: float = 3.0
+    loop_cluster_at: float | None = None
+    loop_curvature: float = 0.0
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         from shore.collar import build_collar
         from shore.geometry import load_geometry
+        from shore.mesh.spacing import Spacing1D
 
+        if self.loop_law not in ("uniform", "tanh", "tanh2"):
+            raise ParameterError(
+                f"loop_law must be 'uniform', 'tanh' or 'tanh2', got {self.loop_law!r}."
+            )
+        loop_spacing = (
+            None
+            if self.loop_law == "uniform"
+            else Spacing1D(self.loop_law, beta=self.loop_beta, cluster_at=self.loop_cluster_at)  # type: ignore[arg-type]
+        )
         body = project.require_geometry(self.geometry, "build_collar")
         if self.other in project.geometries:
             other = project.geometries[self.other].geometry
@@ -576,6 +593,8 @@ class BuildCollar(Command):
             steps_k=self.ds_wall * self.growth_wall ** np.arange(self.nk),
             label=self.label,
             plane=self.plane,
+            loop_spacing=loop_spacing,
+            loop_curvature=self.loop_curvature,
         )
         prev = (project.mesh, project.build)
         # no body association: k_lo lies on two bodies

@@ -1228,6 +1228,27 @@ def collar(
             "--plane", help="PX PY PZ NX NY NZ: symmetry plane of a half model (half-collar)."
         ),
     ] = None,
+    loop_law: Annotated[
+        str,
+        typer.Option(
+            "--loop-law",
+            help="Node law along the junction curve: uniform, tanh2 (tanh: half-collars only).",
+        ),
+    ] = "uniform",
+    loop_beta: Annotated[
+        float, typer.Option("--loop-beta", help="Clustering strength of the tanh/tanh2 law.")
+    ] = 3.0,
+    loop_cluster_at: Annotated[
+        float | None,
+        typer.Option("--loop-cluster-at", help="Where tanh2 clusters, as a fraction in [0, 1]."),
+    ] = None,
+    loop_curvature: Annotated[
+        float,
+        typer.Option(
+            "--loop-curvature",
+            help="Cluster nodes where the curve bends (weight >= 0; try 1 for rounded sections).",
+        ),
+    ] = 0.0,
     name_a: Annotated[
         str | None, typer.Option("--name-a", help="Geometry name of body A (default: stem).")
     ] = None,
@@ -1246,6 +1267,7 @@ def collar(
     """Build the collar block around the junction of two bodies (ADR 0010, 0013).
 
     With --plane, the half-collar of a half model on that symmetry plane.
+    --loop-* distribute the nodes along the junction curve (ADR 0020).
     The result goes to the .geo file(s) (-o), to component --component
     (default 'collar') of --project, or both.
     """
@@ -1270,6 +1292,10 @@ def collar(
             nk=nk,
             label=label,
             plane=None if plane is None else (plane[:3], plane[3:]),
+            loop_law=loop_law,
+            loop_beta=loop_beta,
+            loop_cluster_at=loop_cluster_at,
+            loop_curvature=loop_curvature,
         )
         if output is not None:
             proj.write_geo(output)

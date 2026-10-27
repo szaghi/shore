@@ -1,6 +1,6 @@
 # 0020 — Spacing laws along the junction curve
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-27
 
 ## Context
@@ -155,12 +155,38 @@ S3 failed: the constant-curvature loop was off uniform by 2e-3, against a
 - clustering at 3-D points;
 - run time.
 
-### Review questions
+### Review (2026-10-27, user decisions)
 
-1. **The default `alpha`.** It stays 0, so existing projects and journals
-   are unchanged. Should `shore collar` instead recommend
-   `--loop-curvature 1` in its help, or default to it in the CLI only?
-2. **The cell-ratio limit** is fixed at 1.2 in `TraceParams`. Should it be
-   exposed in the CLI and the project?
-3. **Next step:** tracing junctions with corners (sharp and blunt trailing
-   edges), which the ADR 0009 tracer cannot close.
+1. `alpha` defaults to 0 everywhere (existing projects and journals replay
+   unchanged); the `--loop-curvature` help suggests 1 for rounded sections.
+2. The cell-ratio limit stays internal (`TraceParams.max_cell_ratio`).
+3. Next step: tracing junction curves with corners.
+
+## Acceptance (2026-10-27): junction-curve spacing spec met
+
+**Kernel.** `intersection_loop` and `intersection_curve` take `spacing`
+and `curvature`. With non-default settings, `_Tracer.refine` bisects the
+traced polyline. `_windowed_curvature` integrates the turning density over
+the window, using a piecewise-linear cumulative function over three
+periods. `_limit_ratio` uses log-space `minimum.accumulate` sweeps (tripled
+for a loop) and never grows a cell. `_distribution` composes the law with
+the curvature map. The open curve measures its curvature on the loop
+mirrored through the plane. The default path is the old code, untouched.
+
+**Collar and interfaces.** `build_collar(loop_spacing=, loop_curvature=)`
+forwards them. `BuildCollar` gains `loop_law`, `loop_beta`,
+`loop_cluster_at` and `loop_curvature` (an unknown law is checked before
+anything is built), and `shore collar` gains `--loop-*`.
+`docs/reference/collar.md` has a section on node spacing.
+
+**Verdict for `tests/spec/test_loop_spacing.py`: 29 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 16
+`@PENDING` lines are removed.
+
+**Unit tests** (`tests/test_intersection.py`):
+- the windowed curvature of a 400-gon circle is `1/R` within 1e-4, for
+  windows both shorter and longer than a segment;
+- the ratio limiter, on open and closed rows;
+- refinement stops at the corners of a square;
+- `tanh` is allowed on open curves only;
+- the default loop keywords stay out of the journal.

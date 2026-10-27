@@ -27,7 +27,8 @@ the half-collar of a half model: the open curve of ``intersection_curve``
 (ADR 0011), both halves marched with their ends on the plane (ADR 0012),
 and the volume extruded from the wall mirrored across the plane into a
 closed loop, of which the first ``n_loop`` stations are kept; the j-faces
-are put on the plane and marked ``FaceBC.SYMMETRY``.
+are put on the plane and marked ``FaceBC.SYMMETRY``. ``loop_spacing`` and
+``loop_curvature`` distribute the nodes along the junction curve (ADR 0020).
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from shore.exceptions import ParameterError
 from shore.geometry.base import Geometry
 from shore.mesh.block import HexBlock
 from shore.mesh.face import FaceBC
+from shore.mesh.spacing import Spacing1D
 from shore.surface.intersect import intersection_curve, intersection_loop
 from shore.surface.march import _Mirror, march_surface
 from shore.surface.tfi import _control
@@ -75,6 +77,8 @@ def build_collar(
     label: str = "collar",
     params: CollarParams = DEFAULT,
     plane: tuple[np.ndarray, np.ndarray] | None = None,
+    loop_spacing: Spacing1D | None = None,
+    loop_curvature: float = 0.0,
 ) -> HexBlock:
     """The collar block around the junction of *body_a* and *body_b*.
 
@@ -97,6 +101,10 @@ def build_collar(
     plane :
         ``(point, normal)`` of a symmetry plane: build the half-collar of a
         half model, on the seed's side. ``None``: the closed collar.
+    loop_spacing, loop_curvature :
+        Node distribution along the junction curve, passed to
+        ``intersection_loop`` / ``intersection_curve`` as *spacing* and
+        *curvature* (ADR 0020; default: equally spaced in arc length).
 
     Returns
     -------
@@ -129,10 +137,20 @@ def build_collar(
 
     mirror = None if plane is None else _Mirror.of(plane)
     if mirror is None:
-        curve = intersection_loop(body_a, body_b, seed, int(n_loop))
+        curve = intersection_loop(
+            body_a, body_b, seed, int(n_loop), spacing=loop_spacing, curvature=loop_curvature
+        )
         march = {"periodic": True}
     else:
-        curve = intersection_curve(body_a, body_b, seed, int(n_loop), plane=plane)
+        curve = intersection_curve(
+            body_a,
+            body_b,
+            seed,
+            int(n_loop),
+            plane=plane,
+            spacing=loop_spacing,
+            curvature=loop_curvature,
+        )
         if _end_angle_deg(curve, mirror.normal) > params.oblique_deg:
             warnings.warn(
                 "the junction curve meets the symmetry plane obliquely: the bodies are not "

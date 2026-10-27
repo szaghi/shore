@@ -230,7 +230,6 @@ CURVE_LAWS = {"tanh": Spacing1D("tanh", beta=2.0), "tanh2": Spacing1D("tanh2", b
 
 class TestLaw:
     @pytest.mark.parametrize("law", list(LOOP_LAWS))
-    @PENDING
     def test_s1_loop_follows_the_law(self, law):
         a, b = Plane(), CylinderZ()
         spacing = LOOP_LAWS[law]
@@ -244,7 +243,6 @@ class TestLaw:
         assert np.array_equal(loop[0], default[0])
 
     @pytest.mark.parametrize("law", list(CURVE_LAWS))
-    @PENDING
     def test_s1_open_curve_follows_the_law(self, law):
         a, b = Plane(), CylinderZ()
         spacing = CURVE_LAWS[law]
@@ -273,7 +271,6 @@ class TestDefault:
         golden = np.load(GOLDEN)["plane_cylinder_curve"]
         np.testing.assert_allclose(curve, golden, rtol=0.0, atol=1e-12)
 
-    @PENDING
     def test_s2_uniform_law_is_the_default(self):
         a, b = Plane(), CylinderZ()
         uniform = Spacing1D("uniform")
@@ -289,7 +286,6 @@ class TestDefault:
 
 
 class TestCurvature:
-    @PENDING
     def test_s3_loop_clusters_where_it_bends(self):
         a, b = ellipse()
         uniform = loop_kernel()(a, b, ELLIPSE_SEED, 128)
@@ -299,7 +295,6 @@ class TestCurvature:
         assert a.distance(loop).max() <= 1e-9 * DIAG
         assert b.distance(loop).max() <= 1e-9 * DIAG
 
-    @PENDING
     def test_s3_open_curve_clusters_at_the_plane(self):
         a, b = ellipse()
         uniform = curve_kernel()(a, b, HALF_ELLIPSE_SEED, 65, plane=SYM)
@@ -310,7 +305,6 @@ class TestCurvature:
         assert cell_ratio(curve, closed=False) <= 1.21
         assert np.abs(curve[[0, -1], 1]).max() <= 1e-9 * DIAG
 
-    @PENDING
     def test_s3_constant_curvature_stays_uniform(self):
         loop = loop_kernel()(Plane(), CylinderZ(), CIRCLE_SEED, 64, curvature=3.0)
         frac = np.r_[angle_fraction(loop, 2.0 * np.pi), 1.0]
@@ -323,7 +317,6 @@ class TestCurvature:
 
 
 class TestCollar:
-    @PENDING
     def test_s4_wall_composes_the_spaced_loop(self):
         a, b = ellipse()
         law = Spacing1D("tanh2", beta=2.0)
@@ -332,7 +325,6 @@ class TestCollar:
         expected = composed_wall(a, b, loop)
         assert np.abs(block.nodes[:, :, 0] - expected).max() <= 1e-12
 
-    @PENDING
     def test_s4_half_wall_composes_the_spaced_curve(self):
         a, b = ellipse()
         block = ellipse_collar(None, 1.0, True)
@@ -343,13 +335,11 @@ class TestCollar:
     @pytest.mark.parametrize(
         "spacing", [None, ("tanh2", ("beta", 2.0))], ids=["curvature", "tanh2+curvature"]
     )
-    @PENDING
     def test_s4_valid_collar(self, spacing):
         jac = wrapped_jacobian(ellipse_collar(spacing, 1.0, False).nodes)
         assert (jac <= 0.0).sum() == 0
         assert jac.min() >= 0.1
 
-    @PENDING
     def test_s4_valid_half_collar(self):
         jac = scaled_jacobian(ellipse_collar(None, 1.0, True).nodes)
         assert (jac <= 0.0).sum() == 0
@@ -394,14 +384,12 @@ def command_project(box: Path, post: Path):
 
 
 class TestCommand:
-    @PENDING
     def test_s5_valid_collar_component(self, stl_files):
         p = command_project(stl_files["box"], stl_files["post"])
         jac = wrapped_jacobian(p.mesh.blocks[0].nodes)
         assert (jac <= 0.0).sum() == 0
         assert jac.min() >= 0.05
 
-    @PENDING
     def test_s5_equals_the_kernel(self, stl_files):
         from shore.geometry import load_geometry
 
@@ -417,7 +405,6 @@ class TestCommand:
         )  # fmt: skip
         assert np.array_equal(p.mesh.blocks[0].nodes, block.nodes)
 
-    @PENDING
     def test_s5_journal_and_replay(self, stl_files, tmp_path):
         from shore.project import Project
 
@@ -428,7 +415,6 @@ class TestCommand:
         q = Project.load(tmp_path / "proj")  # replays and checks every grid bit for bit
         assert np.array_equal(q.mesh.blocks[0].nodes, p.mesh.blocks[0].nodes)
 
-    @PENDING
     def test_s5_cli_equals_the_api(self, stl_files, tmp_path):
         from typer.testing import CliRunner
 
@@ -477,12 +463,10 @@ class TestErrors:
         ],
         ids=["tanh-on-loop", "geometric", "pinned", "cluster-at", "negative", "nan"],
     )
-    @PENDING
     def test_s6_kernel_errors(self, kwargs):
         with pytest.raises(ParameterError):
             loop_kernel()(Plane(), CylinderZ(), CIRCLE_SEED, 16, **kwargs)
 
-    @PENDING
     def test_s6_project_unknown_law(self, stl_files):
         from shore.project import Project
 

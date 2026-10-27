@@ -27,7 +27,7 @@ by a later record that supersedes it.
 | [0017](./0017-xall-options-per-component.md) | Per-component Xall options in `write_xall` | Accepted |
 | [0018](./0018-cli-collars-and-projects.md) | CLI for collars and multi-component projects | Accepted |
 | [0019](./0019-deprecate-normal-blending.md) | Deprecate the marcher's normal blending (`blend_normals_k`) | Accepted |
-| [0020](./0020-junction-curve-spacing.md) | Spacing laws along the junction curve | Proposed |
+| [0020](./0020-junction-curve-spacing.md) | Spacing laws along the junction curve | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
