@@ -2,6 +2,29 @@
 title: Changelog
 ---
 
+## [0.3.0] — 2026-10-27
+### Added
+- **collar**: Distribute nodes along the junction curve by law and curvature
+
+- **surface**: Trace junction curves through corners of either body
+
+- **surface**: Grade the junction-curve spacing across corners
+
+- **surface**: March surfaces cleanly from fronts with corners on creases
+
+
+### Fixed
+- **geometry**: Route OCCT reader console output to the debug log
+
+- **mesh**: Zero-initialise topology node buffers before marching
+
+- **surface**: Trace junction corners on thin wedges and sliver STLs
+
+- **shapes**: Write extruded wings with outward, consistent normals
+
+- **io**: Declare networkx, needed by load_stl's normal repair
+
+
 ## [0.2.0] — 2026-10-27
 ### Added
 - **geometry**: Add Geometry protocol with STL and OCCT backends
