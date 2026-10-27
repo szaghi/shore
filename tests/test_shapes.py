@@ -134,6 +134,21 @@ class TestExtrudeSection:
         wing = extrude_section(sec, span=0.5, n_stations=8, end_caps=True)
         assert wing.is_watertight
 
+    @pytest.mark.parametrize("span_axis", ["x", "y", "z"])
+    @pytest.mark.parametrize("reverse", [False, True], ids=["selig", "reversed"])
+    @pytest.mark.parametrize("closed_te", [True, False], ids=["sharp", "blunt"])
+    def test_outward_normals(self, span_axis, reverse, closed_te):
+        sec = naca("0012", n_pts=40, closed_te=closed_te)
+        sec = sec[::-1] if reverse else sec
+        wing = extrude_section(sec, span=1.0, n_stations=3, span_axis=span_axis, end_caps=True)
+        assert wing.is_winding_consistent
+        assert wing.volume > 0.0  # outward: the caps and the sides agree
+        open_wing = extrude_section(sec, span=1.0, n_stations=3, span_axis=span_axis)
+        # the face farthest along the thickness axis faces outward along it
+        thick = [i for i in range(3) if i != "xyz".index(span_axis)][1]
+        upper = np.argmax(open_wing.triangles_center[:, thick])
+        assert open_wing.face_normals[upper, thick] > 0.0
+
     def test_taper(self):
         sec = naca("0012", n_pts=40)
         # taper=0.5: tip chord half of root chord.

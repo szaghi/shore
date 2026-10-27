@@ -161,8 +161,8 @@ def extrude_section(
             v01 = k * n_sec + i_next
             v10 = (k + 1) * n_sec + i
             v11 = (k + 1) * n_sec + i_next
-            faces.append([v00, v10, v11])
-            faces.append([v00, v11, v01])
+            faces.append([v00, v11, v10])
+            faces.append([v00, v01, v11])
 
     # ----- end caps (optional) -----------------------------------------------
     if end_caps:
@@ -180,6 +180,16 @@ def extrude_section(
                 else:
                     faces.append([cid, v_a, v_b])
 
-    mesh = trimesh.Trimesh(vertices=vertices, faces=np.asarray(faces, dtype=np.int64))
+    # outward normals: the faces above are outward for a counter-clockwise section in a
+    # right-handed (chord, thickness, span) frame; flip them otherwise
+    area = 0.5 * float(
+        np.sum(sec[:, 0] * np.roll(sec[:, 1], -1) - np.roll(sec[:, 0], -1) * sec[:, 1])
+    )
+    frame = np.zeros((3, 3))
+    frame[0, chord_idx] = frame[1, thick_idx] = frame[2, span_idx] = 1.0
+    face_array = np.asarray(faces, dtype=np.int64)
+    if area * np.linalg.det(frame) < 0.0:
+        face_array = face_array[:, ::-1]
+    mesh = trimesh.Trimesh(vertices=vertices, faces=face_array)
     mesh.merge_vertices()
     return mesh

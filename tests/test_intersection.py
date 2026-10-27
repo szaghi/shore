@@ -240,7 +240,7 @@ class TestGradedSpacing:
 class TestThinWedges:
     """Corners of a fine sharp trailing edge on sliver STL triangles (ADR 0021 fixes)."""
 
-    @pytest.mark.parametrize("n_pts", [400])
+    @pytest.mark.parametrize("n_pts", [400, 1000])
     def test_fine_sharp_te_traces(self, n_pts):
         from shore.profiles import naca
         from shore.shapes import extrude_section
