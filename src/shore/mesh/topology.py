@@ -137,7 +137,7 @@ def _build_cubed_sphere_blocks(
 
     # Equatorial ring buffer of depth total_k.  Sub-block sees [..., :nk, :].
     ring_nj = 4 * (nc - 1) + 1
-    ring = np.empty((ni, ring_nj, total_k, 3), dtype=np.float64)
+    ring = np.zeros((ni, ring_nj, total_k, 3), dtype=np.float64)
     sector = nc - 1
     sub_nodes_full: list[np.ndarray] = []
     for q in range(4):
@@ -152,8 +152,8 @@ def _build_cubed_sphere_blocks(
     ring[:, -1, 0, :] = ring[:, 0, 0, :]
 
     # Cap blocks of depth total_k.
-    cap_north_full = np.empty((nc, nc, total_k, 3), dtype=np.float64)
-    cap_south_full = np.empty((nc, nc, total_k, 3), dtype=np.float64)
+    cap_north_full = np.zeros((nc, nc, total_k, 3), dtype=np.float64)
+    cap_south_full = np.zeros((nc, nc, total_k, 3), dtype=np.float64)
     cap_north_full[:, :, 0, :] = cap_north_k0
     cap_south_full[:, :, 0, :] = cap_south_k0
 
@@ -494,7 +494,7 @@ class OGridTopology(Topology):
         _sp_k = spacing_k or Spacing1D(law="geometric", ds=1e-3)
 
         # Allocate (ni, nj, nk, 3) and fill k=0 ------------------------
-        nodes = np.empty((ni, nj, nk, 3), dtype=np.float64)
+        nodes = np.zeros((ni, nj, nk, 3), dtype=np.float64)
         nodes[:, :, 0, :] = surface
 
         block = HexBlock(
@@ -1129,7 +1129,7 @@ class CGridTopology(Topology):
     ) -> list[HexBlock]:
         """Legacy 1-block C-grid (single hex block, wake cut as i-overlap)."""
         ni_total, nj, _ = surface.shape
-        nodes = np.empty((ni_total, nj, nk, 3), dtype=np.float64)
+        nodes = np.zeros((ni_total, nj, nk, 3), dtype=np.float64)
         nodes[:, :, 0, :] = surface
         block = HexBlock(
             label="cgrid",
@@ -1155,7 +1155,7 @@ class CGridTopology(Topology):
         # node coincidence at the upper-TE and lower-TE columns
         # comes for free via numpy view aliasing.
         ni_total = 2 * (ni_wake - 1) + ni_body
-        nodes_all = np.empty((ni_total, nj, nk, 3), dtype=np.float64)
+        nodes_all = np.zeros((ni_total, nj, nk, 3), dtype=np.float64)
         nodes_all[:, :, 0, :] = surface
 
         i_te_upper = ni_wake - 1
@@ -1280,7 +1280,7 @@ class CGridTopology(Topology):
         # ------------------------------------------------------------
         nj = surface.shape[1]
         ni_total = 2 * (ni_wake - 1) + ni_body
-        nodes_all = np.empty((ni_total, nj, nk, 3), dtype=np.float64)
+        nodes_all = np.zeros((ni_total, nj, nk, 3), dtype=np.float64)
         nodes_all[:, :, 0, :] = surface
 
         i_te_upper = ni_wake - 1
@@ -1324,7 +1324,7 @@ class CGridTopology(Topology):
 
         # Linear interpolation across the gap.
         ts = np.linspace(0.0, 1.0, nk_w)  # k=0 -> lower; k=last -> upper
-        wake_base_nodes = np.empty((ni_wake, nj, nk_w, 3), dtype=np.float64)
+        wake_base_nodes = np.zeros((ni_wake, nj, nk_w, 3), dtype=np.float64)
         for k_idx, t in enumerate(ts):
             wake_base_nodes[:, :, k_idx, :] = (1.0 - t) * lower_k0_rev + t * upper_k0
 
@@ -2434,7 +2434,7 @@ class CHTopology(Topology):
 
         nj = surface_arr.shape[1]
         ni_total = 2 * (_ni_wake - 1) + _ni_body
-        nodes_all = np.empty((ni_total, nj, total_k, 3), dtype=np.float64)
+        nodes_all = np.zeros((ni_total, nj, total_k, 3), dtype=np.float64)
         nodes_all[:, :, 0, :] = surface_arr
 
         i_te_upper = _ni_wake - 1
@@ -2503,7 +2503,7 @@ class CHTopology(Topology):
             lower_k0 = lower_wrap[:, :, 0, :]
             lower_k0_rev = lower_k0[::-1, :, :]
             ts = np.linspace(0.0, 1.0, nk_w)
-            wake_base_nodes = np.empty((_ni_wake, nj, nk_w, 3), dtype=np.float64)
+            wake_base_nodes = np.zeros((_ni_wake, nj, nk_w, 3), dtype=np.float64)
             for k_idx, t in enumerate(ts):
                 wake_base_nodes[:, :, k_idx, :] = (1.0 - t) * lower_k0_rev + t * upper_k0
             wake_base = HexBlock(
@@ -2790,8 +2790,8 @@ class CHTopology(Topology):
         # captures the relation; the geometry is enforced by writing
         # bit-identical wake-cut data to both in fill_channel_blocks.
         nk_outflow_side = nk_wrap + nk_chan - 1
-        upper_buf = np.empty((ni_outflow, nj, nk_outflow_side, 3), dtype=np.float64)
-        lower_buf = np.empty((ni_outflow, nj, nk_outflow_side, 3), dtype=np.float64)
+        upper_buf = np.zeros((ni_outflow, nj, nk_outflow_side, 3), dtype=np.float64)
+        lower_buf = np.zeros((ni_outflow, nj, nk_outflow_side, 3), dtype=np.float64)
 
         wake_up_view = upper_buf[:, :, :nk_wrap, :]
         top_up_view = upper_buf[:, :, nk_wrap - 1 :, :]
@@ -2867,7 +2867,7 @@ class CHTopology(Topology):
         # Blunt: wake_upper.k_lo (at +te/2) <-> wake_base.k_hi.
         #        wake_lower.k_lo (at -te/2) <-> wake_base.k_lo.
         if _is_blunt:
-            chan_outflow_wb_nodes = np.empty((ni_outflow, nj, nk_w, 3), dtype=np.float64)
+            chan_outflow_wb_nodes = np.zeros((ni_outflow, nj, nk_w, 3), dtype=np.float64)
             chan_outflow_wb = HexBlock(
                 label="chan_outflow_wake_base",
                 nodes=chan_outflow_wb_nodes,
