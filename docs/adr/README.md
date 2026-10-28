@@ -38,6 +38,7 @@ by a later record that supersedes it.
 | [0028](./0028-collar-volume-at-extreme-clustering.md) | The collar volume at extreme clustering (investigation) | Proposed |
 | [0029](./0029-spreading-converging-fronts.md) | Spreading converging fronts (not adopted); a four-corner surface metric | Rejected / Accepted |
 | [0030](./0030-concave-notches.md) | Collars in concave notches (investigation) | Rejected |
+| [0031](./0031-polishing-exact-cycles.md) | Polishing: stop at exact cycles | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

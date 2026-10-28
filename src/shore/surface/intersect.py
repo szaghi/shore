@@ -55,6 +55,7 @@ class TraceParams:
     trace_tolerance: float = 1e-10  # looser convergence of the traced points
     on_curve: float = 1e-9  # a point is on the curve when this close to both bodies
     polish_iterations: int = 200
+    polish_period: int = 12  # longest exact cycle of polish iterates detected (ADR 0031)
     max_steps: int = 200_000
     # node distribution (ADR 0020)
     refine_turn_deg: float = 2.0  # polyline refined until it turns less per segment
@@ -300,14 +301,27 @@ class _Tracer:
         self._plane: tuple[np.ndarray, np.ndarray] | None = None
 
     def polish(self, x: np.ndarray, tolerance: float | None = None) -> np.ndarray:
-        """Alternating projections onto A and B until the points stop moving."""
+        """Alternating projections onto A and B until the points stop moving.
+
+        On sliver triangles projection noise can trap a point in an exact cycle
+        that never meets the tolerance; once the iterates repeat bit for bit
+        (period <= ``polish_period``), the result of the remaining iterations is
+        known and returned at once (ADR 0031: same result, far fewer queries)."""
         tol = (self.params.tolerance if tolerance is None else tolerance) * self.diag
-        for _ in range(self.params.polish_iterations):
+        count = self.params.polish_iterations
+        recent: list[np.ndarray] = []  # the last iterates, oldest first
+        for done in range(1, count + 1):
             y = self.b.project(self.a.project(x, self.ea).points, self.eb).points
             moved = float(np.max(np.linalg.norm(y - x, axis=-1)))
-            x = y
             if moved <= tol:
-                break
+                return y
+            if self.params.polish_period > 0:  # an exact cycle cannot converge any more
+                recent.append(x)
+                del recent[: -self.params.polish_period]
+                period = _period(y, recent)
+                if period:
+                    return _cycle_end(y, recent[-period:], count - done, tol)
+            x = y
         return x
 
     def refine(
@@ -623,6 +637,26 @@ def _turning(polyline: np.ndarray, closed: bool) -> np.ndarray:
     c = np.einsum("ij,ij->i", t1, t2) / (np.linalg.norm(t1, axis=1) * np.linalg.norm(t2, axis=1))
     angle = np.arccos(np.clip(c, -1.0, 1.0))
     return angle if closed else np.r_[0.0, angle, 0.0]
+
+
+def _period(y: np.ndarray, recent: list[np.ndarray]) -> int:
+    """The smallest P such that *y* equals, bit for bit, the iterate P steps back (0: none)."""
+    for p in range(1, len(recent) + 1):
+        if np.array_equal(y, recent[-p]):
+            return p
+    return 0
+
+
+def _cycle_end(y: np.ndarray, cycle: list[np.ndarray], remaining: int, tol: float) -> np.ndarray:
+    """Where polishing would end: the iterates repeat with period ``len(cycle)`` from *y*
+    on; ``cycle`` holds the P iterates before *y*. The first step within *remaining* that
+    moves no more than *tol* ends it, else the iterate after *remaining* steps."""
+    states = [y, *cycle[1:]]  # the iterates after y, in order, then y again
+    for m in range(1, min(remaining, len(states)) + 1):
+        a, b = states[m - 1], states[m % len(states)]
+        if float(np.max(np.linalg.norm(b - a, axis=-1))) <= tol:
+            return b
+    return states[remaining % len(states)]
 
 
 def _resample(

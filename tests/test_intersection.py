@@ -257,3 +257,48 @@ class TestThinWedges:
                 StlGeometry(plate), StlGeometry(mesh), np.array([0.5, 0.06, 0.0]), 96
             )
             assert np.linalg.norm(loop - [1.0, 0.0, 0.0], axis=1).min() <= 1e-9
+
+
+class TestPolishCycles:
+    """Exact cycles of the polishing iterates (ADR 0031)."""
+
+    def test_period_and_cycle_end(self):
+        from shore.surface.intersect import _cycle_end, _period
+
+        a, b, c = (np.full((2, 3), v) for v in (0.0, 1.0, 2.0))
+        assert _period(a, [a, b, c]) == 3
+        assert _period(c, [a, b, c]) == 1
+        assert _period(np.full((2, 3), 5.0), [a, b, c]) == 0
+        # iterates a, b, c, a, b, c, ...: after y = a, 4 more steps land on b
+        assert np.array_equal(_cycle_end(a, [a, b, c], 4, 1e-12), b)
+        # a step within the cycle that meets the tolerance ends it there
+        near = np.full((2, 3), 1e-14)
+        assert np.array_equal(_cycle_end(a, [a, near, b], 10, 1e-12), near)
+
+    def test_polish_same_with_and_without_detection(self):
+        from types import SimpleNamespace
+
+        from shore.surface.intersect import DEFAULT, TraceParams, _Tracer
+
+        class Cycler:  # A: identity; B: moves each point round a 3-cycle that never converges
+            bounds = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+
+            def __init__(self, shift):
+                self.shift = shift
+
+            def project(self, x, entity=None):
+                x = np.asarray(x, dtype=np.float64)
+                if not self.shift:
+                    return SimpleNamespace(points=x)
+                k = np.round(x[:, 0] * 3.0) % 3
+                return SimpleNamespace(
+                    points=x + np.c_[np.where(k == 2, -2.0, 1.0) / 3.0, 0 * k, 0 * k]
+                )
+
+        start = np.array([[0.0, 0.5, 0.5], [1.0 / 3.0, 0.2, 0.1]])
+        results = []
+        for period in (0, DEFAULT.polish_period):
+            params = TraceParams(polish_period=period)
+            tracer = _Tracer(Cycler(False), Cycler(True), None, None, 1.0, params)
+            results.append(tracer.polish(start.copy()))
+        assert np.array_equal(results[0], results[1])
