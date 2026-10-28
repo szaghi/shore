@@ -1,6 +1,6 @@
 # 0026 — The smoothed collar volume by default
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 
 ## Context
@@ -118,3 +118,35 @@ Validated with the implementation behind the interface: 61 passed.
 | D1 | saved projects are format 3 |
 | D2 | a format-2 project with a collar journalled without a volume loads; its collar is the `"stations"` block |
 | D3 | a new project's collar without a volume is the `"smoothed"` block and round-trips |
+
+### Review (2026-10-28, user decisions)
+
+1. The trigger stays at 60° within ± one thickness, as an internal
+   constant.
+2. Project format 3 with legacy replay of format 1/2 collars is accepted.
+3. Next step: release 0.4.0.
+
+## Acceptance (2026-10-28): smoothed-default spec met
+
+**Kernel.** As decided. The changes:
+- `CollarParams.volume = "smoothed"` is the default;
+- `_near_corners` weights the smoothing near loop corners at the collar's
+  scale;
+- `BuildCollar.volume` is `None`, resolved via `legacy_collar_volume`;
+- `PROJECT_FORMAT = 3`;
+- `--collar-volume` defaults to `None`.
+
+**Verdicts** (T2; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_collar_default.py`: **3 passed, 0 skipped, 0 xfailed**;
+- `tests/spec/test_collar_volume.py`: **25 passed, 0 skipped, 0 xfailed**;
+- `tests/spec/test_split_collar.py`: **33 passed, 0 skipped, 0 xfailed**.
+
+All 6 `@PENDING` lines are removed.
+
+**Unit test** (`tests/test_collar.py`): the trigger.
+- A loop of radius 0.5 is not smoothed at thickness 0.118.
+- A loop of radius 0.05 is smoothed everywhere.
+- A square's corners are smoothed and its mid-sides are not.
+
+**49-case bench:** 1841 folded cells, against 1843 for ADR 0025's global
+smoothing.

@@ -85,7 +85,6 @@ def project(d, **kw):
 
 
 class TestDefault:
-    @PENDING
     def test_d1_format_3(self, tmp_path):
         write_bodies(tmp_path)
         project(tmp_path).save(tmp_path / "p")
@@ -104,7 +103,6 @@ class TestDefault:
         loaded = Project.load(tmp_path / "p")
         assert np.array_equal(loaded.mesh.blocks[0].nodes, kernel_block(tmp_path, "stations"))
 
-    @PENDING
     def test_d3_new_projects_smoothed(self, tmp_path):
         from shore.project import Project
 

@@ -218,13 +218,11 @@ class TestNoHarm:
 
 
 class TestDefault:
-    @PENDING
     def test_v3_default_is_smoothed(self):
         from shore.collar import CollarParams
 
         assert CollarParams().volume == "smoothed"
 
-    @PENDING
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing", "half_ellipse"])
     def test_v3_default_is_the_smoothed_block(self, name):
         from shore.collar import build_collar

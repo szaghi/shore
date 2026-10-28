@@ -54,6 +54,14 @@ input_root: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
 )
 
 
+#: Set while a project saved before format 3 replays: its collars were built when
+#: ``CollarParams.volume`` defaulted to ``"stations"`` (ADR 0026), so a ``BuildCollar``
+#: without a volume gets that one, and the saved grids still match.
+legacy_collar_volume: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "shore_legacy_collar_volume", default=False
+)
+
+
 def resolve_input(path: str) -> str:
     """*path*, relative to ``input_root`` when that is set and *path* is relative."""
     root = input_root.get()
@@ -535,7 +543,9 @@ class BuildCollar(Command):
     (ADR 0020). With *split*, ``split_collar`` (ADR 0024): the loop is cut at
     sharp corners, with wakes of *wake_length* (default: the collar's width
     on A), six blocks per piece (closed loops only). *volume* is
-    ``CollarParams.volume`` (ADR 0025): ``"stations"`` or ``"smoothed"``.
+    ``CollarParams.volume`` (ADR 0025): ``"stations"`` or ``"smoothed"``; ``None``,
+    the default (``"smoothed"``; ``"stations"`` when a project saved before
+    format 3 replays, ADR 0026).
     Replaces the mesh with the collar's block(s), a separate Chimera
     component.
     """
@@ -563,7 +573,7 @@ class BuildCollar(Command):
     loop_curvature: float = 0.0
     split: bool = False
     wake_length: float | None = None
-    volume: str = "stations"
+    volume: str | None = None
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         from shore.collar import CollarParams, build_collar, split_collar
@@ -602,7 +612,7 @@ class BuildCollar(Command):
             "label": self.label,
             "loop_spacing": loop_spacing,
             "loop_curvature": self.loop_curvature,
-            "params": CollarParams(volume=self.volume),
+            "params": CollarParams(volume=self._volume()),
         }
         seed = np.asarray(self.seed, dtype=np.float64)
         if self.split:
@@ -620,6 +630,13 @@ class BuildCollar(Command):
             project.mesh, project.build = prev
 
         return Undo(restore)
+
+    def _volume(self) -> str:
+        from shore.collar import DEFAULT
+
+        if self.volume is not None:
+            return self.volume
+        return "stations" if legacy_collar_volume.get() else DEFAULT.volume
 
 
 @dataclass(frozen=True)

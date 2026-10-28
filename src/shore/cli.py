@@ -1262,12 +1262,12 @@ def collar(
         ),
     ] = None,
     collar_volume: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--collar-volume",
-            help="Outer boundary: stations (default) or smoothed (thick collars at corners).",
+            help="Outer boundary: smoothed (default; ADR 0025-0026) or stations (ADR 0010).",
         ),
-    ] = "stations",
+    ] = None,
     name_a: Annotated[
         str | None, typer.Option("--name-a", help="Geometry name of body A (default: stem).")
     ] = None,

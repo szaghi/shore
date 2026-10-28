@@ -178,3 +178,22 @@ class TestSmoothedVolume:
         wall[..., 1] = np.arange(5)[None, :]
         with pytest.raises(ParameterError, match="volume"):
             extrude_collar(wall, np.full(3, 0.1), 1, params=CollarParams(volume="x"))
+
+    def test_near_corners_at_the_collar_scale(self):
+        from shore.collar import _near_corners
+
+        theta = np.linspace(0.0, 2.0 * np.pi, 64, endpoint=False)
+        ring = np.c_[0.5 * np.cos(theta), 0.5 * np.sin(theta), 0.0 * theta]
+        # radius 0.5, thickness 0.118: 27 deg within +- the thickness -> not smoothed
+        np.testing.assert_array_equal(_near_corners(ring, 0.118, periodic=True), 0.0)
+        # radius 0.05 (a bend tighter than the collar): smoothed everywhere
+        np.testing.assert_array_equal(_near_corners(0.1 * ring, 0.118, periodic=True), 1.0)
+        side = np.linspace(-0.5, 0.5, 21)[:-1]
+        flat = 0.0 * side
+        square = np.vstack(
+            [np.c_[side, flat - 0.5], np.c_[flat + 0.5, side], np.c_[-side, flat + 0.5],
+             np.c_[flat - 0.5, -side]]
+        )  # fmt: skip
+        w = _near_corners(np.c_[square, 0.0 * square[:, 0]], 0.1, periodic=True)
+        assert w[0] == 1.0  # a corner
+        assert w[10] == 0.0  # mid-side, 0.5 from the corners: beyond twice the reach

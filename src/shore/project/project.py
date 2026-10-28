@@ -10,7 +10,7 @@ A project holds named geometries and named components (ADR 0016): every
 mesh command acts on the current component (``use_component``; the default
 is ``"main"``), and ``write_xall`` writes the Xall files of all of them.
 
-On disk a project is a directory (format 2)::
+On disk a project is a directory (format 3; 1 and 2 still load)::
 
     project.toml                 metadata: format, shore version, components
                                  and their block labels, input hashes
@@ -69,9 +69,10 @@ from shore.project.commands import (
     WriteProcInput,
     WriteXall,
     input_root,
+    legacy_collar_volume,
 )
 
-PROJECT_FORMAT = 2
+PROJECT_FORMAT = 3
 DEFAULT_COMPONENT = "main"
 JOURNAL_HEADER = (
     "# SHORE journal: replay with `shore run <this file>`.\n"
@@ -304,7 +305,7 @@ class Project:
         loop_curvature: float = 0.0,
         split: bool = False,
         wake_length: float | None = None,
-        volume: str = "stations",
+        volume: str | None = None,
     ) -> None:
         """Collar block around the junction of *geometry* and *other*, a
         geometry name or a file path (ADR 0010, 0016); with *plane* the
@@ -334,7 +335,7 @@ class Project:
                 float(loop_curvature),
                 bool(split),
                 None if wake_length is None else float(wake_length),
-                str(volume),
+                None if volume is None else str(volume),
             )
         )
 
@@ -552,12 +553,21 @@ class Project:
         except (OSError, tomllib.TOMLDecodeError) as err:
             raise MeshInputError(f"{d}: not a SHORE project ({err})") from err
         version = meta.get("format")
+        if version not in (1, 2, PROJECT_FORMAT):
+            raise MeshInputError(f"{d}: unsupported project format {version!r}")
+        # before format 3 collars defaulted to the "stations" volume (ADR 0026)
+        legacy = legacy_collar_volume.set(version < 3)
+        try:
+            return cls._load(d, meta, version)
+        finally:
+            legacy_collar_volume.reset(legacy)
+
+    @classmethod
+    def _load(cls, d: Path, meta: dict[str, Any], version: int) -> Project:
         if version == 1:
             project = run_journal(d / "journal.py")
             _check_grids(d, d / "grids", project.mesh, meta.get("labels", []))
             return project
-        if version != PROJECT_FORMAT:
-            raise MeshInputError(f"{d}: unsupported project format {version!r}")
         for rel, digest in meta.get("inputs", {}).items():
             copy = d / rel
             if not copy.is_file() or _sha256(copy) != digest:

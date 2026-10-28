@@ -77,7 +77,7 @@ class CollarParams:
     wake_ratio: float = 1.2  # split_collar: largest ratio of adjacent wake cells
     # the outer boundary (ADR 0025): "stations" = per loop station (ADR 0010); "smoothed" =
     # on the 3-D offset line, the station offsets smoothed along the loop
-    volume: str = "stations"
+    volume: str = "smoothed"
     offset_smoothing: float = 0.5  # "smoothed": Gaussian width along the loop, x the thickness
     backstep_ratio: float = 0.5  # "smoothed": the outer boundary advances >= this x the inner
     backstep_iterations: int = 200
@@ -458,7 +458,9 @@ def _extrude(
     normals = _normals(inner, periodic)
     rest = cum[-1] - cum[k0]
     if params.volume == "smoothed":
-        outer = _smoothed_outer(inner, inner + rest * normals, rest, junction, params, periodic)
+        outer = _smoothed_outer(
+            inner, inner + rest * normals, wall[junction], rest, junction, params, periodic
+        )
     else:
         outer = np.stack(
             [_outer_line(inner[:, j], normals[:, j], rest, junction) for j in range(nj)], axis=1
@@ -475,6 +477,7 @@ def _extrude(
 def _smoothed_outer(
     inner: np.ndarray,
     offset: np.ndarray,
+    loop: np.ndarray,
     rest: float,
     junction: int,
     params: CollarParams,
@@ -496,7 +499,9 @@ def _smoothed_outer(
     nj = inner.shape[1]
     outer = np.stack([_offset_line(inner[:, j], offset[:, j], junction) for j in range(nj)], axis=1)
     weights = _loop_kernel(inner[junction], params.offset_smoothing * rest, periodic)
-    shift = np.einsum("jl,ilc->ijc", weights, outer - inner)
+    near = _near_corners(loop, rest, periodic)
+    smoothed = np.einsum("jl,ilc->ijc", weights, outer - inner)
+    shift = (1.0 - near)[None, :, None] * (outer - inner) + near[None, :, None] * smoothed
     for _ in range(params.backstep_iterations):
         ahead = _next_station(inner, periodic) - inner
         moved = _next_station(inner + shift, periodic) - (inner + shift)
@@ -519,6 +524,32 @@ def _smoothed_outer(
     return np.stack(
         [_offset_line(inner[:, j], inner[:, j] + shift[:, j], junction) for j in range(nj)], axis=1
     )
+
+
+def _near_corners(row: np.ndarray, reach: float, periodic: bool) -> np.ndarray:
+    """Weight 1 within *reach* (arc length) of the stations where *row* turns by 60 deg or
+    more within +- *reach* (a corner at the collar's scale: a corner of the loop, or a bend
+    of radius under about twice the thickness), falling to 0 at twice that: where the
+    station offsets are smoothed."""
+    closed = np.vstack([row, row[:1]]) if periodic else row
+    seg = np.diff(closed, axis=0)
+    lengths = np.linalg.norm(seg, axis=1)
+    unit = seg / lengths[:, None]
+    turn = np.zeros(len(row))
+    if periodic:
+        turn = np.arccos(np.clip(np.einsum("ij,ij->i", unit, np.roll(unit, 1, axis=0)), -1, 1))
+    else:
+        turn[1:-1] = np.arccos(np.clip(np.einsum("ij,ij->i", unit[1:], unit[:-1]), -1, 1))
+    s = np.r_[0.0, np.cumsum(lengths)][: len(row)]
+    gap = np.abs(s[:, None] - s[None, :])
+    if periodic:
+        total = float(lengths.sum())
+        gap = np.minimum(gap, total - gap)
+    window = (gap <= reach) @ turn  # the turning within +- reach of each station
+    corners = np.flatnonzero(window >= np.radians(60.0))
+    if corners.size == 0:
+        return np.zeros(len(row))
+    return np.clip(2.0 - gap[:, corners].min(axis=1) / reach, 0.0, 1.0)
 
 
 def _next_station(layer: np.ndarray, periodic: bool) -> np.ndarray:

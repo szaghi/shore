@@ -1,6 +1,6 @@
 # 0025 — The collar volume at loop corners
 
-- **Status:** Accepted
+- **Status:** Accepted (default changed by [ADR 0026](./0026-smoothed-collar-volume-by-default.md))
 - **Date:** 2026-10-28
 
 ## Context
