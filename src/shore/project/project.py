@@ -560,7 +560,7 @@ class Project:
         if source not in by_source:
             if not source.is_file():
                 raise MeshInputError(f"save: input file {source} no longer exists.")
-            name = f"{len(by_source):02d}_{source.name}"
+            name = f"{len(by_source):02d}_{_original_name(source)}"
             inputs.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, inputs / name)
             rel = f"inputs/{name}"
@@ -693,6 +693,16 @@ def _plane_tuple(plane: Any) -> tuple[tuple[float, float, float], tuple[float, f
         return tuple(float(c) for c in point), tuple(float(c) for c in normal)  # type: ignore[return-value]
     except (TypeError, ValueError):
         raise ParameterError("plane must be (point, normal), two 3-vectors.") from None
+
+
+def _original_name(source: Path) -> str:
+    """The file name of an input, without the ``NN_`` index of a saved project's copy
+    (so re-saving a loaded project does not stack indices: ``00_00_plate.stl``)."""
+    name = source.name
+    is_copy = source.parent.name == "inputs" and (source.parent.parent / "project.toml").is_file()
+    if is_copy and len(name) > 3 and name[:2].isdigit() and name[2] == "_":
+        return name[3:]
+    return name
 
 
 def _saved_face_graphs(d: Path, meta: dict[str, Any]) -> bool:

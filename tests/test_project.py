@@ -344,3 +344,21 @@ class TestComponentsAndInputs:
         with pytest.raises(ParameterError, match="unknown key"):
             p.write_xall(tmp_path / "run", components={"main": {"proc_meta": {label: {"rank": 1}}}})
         assert not (tmp_path / "run").exists()
+
+
+class TestResaveNames:
+    """Re-saving a loaded project keeps the input copies' names (no stacked indices)."""
+
+    def test_resave_does_not_stack_prefixes(self, tmp_path):
+        import trimesh
+
+        from shore.project import Project
+
+        trimesh.creation.icosphere(2).export(str(tmp_path / "ball.stl"))
+        p = Project()
+        p.load_geometry(tmp_path / "ball.stl")
+        p.save(tmp_path / "a")
+        Project.load(tmp_path / "a").save(tmp_path / "b")
+        assert sorted(f.name for f in (tmp_path / "b" / "inputs").iterdir()) == ["00_ball.stl"]
+        assert "inputs/00_ball.stl" in (tmp_path / "b" / "journal.py").read_text()
+        Project.load(tmp_path / "b")  # still loads
