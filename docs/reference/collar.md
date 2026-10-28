@@ -36,6 +36,8 @@ shore collar [OPTIONS] BODY_A BODY_B
 | `--loop-beta FLOAT` | `3.0` | Clustering strength of `tanh` / `tanh2`. |
 | `--loop-cluster-at FLOAT` | | Where `tanh2` clusters, as a fraction of the curve in [0, 1] (from the seed round the loop, or from the first plane end). Default: both ends, i.e. at the seed on a loop. |
 | `--loop-curvature FLOAT` | `0.0` | Cluster nodes where the curve bends (ADR 0020). Try `1` for rounded sections. |
+| `--split` | off | Cut the collar at sharp corners (> 105 degrees) into blocks joined across wake sheets (ADR 0024). Closed loops only (not with `--plane`). |
+| `--wake-length FLOAT` | collar width on A | With `--split`: length of the wake lines behind the sharp corners. |
 | `--name-a`, `--name-b TEXT` | file stems | Geometry names in the project. |
 | `-o, --output PATH` | | Output stem for the `.geo` file. |
 | `--adjacency-json PATH` | | Also write the `.adjacency.json` sidecar. |
@@ -78,8 +80,9 @@ corners still fold (ADR 0025).
 
 Sharp corners, those turning by more than 105 degrees (a sharp trailing
 edge, the tips of a lens), fold even the collar's wall: the surface grid
-on the plate cannot turn round them. The Python function
-`shore.collar.split_collar` cuts the loop there (ADR 0024). A wake line runs
+on the plate cannot turn round them. `--split` (Python:
+`shore.collar.split_collar`, `Project.build_collar(split=True)`) cuts the
+loop there (ADR 0024). A wake line runs
 on the plate behind each sharp corner, along its bisector, for
 `wake_length` (default: the collar's width on the plate), with cells
 growing by at most 1.2 from the corner spacing. Over the wake, the wall is
@@ -90,7 +93,10 @@ C-grid. Each piece of the loop between sharp corners becomes six blocks
 row). On a NACA 0012 wing with a sharp trailing edge, the single block
 folds 12 cells (5500 with `--loop-curvature 1`); the split collar's
 smallest scaled Jacobian is 0.155 (0.228). With curvature clustering at the
-corner the split collar must stay thin: about 10 corner spacings.
+corner the split collar must stay thin: about 10 corner spacings. With
+`-o` each block goes to `<stem>_<label>.geo`, labels
+`<label>_<piece>_<wake_lo|body|wake_hi>_<b|a>`; without sharp corners
+`--split` gives the single block.
 
 ## Projects
 

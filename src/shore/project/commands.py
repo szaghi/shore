@@ -532,8 +532,10 @@ class BuildCollar(Command):
     (``(point, normal)``) the half-collar of a half model (ADR 0013). The
     nodes along the junction curve follow ``Spacing1D(loop_law,
     beta=loop_beta, cluster_at=loop_cluster_at)`` and *loop_curvature*
-    (ADR 0020). Replaces the mesh with the one collar block, a separate
-    Chimera component.
+    (ADR 0020). With *split*, ``split_collar`` (ADR 0024): the loop is cut at
+    sharp corners, with wakes of *wake_length* (default: the collar's width
+    on A), six blocks per piece (closed loops only). Replaces the mesh with
+    the collar's block(s), a separate Chimera component.
     """
 
     method: ClassVar[str] = "build_collar"
@@ -557,9 +559,11 @@ class BuildCollar(Command):
     loop_beta: float = 3.0
     loop_cluster_at: float | None = None
     loop_curvature: float = 0.0
+    split: bool = False
+    wake_length: float | None = None
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        from shore.collar import build_collar
+        from shore.collar import build_collar, split_collar
         from shore.geometry import load_geometry
         from shore.mesh.spacing import Spacing1D
 
@@ -583,22 +587,29 @@ class BuildCollar(Command):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ParameterError(f"{name} must be an integer >= 1, got {value!r}.")
-        block = build_collar(
-            body.geometry,
-            other,
-            np.asarray(self.seed, dtype=np.float64),
-            n_loop=self.n_loop,
-            steps_a=self.ds_surface * self.growth_surface ** np.arange(self.m_a),
-            steps_b=self.ds_surface * self.growth_surface ** np.arange(self.m_b),
-            steps_k=self.ds_wall * self.growth_wall ** np.arange(self.nk),
-            label=self.label,
-            plane=self.plane,
-            loop_spacing=loop_spacing,
-            loop_curvature=self.loop_curvature,
-        )
+        if not self.split and self.wake_length is not None:
+            raise ParameterError("wake_length applies to split collars (split=True) only.")
+        if self.split and self.plane is not None:
+            raise ParameterError("split collars are closed: not with a symmetry plane.")
+        common = {
+            "n_loop": self.n_loop,
+            "steps_a": self.ds_surface * self.growth_surface ** np.arange(self.m_a),
+            "steps_b": self.ds_surface * self.growth_surface ** np.arange(self.m_b),
+            "steps_k": self.ds_wall * self.growth_wall ** np.arange(self.nk),
+            "label": self.label,
+            "loop_spacing": loop_spacing,
+            "loop_curvature": self.loop_curvature,
+        }
+        seed = np.asarray(self.seed, dtype=np.float64)
+        if self.split:
+            blocks = split_collar(
+                body.geometry, other, seed, wake_length=self.wake_length, **common
+            )
+        else:
+            blocks = [build_collar(body.geometry, other, seed, plane=self.plane, **common)]
         prev = (project.mesh, project.build)
         # no body association: k_lo lies on two bodies
-        project.mesh = Mesh(body=None, blocks=[block], topology=None)  # type: ignore[arg-type]
+        project.mesh = Mesh(body=None, blocks=blocks, topology=None)  # type: ignore[arg-type]
         project.build = BuildState("collar", self.nk + 1, marchable=False, geometries=built_on)
 
         def restore() -> None:

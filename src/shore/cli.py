@@ -1249,6 +1249,18 @@ def collar(
             help="Cluster nodes where the curve bends (weight >= 0; try 1 for rounded sections).",
         ),
     ] = 0.0,
+    split: Annotated[
+        bool,
+        typer.Option(
+            "--split", help="Cut the collar at sharp corners (> 105 deg, e.g. a sharp TE)."
+        ),
+    ] = False,
+    wake_length: Annotated[
+        float | None,
+        typer.Option(
+            "--wake-length", help="With --split: wake length on A (default: the collar's width)."
+        ),
+    ] = None,
     name_a: Annotated[
         str | None, typer.Option("--name-a", help="Geometry name of body A (default: stem).")
     ] = None,
@@ -1268,6 +1280,8 @@ def collar(
 
     With --plane, the half-collar of a half model on that symmetry plane.
     --loop-* distribute the nodes along the junction curve (ADR 0020).
+    --split cuts the collar at sharp corners into blocks joined across
+    wake sheets (ADR 0024); -o then writes <stem>_<label>.geo per block.
     The result goes to the .geo file(s) (-o), to component --component
     (default 'collar') of --project, or both.
     """
@@ -1296,6 +1310,8 @@ def collar(
             loop_beta=loop_beta,
             loop_cluster_at=loop_cluster_at,
             loop_curvature=loop_curvature,
+            split=split,
+            wake_length=wake_length,
         )
         if output is not None:
             proj.write_geo(output)
@@ -1305,8 +1321,12 @@ def collar(
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None
     assert proj.mesh is not None
-    shape = "x".join(map(str, proj.mesh.blocks[0].nodes.shape[:3]))
-    _console.print(f"[green]✓[/green] Collar '{_esc(label)}' {shape}")
+    blocks = proj.mesh.blocks
+    if len(blocks) == 1:
+        shape = "x".join(map(str, blocks[0].nodes.shape[:3]))
+        _console.print(f"[green]✓[/green] Collar '{_esc(label)}' {shape}")
+    else:
+        _console.print(f"[green]✓[/green] Collar '{_esc(label)}': {len(blocks)} blocks")
     _save_project(proj, project)
 
 

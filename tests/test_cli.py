@@ -1118,6 +1118,74 @@ class TestCollarProjects:
             body.projector  # noqa: B018
 
 
+class TestSplitCollar:
+    """``shore collar --split`` (ADR 0024): the collar cut at a sharp trailing edge."""
+
+    @staticmethod
+    def bodies(tmp_path):
+        import trimesh
+
+        from shore.profiles import naca
+        from shore.shapes import extrude_section
+
+        wing = extrude_section(naca("0012", n_pts=40), span=1.0, n_stations=2, end_caps=True)
+        wing.apply_translation((0.0, 0.0, -0.3))
+        plate = trimesh.creation.box(extents=(4.0, 4.0, 1.0))
+        plate.apply_translation((0.5, 0.0, -0.5))
+        wing.export(str(tmp_path / "wing.stl"))
+        plate.export(str(tmp_path / "plate.stl"))
+        return [str(tmp_path / "plate.stl"), str(tmp_path / "wing.stl")]
+
+    ARGS = ("--seed", "0.5", "0.06", "0", "--n-loop", "64", "--ds-surface", "0.01",
+            "--growth-surface", "1.15", "--m-a", "6", "--m-b", "6", "--ds-wall", "1e-4",
+            "--growth-wall", "1.3", "--nk", "8")  # fmt: skip
+
+    def test_split_writes_six_blocks_and_a_project(self, tmp_path):
+        from shore.io.adjacency import read_adjacency_json
+        from shore.project import Project
+
+        out = tmp_path / "out" / "c"
+        r = runner.invoke(
+            app,
+            ["collar", *self.bodies(tmp_path), *self.ARGS, "--split", "-o", str(out),
+             "--adjacency-json", str(tmp_path / "c.adjacency.json"),
+             "--project", str(tmp_path / "p")],
+        )  # fmt: skip
+        assert r.exit_code == 0, r.output
+        assert "6 blocks" in r.output
+        assert len(list((tmp_path / "out").glob("c_collar_0_*.geo"))) == 6
+        payload = read_adjacency_json(tmp_path / "c.adjacency.json")
+        assert len(payload["blocks"]) == 6
+        p = Project.load(tmp_path / "p")
+        assert len(p.mesh.blocks) == 6
+        assert "split=True" in p.journal()
+
+    def test_wake_length_needs_split(self, tmp_path):
+        r = runner.invoke(
+            app,
+            ["collar", *self.bodies(tmp_path), *self.ARGS, "--wake-length", "0.1",
+             "-o", str(tmp_path / "c")],
+        )  # fmt: skip
+        assert r.exit_code == 1
+        assert "split" in r.output
+
+    def test_project_api(self, tmp_path):
+        from shore.project import Project
+
+        bodies = self.bodies(tmp_path)
+        plain, split = Project(), Project()
+        kw = {"seed": (0.5, 0.06, 0.0), "n_loop": 64, "ds_surface": 0.01,
+              "growth_surface": 1.15, "m_a": 6, "m_b": 6, "ds_wall": 1e-4,
+              "growth_wall": 1.3, "nk": 8}  # fmt: skip
+        for proj in (plain, split):
+            proj.load_geometry(bodies[0], name="plate")
+        plain.build_collar(bodies[1], geometry="plate", **kw)
+        split.build_collar(bodies[1], geometry="plate", split=True, **kw)
+        # the sharp TE is cut: six blocks; the plain collar is one
+        assert len(plain.mesh.blocks) == 1
+        assert len(split.mesh.blocks) == 6
+
+
 class TestBlendDeprecation:
     """blend_normals_k on CH (ADR 0019): refused like the C-grid it wraps."""
 
