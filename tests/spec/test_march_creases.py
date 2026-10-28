@@ -1,6 +1,8 @@
 """FROZEN acceptance spec: surface marching at creases (ADR 0023).
 
-Frozen 2026-10-27, before any implementation. Implementing work may not edit
+Frozen 2026-10-27, before any implementation. Re-frozen 2026-10-28 (ADR 0027,
+user-approved): ADR 0008's concave-L march folded in its last three layers;
+its golden is now the repaired march, checked by its own case (C4b). Implementing work may not edit
 this file, ``tests/spec/data/march_default.npz``, ``tests/spec/__init__.py``,
 ``tests/conftest.py``, the pytest configuration in ``pyproject.toml``, or
 ``src/shore/quality.py``. The ONE permitted edit is deleting an ``@PENDING``
@@ -11,7 +13,8 @@ lines removed; ``scripts/check_spec.py`` checks them.
 Verdict for acceptance (main CI job): ``pytest tests/spec/test_march_creases.py``
 reports 22 passed, 0 skipped, 0 xfailed. At freeze: 15 passed (the 13 golden
 marches and the two prism cases with curvature, which already hold:
-regression guards), 7 xfailed.
+regression guards), 7 xfailed. At the ADR 0027 re-freeze (C4b replaces the
+concave-L entry of C4): 21 passed, 1 xfailed.
 
 Interface under test
 --------------------
@@ -41,7 +44,8 @@ STL (ADR 0021's ``stl_wing``); loop n = 96, uniform and curvature 1
 - C4 unchanged: ``data/march_default.npz``, written by the marcher before
   this ADR: ADR 0008's seven cases, the elliptic junction of ADR 0020 (both
   bodies, loop and half curve on a plane) and a faceted STL sphere x
-  cylinder, within 1e-12.
+  cylinder, within 1e-12. C4b (ADR 0027): ADR 0008's concave-L march equals
+  its re-frozen golden within 1e-12 and no front segment reverses.
 
 Out of scope of this spec: sharp trailing edges (the plate march folds at
 the 164 deg turn: the split collar), the collar volume at corners
@@ -205,7 +209,7 @@ def _golden_case(name: str):
 
 GOLDEN_NAMES = [
     "m_line_plane", "m_ring_cylinder", "m_generator_cylinder", "m_equator_sphere",
-    "m_helix_cylinder", "m_concave_l_plane", "m_convex_l_plane", "ellipse_a", "ellipse_b",
+    "m_helix_cylinder", "m_convex_l_plane", "ellipse_a", "ellipse_b",
     "half_ellipse_a", "half_ellipse_b", "stl_sphere", "stl_cylinder",
 ]  # fmt: skip
 
@@ -214,3 +218,10 @@ class TestUnchanged:
     @pytest.mark.parametrize("name", GOLDEN_NAMES)
     def test_c4_smooth_marches_unchanged(self, name):
         np.testing.assert_allclose(_golden_case(name), np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
+
+    @PENDING
+    def test_c4b_concave_march_unfolded(self):
+        grid = _golden_case("m_concave_l_plane")
+        np.testing.assert_allclose(grid, np.load(GOLDEN)["m_concave_l_plane"], rtol=0.0, atol=1e-12)
+        ahead = np.diff(grid, axis=0)
+        assert (np.einsum("ijk,ijk->ij", ahead[:, :-1], ahead[:, 1:]) > 0.0).all()

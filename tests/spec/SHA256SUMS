@@ -1,4 +1,4 @@
-# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020-0024 frozen 2026-10-27; ADR 0025 frozen 2026-10-28; ADR 0026 frozen and ADR 0024/0025 re-frozen 2026-10-28; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
+# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020-0024 frozen 2026-10-27; ADR 0025 frozen 2026-10-28; ADR 0026 frozen and ADR 0024/0025 re-frozen 2026-10-28; ADR 0027 frozen and ADR 0023 re-frozen 2026-10-28; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
 # Spec modules are hashed with their @PENDING lines removed.
 3c6fbe392a7ef5d28034141a61e1c03227da2b1dd5dbb315f819493fe8320aef  tests/spec/test_hyperbolic_marching.py
 ae38c25896db5e94b8f55f23a94bba05d7d80a76d0eb5f5729ec9c3cecec12b7  tests/spec/__init__.py
@@ -23,9 +23,10 @@ b1578316dbe77ba00ed92cfaf41f02ab50b2cf1cdb5b5d0fafefa8804c8669b3  tests/spec/tes
 c2deab63d2ebd8ce0a1b36525f40ca0dc5e5426b1740486fb2b1834ef2dfa735  tests/spec/test_loop_corners_cad.py
 bcc58d38417724d29b4778bb4f3cb9136d8696a1b91894acb58ab9cb4926f24f  tests/spec/data/loop_bends_default.npz
 424bcc270b268cf988543499f37e4e951f94af4284348e1c8647f613b943c472  tests/spec/test_corner_grading.py
-a93f2be5613154a88d29487c83b85c02bacc61d507ec97652908aad45e7842da  tests/spec/test_march_creases.py
-6dcd095ea582be8e6497f5acb2cbb6f6ad90d47653668068a995b0ca392d3aa4  tests/spec/data/march_default.npz
 bd226016d8be486915cd904d2f6497728d30090b97504be38f2eb8a24383d350  tests/spec/data/collar_default.npz
 01e5670190c91d0008e1038959a8d68ba25dba03ab2947fba52acd4cda726e3d  tests/spec/test_collar_default.py
 d97fc7b0aa4079a6051d8ae7d852962426dada914985bf8aeaa1d41cc6a7110b  tests/spec/test_split_collar.py
 e38d34bc2d03b2e1a38fcc59011bbdcbec9f474954a8f8344e652b776b3929e7  tests/spec/test_collar_volume.py
+35609e65e700764781ff305d43b05b24e3ec752633fd8babe939c4968fb90ce5  tests/spec/test_march_creases.py
+3db5862463ea702a1578e0c3a717e97a5dc32270e8cee449b2eeda1fcad0cc9e  tests/spec/data/march_default.npz
+0794e01645d7c0bce4ad158a7e62955cbc0a200e13e0021b92571772998c4d85  tests/spec/test_march_corners.py
