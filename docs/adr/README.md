@@ -26,7 +26,7 @@ by a later record that supersedes it.
 | [0016](./0016-multi-component-projects.md) | Multi-component, portable projects | Accepted |
 | [0017](./0017-xall-options-per-component.md) | Per-component Xall options in `write_xall` | Accepted |
 | [0018](./0018-cli-collars-and-projects.md) | CLI for collars and multi-component projects | Accepted |
-| [0019](./0019-deprecate-normal-blending.md) | Deprecate the marcher's normal blending (`blend_normals_k`) | Accepted |
+| [0019](./0019-deprecate-normal-blending.md) | Deprecate the marcher's normal blending (`blend_normals_k`) | Accepted (removal: 0034) |
 | [0020](./0020-junction-curve-spacing.md) | Spacing laws along the junction curve | Accepted |
 | [0021](./0021-junction-curves-with-corners.md) | Junction curves with corners | Accepted |
 | [0022](./0022-collars-at-blunt-corners.md) | Graded spacing across corners; collars at blunt corners | Accepted |
@@ -41,6 +41,7 @@ by a later record that supersedes it.
 | [0031](./0031-polishing-exact-cycles.md) | Polishing: stop at exact cycles | Accepted |
 | [0032](./0032-stl-projection-cache.md) | STL projection: each query point computed once | Accepted |
 | [0033](./0033-load-without-replay.md) | Loading a saved project without replay | Accepted |
+| [0034](./0034-remove-normal-blending.md) | Remove the marcher's normal blending (`blend_normals_k`) | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
