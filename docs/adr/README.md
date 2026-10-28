@@ -37,6 +37,7 @@ by a later record that supersedes it.
 | [0027](./0027-surface-marching-at-clustered-corners.md) | Surface marching at clustered corners | Accepted |
 | [0028](./0028-collar-volume-at-extreme-clustering.md) | The collar volume at extreme clustering (investigation) | Proposed |
 | [0029](./0029-spreading-converging-fronts.md) | Spreading converging fronts (not adopted); a four-corner surface metric | Rejected / Accepted |
+| [0030](./0030-concave-notches.md) | Collars in concave notches (investigation) | Rejected |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

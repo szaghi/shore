@@ -104,7 +104,7 @@ C-grid. Each piece of the loop between sharp corners becomes six blocks
 row). On a NACA 0012 wing with a sharp trailing edge, the single block
 folds 12 cells (5500 with `--loop-curvature 1`); the split collar's
 smallest scaled Jacobian is 0.155 (0.228). With curvature clustering at the
-corner the split collar must stay thin: about 10 corner spacings. Since ADR 0027 the surface grids themselves no longer fold at clustered corners (the march sub-steps where its step dwarfs the corner spacing, and untangles converging fronts); this can make strongly clustered loops (n_loop 384 with curvature) take minutes, and their collar volume still folds when it is 100 x thicker than the corner spacing (ADR 0028): keep the collar thinner than about 10 x the smallest loop spacing at corners, or cluster less there. With
+corner the split collar must stay thin: about 10 corner spacings. Since ADR 0027 the surface grids themselves no longer fold at clustered corners (the march sub-steps where its step dwarfs the corner spacing, and untangles converging fronts); this can make strongly clustered loops (n_loop 384 with curvature) take minutes, and their collar volume still folds when it is 100 x thicker than the corner spacing (ADR 0028): keep the collar thinner than about 10 x the smallest loop spacing at corners, or cluster less there. In a concave notch the plate's surface grid collapses on the bisector when it is marched deeper than the notch allows (ADR 0030): keep the collar's width on that body small there. With
 `-o` each block goes to `<stem>_<label>.geo`, labels
 `<label>_<piece>_<wake_lo|body|wake_hi>_<b|a>`; without sharp corners
 `--split` gives the single block.
