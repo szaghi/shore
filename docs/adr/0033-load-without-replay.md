@@ -1,6 +1,6 @@
 # 0033 — Loading a saved project without replay
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 
 ## Context
@@ -107,3 +107,22 @@ the interface: 10 passed.
 | L6 (× 3) | undo and march refused; a project without face graphs refused, naming the replay |
 | L7 | `shore xall --no-replay` writes the same files |
 | L8 | the replayed load still rejects a changed grid (guard) |
+
+### Review (2026-10-28, user decisions)
+
+1. The older re-save prefix behaviour gets its own fix commit.
+2. Next step: remove `blend_normals_k`.
+
+## Acceptance (2026-10-28): load-without-replay spec met
+
+**Kernel.** As decided: `Project._load_saved`, the `recording` context
+variable, `_saved_face_graphs`, and `--no-replay` on 7 project commands
+and `shore xall`.
+
+**Verdict for `tests/spec/test_fast_load.py`: 10 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 9
+`@PENDING` lines are removed.
+
+**Unit test** (`tests/test_cli.py`): `shore collar --no-replay` adds a
+split component to a saved project, and a replayed load reproduces both
+components.

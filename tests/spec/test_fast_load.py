@@ -111,7 +111,6 @@ def face_graph(mesh):
 
 
 class TestSave:
-    @PENDING
     def test_l1_face_graphs_saved(self, saved):
         for name in ("main", "collar"):
             assert (saved / "grids" / name / "adjacency.json").is_file()
@@ -119,7 +118,6 @@ class TestSave:
 
 
 class TestLoad:
-    @PENDING
     def test_l2_same_state(self, saved):
         full, fast = load(saved, True), load(saved, False)
         assert list(fast.components) == list(full.components)
@@ -132,7 +130,6 @@ class TestLoad:
                 assert np.array_equal(a.nodes, b.nodes)
             assert face_graph(other) == face_graph(mesh)
 
-    @PENDING
     def test_l3_no_kernel_runs(self, saved, monkeypatch):
         import shore.collar
         import shore.pipeline
@@ -146,7 +143,6 @@ class TestLoad:
         fast = load(saved, False)
         assert fast.components["collar"] is not None
 
-    @PENDING
     def test_l4_journal_and_resave(self, saved, tmp_path):
         full, fast = load(saved, True), load(saved, False)
         assert fast.journal() == full.journal()
@@ -157,7 +153,6 @@ class TestLoad:
         for sub in cmp.subdirs.values():
             assert not sub.diff_files and not sub.left_only and not sub.right_only
 
-    @PENDING
     def test_l5_xall_run(self, saved, tmp_path):
         load(saved, True).write_xall(tmp_path / "full")
         load(saved, False).write_xall(tmp_path / "fast")
@@ -173,7 +168,6 @@ class TestLoad:
 
 
 class TestRefusals:
-    @PENDING
     def test_l6_undo_refused(self, saved):
         from shore.exceptions import ParameterError
 
@@ -181,7 +175,6 @@ class TestRefusals:
         with pytest.raises(ParameterError, match="replay"):
             fast.undo()
 
-    @PENDING
     def test_l6_march_refused(self, saved):
         from shore.exceptions import ParameterError
 
@@ -189,7 +182,6 @@ class TestRefusals:
         with pytest.raises(ParameterError):
             fast.march()
 
-    @PENDING
     def test_l6_needs_face_graphs(self, saved):
         from shore.exceptions import MeshInputError
 
@@ -200,7 +192,6 @@ class TestRefusals:
 
 
 class TestCli:
-    @PENDING
     def test_l7_xall_no_replay(self, saved, tmp_path):
         from typer.testing import CliRunner
 

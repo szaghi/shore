@@ -1175,6 +1175,19 @@ class TestSplitCollar:
         assert r.exit_code == 1
         assert "volume" in r.output
 
+    def test_no_replay_adds_a_component(self, tmp_path):
+        from shore.project import Project
+
+        bodies = self.bodies(tmp_path)
+        base = ["collar", *bodies, *self.ARGS, "--project", str(tmp_path / "p")]
+        r = runner.invoke(app, base)
+        assert r.exit_code == 0, r.output
+        r = runner.invoke(app, [*base, "--split", "--component", "split", "--no-replay"])
+        assert r.exit_code == 0, r.output
+        p = Project.load(tmp_path / "p")  # replays both: the fast-loaded save is consistent
+        assert len(p.components["collar"].blocks) == 1
+        assert len(p.components["split"].blocks) == 6
+
     def test_wake_length_needs_split(self, tmp_path):
         r = runner.invoke(
             app,

@@ -18,12 +18,16 @@ On disk a project is a directory (format 3; 1 and 2 still load)::
     inputs/                      copies of every file the journal reads
     adjacency.json               the current component's face graph
     grids/<component>/<n>.npz    node arrays, checked on load
+    grids/<component>/adjacency.json  each component's face graph (ADR 0033)
 
 ``Project.load`` checks the input copies against their hashes, replays
 ``journal.py`` with the inputs resolved against the project directory
 (wherever it now is), and requires every grid to be bit-identical to the
 saved one, so a load is also a determinism check. Format-1 projects (one
-mesh, inputs at their journaled paths) still load.
+mesh, inputs at their journaled paths) still load. ``load(replay=False)``
+(ADR 0033) skips the rebuild: the journal is recorded (geometries loaded,
+components selected), and each component's blocks are read from its grids and
+rewired from its face graph.
 """
 
 from __future__ import annotations
@@ -70,6 +74,7 @@ from shore.project.commands import (
     WriteXall,
     input_root,
     legacy_collar_volume,
+    recording,
 )
 
 PROJECT_FORMAT = 3
@@ -99,6 +104,7 @@ class Project:
         self.last_result: Any = None  # what the last command reported (paths, summaries)
         self.undo_cache = UndoCache(Path(undo_root) if undo_root else None)
         self._done: list[tuple[Command, Undo | None]] = []
+        self._built_on: dict[str, tuple[str, ...]] = {}  # recorded (not replayed) meshes
         self._redo: list[Command] = []
 
     # -- state ---------------------------------------------------------------
@@ -415,7 +421,18 @@ class Project:
         progress: ProgressFn | None = None,
         cancel: CancelToken | None = None,
     ) -> None:
-        """Apply *command*, record it, and clear the redo stack."""
+        """Apply *command*, record it, and clear the redo stack.
+
+        While a project loads without replay (ADR 0033) only geometries and
+        component switches are applied; the other commands are recorded."""
+        if recording.get() and not isinstance(command, LoadGeometry | UseComponent):
+            if command.mutates:
+                names = (getattr(command, f, None) for f in ("geometry", "other"))
+                built_on = tuple(v for v in names if v in self._geometries)
+                if built_on:
+                    self._built_on[self._current] = built_on
+            self._done.append((command, None))
+            return
         undo = command.apply(self, Context(progress, cancel))
         self._done.append((command, undo))
         self._redo.clear()
@@ -425,7 +442,12 @@ class Project:
         while self._done:
             command, undo = self._done.pop()
             if command.mutates:
-                assert undo is not None
+                if undo is None:
+                    self._done.append((command, undo))
+                    raise ParameterError(
+                        "the history before this point was loaded without replay "
+                        "(Project.load(replay=False)): it cannot be undone."
+                    )
                 undo.restore()
                 self._redo.append(command)
                 return command
@@ -495,6 +517,8 @@ class Project:
                 for i, block in enumerate(component.mesh.blocks):
                     np.savez(d / "grids" / name / f"{i:04d}.npz", nodes=block.nodes)
                     labels.append(block.label)
+                # the component's face graph: a load without replay rewires from it
+                write_adjacency_json(component.mesh.blocks, d / "grids" / name / "adjacency.json")
             meta.append(f"{_toml_key(name)} = [" + ", ".join(_toml_str(x) for x in labels) + "]")
         meta += ["", "[inputs]"]
         meta += [f"{_toml_key(rel)} = {_toml_str(digest)}" for rel, digest in copies.items()]
@@ -545,8 +569,14 @@ class Project:
         return by_source[source]
 
     @classmethod
-    def load(cls, directory: str | Path) -> Project:
-        """Replay a project directory's journal and verify its saved grids."""
+    def load(cls, directory: str | Path, *, replay: bool = True) -> Project:
+        """Replay a project directory's journal and verify its saved grids.
+
+        With ``replay=False`` (ADR 0033) the journal is only recorded:
+        geometries are loaded and components selected, but no mesh is rebuilt;
+        each component's blocks come from its saved grids and face graph. The
+        loaded history cannot be undone, and a loaded mesh cannot be marched.
+        """
         d = Path(directory)
         try:
             meta = tomllib.loads((d / "project.toml").read_text())
@@ -555,12 +585,63 @@ class Project:
         version = meta.get("format")
         if version not in (1, 2, PROJECT_FORMAT):
             raise MeshInputError(f"{d}: unsupported project format {version!r}")
+        if not replay and not _saved_face_graphs(d, meta):
+            raise MeshInputError(
+                f"{d}: loading without replay needs each component's face graph "
+                "(grids/<component>/adjacency.json, saved since ADR 0033): load the project "
+                "with replay once and save it again."
+            )
         # before format 3 collars defaulted to the "stations" volume (ADR 0026)
         legacy = legacy_collar_volume.set(version < 3)
         try:
-            return cls._load(d, meta, version)
+            return cls._load(d, meta, version) if replay else cls._load_saved(d, meta)
         finally:
             legacy_collar_volume.reset(legacy)
+
+    @classmethod
+    def _load_saved(cls, d: Path, meta: dict[str, Any]) -> Project:
+        """``load(replay=False)``: the journal recorded, the meshes read back."""
+        from shore.io.adjacency import read_adjacency_json, wire_blocks_from_adjacency
+        from shore.mesh.block import HexBlock
+
+        cls._check_inputs(d, meta)
+        token = recording.set(True)
+        try:
+            project = run_journal(d / "journal.py", input_dir=d)
+        finally:
+            recording.reset(token)
+        saved = meta.get("components", {})
+        if list(saved) != list(project._components):
+            raise MeshInputError(
+                f"{d}: recorded components {list(project._components)} != {list(saved)}"
+            )
+        for name, labels in saved.items():
+            component = project._components[name]
+            if not labels:
+                continue
+            folder = d / "grids" / name
+            blocks = []
+            for i, label in enumerate(labels):
+                with np.load(folder / f"{i:04d}.npz") as grid:
+                    blocks.append(HexBlock(label=label, nodes=grid["nodes"]))
+            adjacency = folder / "adjacency.json"
+            payload = read_adjacency_json(adjacency)
+            wire_blocks_from_adjacency(blocks, payload, source=str(adjacency))
+            component.mesh = Mesh(body=None, blocks=blocks, topology=None)  # type: ignore[arg-type]
+            component.build = BuildState(
+                "blocks",
+                int(blocks[0].nodes.shape[2]),
+                marchable=False,
+                geometries=project._built_on.get(name, ()),
+            )
+        return project
+
+    @staticmethod
+    def _check_inputs(d: Path, meta: dict[str, Any]) -> None:
+        for rel, digest in meta.get("inputs", {}).items():
+            copy = d / rel
+            if not copy.is_file() or _sha256(copy) != digest:
+                raise MeshInputError(f"{d}: input {rel} is missing or changed since the save.")
 
     @classmethod
     def _load(cls, d: Path, meta: dict[str, Any], version: int) -> Project:
@@ -568,10 +649,7 @@ class Project:
             project = run_journal(d / "journal.py")
             _check_grids(d, d / "grids", project.mesh, meta.get("labels", []))
             return project
-        for rel, digest in meta.get("inputs", {}).items():
-            copy = d / rel
-            if not copy.is_file() or _sha256(copy) != digest:
-                raise MeshInputError(f"{d}: input {rel} is missing or changed since the save.")
+        cls._check_inputs(d, meta)
         project = run_journal(d / "journal.py", input_dir=d)
         saved = meta.get("components", {})
         if list(saved) != list(project._components):
@@ -615,6 +693,17 @@ def _plane_tuple(plane: Any) -> tuple[tuple[float, float, float], tuple[float, f
         return tuple(float(c) for c in point), tuple(float(c) for c in normal)  # type: ignore[return-value]
     except (TypeError, ValueError):
         raise ParameterError("plane must be (point, normal), two 3-vectors.") from None
+
+
+def _saved_face_graphs(d: Path, meta: dict[str, Any]) -> bool:
+    """Whether every non-empty component of a saved project has its face graph."""
+    if meta.get("format") != PROJECT_FORMAT:
+        return False
+    return all(
+        (d / "grids" / name / "adjacency.json").is_file()
+        for name, labels in meta.get("components", {}).items()
+        if labels
+    )
 
 
 def _check_grids(d: Path, grids: Path, mesh: Mesh | None, labels: list[str]) -> None:

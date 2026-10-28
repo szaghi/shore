@@ -62,6 +62,12 @@ legacy_collar_volume: contextvars.ContextVar[bool] = contextvars.ContextVar(
 )
 
 
+#: Set while a project loads without replay (ADR 0033): ``Project.execute``
+#: records the commands instead of applying them (geometries and component
+#: switches excepted).
+recording: contextvars.ContextVar[bool] = contextvars.ContextVar("shore_recording", default=False)
+
+
 def resolve_input(path: str) -> str:
     """*path*, relative to ``input_root`` when that is set and *path* is relative."""
     root = input_root.get()

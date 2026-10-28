@@ -115,9 +115,18 @@ _COMPONENT = Annotated[
     str | None,
     typer.Option("--component", help="Component of --project to build (default: see command)."),
 ]
+_NO_REPLAY = Annotated[
+    bool,
+    typer.Option(
+        "--no-replay",
+        help="Open --project from its saved grids without replaying its journal (ADR 0033).",
+    ),
+]
 
 
-def _open_project(directory: Path | None, component: str | None, default: str) -> Project:
+def _open_project(
+    directory: Path | None, component: str | None, default: str, replay: bool = True
+) -> Project:
     """The project in *directory* (or a new one) with component selected.
 
     Without *directory*: a throwaway project, as before ADR 0018.
@@ -129,7 +138,7 @@ def _open_project(directory: Path | None, component: str | None, default: str) -
             raise ParameterError("--component needs --project.")
         return Project()
     if (directory / "project.toml").exists():
-        proj = Project.load(directory)
+        proj = Project.load(directory, replay=replay)
     elif directory.exists() and any(directory.iterdir()):
         raise MeshInputError(f"{directory} exists and is not a SHORE project.")
     else:
@@ -770,6 +779,7 @@ def mesh(
     journal: _JOURNAL = None,
     project: _PROJECT = None,
     component: _COMPONENT = None,
+    no_replay: _NO_REPLAY = False,
     geometry_name: Annotated[
         str | None,
         typer.Option("--geometry-name", help="Geometry name in --project (default: file stem)."),
@@ -998,7 +1008,7 @@ def mesh(
     # networkx dependency.
     _skip_hygiene = topology in ("cgrid", "ch")
     try:
-        proj = _open_project(project, component, "main")
+        proj = _open_project(project, component, "main", replay=not no_replay)
         if project is None:  # a throwaway project: the legacy default name
             proj.load_geometry(input, skip_hygiene=_skip_hygiene)
             geometry = "body"
@@ -1282,6 +1292,7 @@ def collar(
     ] = None,
     project: _PROJECT = None,
     component: _COMPONENT = None,
+    no_replay: _NO_REPLAY = False,
 ) -> None:
     """Build the collar block around the junction of two bodies (ADR 0010, 0013).
 
@@ -1296,7 +1307,7 @@ def collar(
         _err.print("[red]Error:[/red] nothing to write: give -o and/or --project.")
         raise typer.Exit(1)
     try:
-        proj = _open_project(project, component, "collar")
+        proj = _open_project(project, component, "collar", replay=not no_replay)
         a = _ensure_geometry(proj, body_a, name_a)
         b = _ensure_geometry(proj, body_b, name_b)
         proj.build_collar(
@@ -1390,6 +1401,7 @@ def xall(
         Path | None,
         typer.Option("--options", help="TOML file: [run] and [components.<name>] options."),
     ] = None,
+    no_replay: _NO_REPLAY = False,
 ) -> None:
     """Write the Xall run of every component of a project (ADR 0016-0018).
 
@@ -1400,7 +1412,7 @@ def xall(
 
     try:
         kwargs = _xall_options(options) if options is not None else {}
-        proj = _Project.load(project_dir)
+        proj = _Project.load(project_dir, replay=not no_replay)
         proj.write_xall(out, **kwargs)  # type: ignore[arg-type]
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
@@ -1913,6 +1925,7 @@ def primitive_box(
     journal: _JOURNAL = None,
     project: _PROJECT = None,
     component: _COMPONENT = None,
+    no_replay: _NO_REPLAY = False,
 ) -> None:
     """Build a Cartesian box primitive (single block)."""
     cfg = _load_prim_config(config)
@@ -1941,7 +1954,7 @@ def primitive_box(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        proj = _open_project(project, component, "main")
+        proj = _open_project(project, component, "main", replay=not no_replay)
         proj.build_primitive(
             "box",
             vmin=tuple(vmin),
@@ -2019,6 +2032,7 @@ def primitive_annulus(
     journal: _JOURNAL = None,
     project: _PROJECT = None,
     component: _COMPONENT = None,
+    no_replay: _NO_REPLAY = False,
 ) -> None:
     """Build an annular-cylinder primitive (single block, optionally periodic-j)."""
     cfg = _load_prim_config(config)
@@ -2054,7 +2068,7 @@ def primitive_annulus(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        proj = _open_project(project, component, "main")
+        proj = _open_project(project, component, "main", replay=not no_replay)
         proj.build_primitive(
             "annulus",
             r_in=r_in,
@@ -2149,6 +2163,7 @@ def primitive_flat_caps(
     journal: _JOURNAL = None,
     project: _PROJECT = None,
     component: _COMPONENT = None,
+    no_replay: _NO_REPLAY = False,
 ) -> None:
     """Build a 5-block flat-caps cylinder (no central hole - Chimera-free background)."""
     cfg = _load_prim_config(config)
@@ -2186,7 +2201,7 @@ def primitive_flat_caps(
     output = pick("output", output, cfg.output if cfg else None)
 
     try:
-        proj = _open_project(project, component, "main")
+        proj = _open_project(project, component, "main", replay=not no_replay)
         proj.build_primitive(
             "flat_caps",
             r_out=r_out,
@@ -2261,6 +2276,7 @@ def primitive_h_grid_rect(
     journal: _JOURNAL = None,
     project: _PROJECT = None,
     component: _COMPONENT = None,
+    no_replay: _NO_REPLAY = False,
 ) -> None:
     """Build a rectangular-duct H-grid (single block, internal flow).
 
@@ -2269,7 +2285,7 @@ def primitive_h_grid_rect(
     prismatic ducts; the analytic baseline for internal flow.
     """
     try:
-        proj = _open_project(project, component, "main")
+        proj = _open_project(project, component, "main", replay=not no_replay)
         proj.build_primitive(
             "h_grid_rect",
             length=length,
@@ -2349,6 +2365,7 @@ def primitive_h_grid_tube(
     journal: _JOURNAL = None,
     project: _PROJECT = None,
     component: _COMPONENT = None,
+    no_replay: _NO_REPLAY = False,
 ) -> None:
     """Build a circular-bore H-grid (single block, j-periodic).
 
@@ -2362,7 +2379,7 @@ def primitive_h_grid_tube(
     you want a non-singular cross-section.
     """
     try:
-        proj = _open_project(project, component, "main")
+        proj = _open_project(project, component, "main", replay=not no_replay)
         proj.build_primitive(
             "h_grid_tube",
             length=length,
