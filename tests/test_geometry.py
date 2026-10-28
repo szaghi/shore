@@ -262,3 +262,28 @@ class TestBodyNormalsForBlending:
             mesh = Mesh.from_stl(tmp_path / "cyl.stl", CubedSphereTopology(), ni=33, nj=64, nk=4)
             mesh.march(ds=0.01, growth=1.15, blend_normals_k=5)
         assert len(mesh.blocks) == 6
+
+
+class TestProjectCache:
+    """Closest points remembered per query point (ADR 0032): same answers bit for bit."""
+
+    def test_batches_and_repeats_are_bit_identical(self, unit_sphere):
+        rng = np.random.default_rng(3)
+        pts = rng.normal(size=(200, 3)) * 1.5
+        pts[50:60] = pts[0:10]  # repeats inside one batch
+        cold = StlGeometry(unit_sphere).project(pts)
+        warm = StlGeometry(unit_sphere)
+        order = rng.permutation(len(pts))
+        warm.project(pts[order[:120]])  # fills part of the cache
+        again = warm.project(pts)
+        for field in ("points", "distances", "normals"):
+            assert np.array_equal(getattr(cold, field), getattr(again, field))
+        warm._closest.clear()
+        assert np.array_equal(warm.project(pts).points, cold.points)
+
+    def test_cache_is_bounded(self, unit_sphere, monkeypatch):
+        g = StlGeometry(unit_sphere)
+        monkeypatch.setattr(StlGeometry, "_CACHE_SIZE", 50)
+        g.project(np.random.default_rng(0).normal(size=(40, 3)))
+        g.project(np.random.default_rng(1).normal(size=(40, 3)))
+        assert len(g._closest) <= 50

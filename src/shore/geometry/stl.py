@@ -60,6 +60,9 @@ class StlGeometry:
         self.crease_deg = crease
         self._projectors: dict[bytes, Projector] = {}
         self._corner_normals = _corner_normals(mesh, crease)
+        # closest point per query point, by the point's exact bytes (ADR 0032): a point's
+        # answer does not depend on the other points of its batch
+        self._closest: dict[bytes, tuple[np.ndarray, float, int]] = {}
 
     @classmethod
     def from_file(
@@ -101,7 +104,7 @@ class StlGeometry:
         pts = np.asarray(points, dtype=np.float64)
         shape = pts.shape[:-1]
         flat = pts.reshape(-1, 3)
-        closest, distances, tri_ids = trimesh.proximity.closest_point(self.mesh, flat)
+        closest, distances, tri_ids = self._closest_points(flat)
         bary = trimesh.triangles.points_to_barycentric(self.mesh.triangles[tri_ids], closest)
         normals = (bary[..., None] * self._corner_normals[tri_ids]).sum(axis=1)
         mag = np.linalg.norm(normals, axis=-1, keepdims=True)
@@ -125,6 +128,26 @@ class StlGeometry:
         )
 
     # -- STL specifics -------------------------------------------------------
+
+    _CACHE_SIZE = 200_000  # points remembered per geometry (about 20 MB)
+
+    def _closest_points(self, flat: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """trimesh's closest points of *flat* (n, 3), each point computed once."""
+        keys = [p.tobytes() for p in flat]
+        todo = [i for i, k in enumerate(keys) if k not in self._closest]
+        if todo:
+            new = flat[todo]
+            closest, distances, tri_ids = trimesh.proximity.closest_point(self.mesh, new)
+            if len(self._closest) + len(todo) > self._CACHE_SIZE:
+                self._closest.clear()
+            for row, i in enumerate(todo):
+                self._closest[keys[i]] = (closest[row], float(distances[row]), int(tri_ids[row]))
+        hits = [self._closest[k] for k in keys]
+        return (
+            np.array([h[0] for h in hits], dtype=np.float64).reshape(-1, 3),
+            np.array([h[1] for h in hits], dtype=np.float64),
+            np.array([h[2] for h in hits], dtype=np.int64),
+        )
 
     def projector(self, anchor: np.ndarray) -> Projector:
         """The cached ``Projector`` for *anchor* (one BVH build per anchor)."""
