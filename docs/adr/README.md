@@ -35,6 +35,7 @@ by a later record that supersedes it.
 | [0025](./0025-collar-volume-at-corners.md) | The collar volume at loop corners | Accepted |
 | [0026](./0026-smoothed-collar-volume-by-default.md) | The smoothed collar volume by default | Accepted |
 | [0027](./0027-surface-marching-at-clustered-corners.md) | Surface marching at clustered corners | Accepted |
+| [0028](./0028-collar-volume-at-extreme-clustering.md) | The collar volume at extreme clustering (investigation) | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
