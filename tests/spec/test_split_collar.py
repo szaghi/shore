@@ -2,7 +2,10 @@
 
 Frozen 2026-10-27, before any implementation. Re-frozen 2026-10-28 (ADR 0026,
 user-approved): the golden collars are ADR 0010's ``"stations"`` volume, which
-is no longer the default, so S6 asks for it by name. Implementing work may not edit
+is no longer the default, so S6 asks for it by name. Re-frozen again
+2026-10-28 (user-approved): the STL wing's golden within 1e-10, as GitHub's
+runners differ by up to 1.7e-12 there (CPU-dependent rounding; the analytic
+goldens stay at 1e-12). Implementing work may not edit
 this file, ``tests/spec/data/collar_default.npz``, ``tests/spec/__init__.py``,
 ``tests/conftest.py``, the pytest configuration in ``pyproject.toml``, or
 ``src/shore/quality.py``. The ONE permitted edit is deleting an ``@PENDING``
@@ -74,7 +77,8 @@ n_loop 96, wall-normal ``5e-5 * 1.2**k``.
 - S6 unchanged: ``data/collar_default.npz``, written by ``build_collar``
   before this ADR (the rectangle prism with curvature, the blunt STL wing,
   the half ellipse on its plane: corners below 105 deg and a half-collar),
-  within 1e-12, with ``CollarParams(volume="stations")`` (ADR 0026);
+  within 1e-12 (the STL wing 1e-10: runner rounding), with
+  ``CollarParams(volume="stations")`` (ADR 0026);
   ``split_collar`` gives the same single blocks.
 - S7 errors.
 
@@ -360,6 +364,7 @@ class TestSharpMarch:
 # ---------------------------------------------------------------------------
 
 G_STEPS_S = 0.01 * 1.2 ** np.arange(8)
+GOLDEN_ATOL = {"rectangle": 1e-12, "blunt_wing": 1e-10, "half_ellipse": 1e-12}
 G_STEPS_K = 1e-4 * 1.3 ** np.arange(12)
 
 
@@ -384,7 +389,8 @@ class TestUnchanged:
         steps = {"steps_a": G_STEPS_S, "steps_b": G_STEPS_S, "steps_k": G_STEPS_K}
         stations = CollarParams(volume="stations")
         block = build_collar(a, b, seed, **steps, params=stations, **kw)
-        np.testing.assert_allclose(block.nodes, np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
+        atol = GOLDEN_ATOL[name]
+        np.testing.assert_allclose(block.nodes, np.load(GOLDEN)[name], rtol=0.0, atol=atol)
 
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing"])
     def test_s6_split_collar_without_sharp_corners(self, name):
@@ -398,7 +404,8 @@ class TestUnchanged:
         assert len(blocks) == 1
         assert blocks[0].label == "c"
         assert blocks[0].periodic_j
-        np.testing.assert_allclose(blocks[0].nodes, np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
+        atol = GOLDEN_ATOL[name]
+        np.testing.assert_allclose(blocks[0].nodes, np.load(GOLDEN)[name], rtol=0.0, atol=atol)
 
 
 # ---------------------------------------------------------------------------

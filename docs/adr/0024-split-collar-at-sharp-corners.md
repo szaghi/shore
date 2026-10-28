@@ -232,3 +232,15 @@ The user asked for the night's work to go ahead on the recommendations:
   - wake grading;
   - `_loop`'s corner nodes on the rectangle;
   - a bad `wake_length`.
+
+### Re-freeze (2026-10-28, user-approved): runner rounding
+
+On GitHub's runners the STL wing's golden collar differs from the local
+golden by up to 1.7e-12, on 26 of 31,824 coordinates.
+- Same commit, different outcome: at the spec freeze, one workflow run
+  passed and the other failed on the same commit.
+- The cause is CPU-dependent rounding in numpy, amplified by the Winslow
+  iterations.
+
+That golden is now checked within 1e-10, which is 1e-6 of the 1e-4 wall
+step. The analytic goldens stay at 1e-12.
