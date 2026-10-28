@@ -1,7 +1,9 @@
 """FROZEN acceptance spec: the collar volume at loop corners (ADR 0025).
 
-Frozen 2026-10-28, before any implementation. Implementing work may not edit
-this file, ``tests/spec/data/collar_default.npz``, ``tests/spec/__init__.py``,
+Frozen 2026-10-28, before any implementation. Re-frozen 2026-10-28 (ADR 0026,
+user-approved): ``"smoothed"`` is the default; V3 changed accordingly.
+Implementing work may not edit this file,
+``tests/spec/data/collar_default.npz``, ``tests/spec/__init__.py``,
 ``tests/conftest.py``, the pytest configuration in ``pyproject.toml``, or
 ``src/shore/quality.py``. The ONE permitted edit is deleting an ``@PENDING``
 line once that case passes (strict xfail turns a passing pending case into a
@@ -10,16 +12,18 @@ lines removed; ``scripts/check_spec.py`` checks them.
 
 Verdict for acceptance (main CI job): ``pytest tests/spec/test_collar_volume.py``
 reports 25 passed, 0 skipped, 0 xfailed. At freeze: 3 passed (the default
-collars, unchanged: regression guards), 22 xfailed.
+collars, unchanged: regression guards), 22 xfailed. At the re-freeze (ADR
+0026): 21 passed, 4 xfailed (the new default).
 
 Interface under test
 --------------------
-``CollarParams.volume``: ``"stations"`` (the default: ADR 0010's outer
-boundary, per loop station, unchanged bit for bit) or ``"smoothed"`` (ADR
-0025: each station's outer line on its 3-D offset polyline, the station
-offsets smoothed along the loop and wherever the outer boundary steps back,
-each line trimmed again), for ``build_collar`` (closed and half collars) and
-``split_collar``; ``ParameterError`` for another value.
+``CollarParams.volume``: ``"stations"`` (ADR 0010's outer boundary, per loop
+station, unchanged bit for bit) or ``"smoothed"`` (the default since ADR
+0026; ADR 0025: each station's outer line on its 3-D offset polyline, the
+station offsets smoothed along the loop near its corners at the collar's
+scale and wherever the outer boundary steps back, each line trimmed again),
+for ``build_collar`` (closed and half collars) and ``split_collar``;
+``ParameterError`` for another value.
 ``Project.build_collar(..., volume=)`` (``BuildCollar.volume``) forwards it.
 
 Cases
@@ -46,9 +50,10 @@ or curvature 1.
   uniform >= 0.025 (0.048, ADR 0022's bound); split sharp wing 1.9 x uniform
   >= 0.1 (0.180); half ellipse 4.7 x curvature >= 0.1 (0.309), its ends on
   the plane within 1e-12.
-- V3 the default: ``CollarParams().volume == "stations"``; ``build_collar``
-  with the default and with ``"stations"`` given gives ADR 0024's golden
-  collars (``data/collar_default.npz``) within 1e-12.
+- V3 the default (ADR 0026): ``CollarParams().volume == "smoothed"``;
+  ``build_collar`` with the default gives the ``"smoothed"`` block; with
+  ``"stations"`` given, ADR 0024's golden collars
+  (``data/collar_default.npz``) within 1e-12.
 - V4 ``ParameterError`` for an unknown volume.
 - V5 ``Project.build_collar(volume="smoothed")`` gives the kernel's block
   and journals ``volume='smoothed'``.
@@ -57,9 +62,7 @@ Out of scope of this spec (measured, ADR 0025): concave corners at 4.7 x
 and thicker (the L-shape keeps 2-19 folded cells), the blunt trailing edge's
 base with n_loop 96 (2-15 cells), and loops whose surface grid itself folds
 (the L-shape and the blunt wing with curvature at n_loop 192: the plate's
-surface march flips 10 and 4 cells, a marcher problem). Making
-``"smoothed"`` the default is a later, user-approved re-freeze of ADR 0024's
-golden collars.
+surface march flips 10 and 4 cells, a marcher problem).
 """
 
 from __future__ import annotations
@@ -215,19 +218,22 @@ class TestNoHarm:
 
 
 class TestDefault:
-    def test_v3_default_is_stations(self):
+    @PENDING
+    def test_v3_default_is_smoothed(self):
         from shore.collar import CollarParams
 
-        assert CollarParams().volume == "stations"
+        assert CollarParams().volume == "smoothed"
 
+    @PENDING
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing", "half_ellipse"])
-    def test_v3_default_unchanged(self, name):  # already holds: regression guards
+    def test_v3_default_is_the_smoothed_block(self, name):
         from shore.collar import build_collar
 
         a, b, seed, kw = golden_case(name)
         steps = {"steps_a": G_STEPS_S, "steps_b": G_STEPS_S, "steps_k": G_STEPS_K}
-        block = build_collar(a, b, seed, **steps, **kw)
-        np.testing.assert_allclose(block.nodes, np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
+        default = build_collar(a, b, seed, **steps, **kw)
+        smoothed = build_collar(a, b, seed, **steps, params=params("smoothed"), **kw)
+        assert np.array_equal(default.nodes, smoothed.nodes)
 
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing", "half_ellipse"])
     def test_v3_stations_unchanged(self, name):

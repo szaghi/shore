@@ -1,4 +1,4 @@
-# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020-0024 frozen 2026-10-27; ADR 0025 frozen 2026-10-28; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
+# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020-0024 frozen 2026-10-27; ADR 0025 frozen 2026-10-28; ADR 0026 frozen and ADR 0024/0025 re-frozen 2026-10-28; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
 # Spec modules are hashed with their @PENDING lines removed.
 3c6fbe392a7ef5d28034141a61e1c03227da2b1dd5dbb315f819493fe8320aef  tests/spec/test_hyperbolic_marching.py
 ae38c25896db5e94b8f55f23a94bba05d7d80a76d0eb5f5729ec9c3cecec12b7  tests/spec/__init__.py
@@ -25,6 +25,7 @@ bcc58d38417724d29b4778bb4f3cb9136d8696a1b91894acb58ab9cb4926f24f  tests/spec/dat
 424bcc270b268cf988543499f37e4e951f94af4284348e1c8647f613b943c472  tests/spec/test_corner_grading.py
 a93f2be5613154a88d29487c83b85c02bacc61d507ec97652908aad45e7842da  tests/spec/test_march_creases.py
 6dcd095ea582be8e6497f5acb2cbb6f6ad90d47653668068a995b0ca392d3aa4  tests/spec/data/march_default.npz
-e168e090ed95e5640147b690bc9b3d211a25085cfb06de2c1e8a0e8b4aaec64e  tests/spec/test_split_collar.py
 bd226016d8be486915cd904d2f6497728d30090b97504be38f2eb8a24383d350  tests/spec/data/collar_default.npz
-2394bfe23aa4366aa205ea2e912e098df214a4af433c2c59ea5f236f9cbdf42d  tests/spec/test_collar_volume.py
+82a3dfe737425e062d6e56f0b009cfd8ef0fb35f0c52e703c2cce935e9fe632e  tests/spec/test_split_collar.py
+bf8b636a617e3c206a59f089a7d208a30bd097f7cd2d38472eda687ce2cb20bc  tests/spec/test_collar_volume.py
+01e5670190c91d0008e1038959a8d68ba25dba03ab2947fba52acd4cda726e3d  tests/spec/test_collar_default.py

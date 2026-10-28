@@ -1,6 +1,8 @@
 """FROZEN acceptance spec: the split collar at sharp corners (ADR 0024).
 
-Frozen 2026-10-27, before any implementation. Implementing work may not edit
+Frozen 2026-10-27, before any implementation. Re-frozen 2026-10-28 (ADR 0026,
+user-approved): the golden collars are ADR 0010's ``"stations"`` volume, which
+is no longer the default, so S6 asks for it by name. Implementing work may not edit
 this file, ``tests/spec/data/collar_default.npz``, ``tests/spec/__init__.py``,
 ``tests/conftest.py``, the pytest configuration in ``pyproject.toml``, or
 ``src/shore/quality.py``. The ONE permitted edit is deleting an ``@PENDING``
@@ -72,7 +74,8 @@ n_loop 96, wall-normal ``5e-5 * 1.2**k``.
 - S6 unchanged: ``data/collar_default.npz``, written by ``build_collar``
   before this ADR (the rectangle prism with curvature, the blunt STL wing,
   the half ellipse on its plane: corners below 105 deg and a half-collar),
-  within 1e-12; ``split_collar`` gives the same single blocks.
+  within 1e-12, with ``CollarParams(volume="stations")`` (ADR 0026);
+  ``split_collar`` gives the same single blocks.
 - S7 errors.
 
 Out of scope of this spec: collars thicker than these at corners, concave
@@ -375,19 +378,23 @@ def golden_case(name: str):
 class TestUnchanged:
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing", "half_ellipse"])
     def test_s6_build_collar_unchanged(self, name):
-        from shore.collar import build_collar
+        from shore.collar import CollarParams, build_collar
 
         a, b, seed, kw = golden_case(name)
         steps = {"steps_a": G_STEPS_S, "steps_b": G_STEPS_S, "steps_k": G_STEPS_K}
-        block = build_collar(a, b, seed, **steps, **kw)
+        stations = CollarParams(volume="stations")
+        block = build_collar(a, b, seed, **steps, params=stations, **kw)
         np.testing.assert_allclose(block.nodes, np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
 
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing"])
     def test_s6_split_collar_without_sharp_corners(self, name):
+        from shore.collar import CollarParams
+
         a, b, seed, kw = golden_case(name)
         blocks = kernel()(
-            a, b, seed, steps_a=G_STEPS_S, steps_b=G_STEPS_S, steps_k=G_STEPS_K, label="c", **kw
-        )
+            a, b, seed, steps_a=G_STEPS_S, steps_b=G_STEPS_S, steps_k=G_STEPS_K, label="c",
+            params=CollarParams(volume="stations"), **kw,
+        )  # fmt: skip
         assert len(blocks) == 1
         assert blocks[0].label == "c"
         assert blocks[0].periodic_j

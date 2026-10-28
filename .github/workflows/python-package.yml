@@ -22,7 +22,7 @@ jobs:
         run: ruff check src/ tests/
       - name: Format check
         run: ruff format --check src/ tests/
-      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0025)
+      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0026)
         run: python scripts/check_spec.py
 
   test:
