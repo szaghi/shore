@@ -111,3 +111,9 @@ The rows of the tables above, all short of zero folds.
 
 None: an investigation record, with no code and no spec. The measurements
 are T1, reproducible with the scratchpad scripts named above.
+
+## Correction (2026-10-28, ADR 0029)
+
+The four-corner sine shows that the L-shape plate quads are convex (minimum
+0.06-0.20), not flat: they are bunched, with adjacent front cells up to
+9.5 × apart. Spreading them (ADR 0029) was not adopted.

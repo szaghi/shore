@@ -1,6 +1,8 @@
 """FROZEN acceptance spec: surface marching at clustered corners (ADR 0027).
 
-Frozen 2026-10-28, before any implementation. Implementing work may not edit
+Frozen 2026-10-28, before any implementation. Re-frozen 2026-10-28 (ADR 0029,
+user-approved): M1's cell sine is taken at all four corners of every cell
+(a one-corner sine misses nearly flat quads), bound 0.05. Implementing work may not edit
 this file, ``tests/spec/__init__.py``, ``tests/conftest.py``, the pytest
 configuration in ``pyproject.toml``, or ``src/shore/quality.py``. The ONE
 permitted edit is deleting an ``@PENDING`` line once that case passes (strict
@@ -35,10 +37,11 @@ steps ``0.005 * 1.12**j`` (15 layers), periodic marches from the loop (on A)
 or the reversed loop (on B).
 
 - M1 plate marches (A) at concave corners and at the blunt base: no flipped
-  cell, and every cell's sine (cell normal against the surface normal,
-  normalised by its edges) >= 0.1 (prototype >= 0.18; before: 4-34 flipped
-  cells): L-shape n_loop 192 curvature 1, n_loop 384 uniform and curvature
-  1; blunt wing n_loop 192 curvature 1, n_loop 384 curvature 3.
+  cell, and every cell's sine at each of its four corners (edges leaving
+  the corner, against the surface normal, normalised) >= 0.05 (ADR 0029
+  re-freeze; measured >= 0.0626; before ADR 0027: 4-34 flipped cells):
+  L-shape n_loop 192 curvature 1, n_loop 384 uniform and curvature 1; blunt
+  wing n_loop 192 curvature 1, n_loop 384 curvature 3.
 - M2 marches along sharp creases (B): no flipped cell and in-section drift
   <= 0.02 (prototype <= 0.011; before: 94-1033 flipped cells, drift up to
   1.0): sharp STL wing n_loop 192 curvature 1; lens n_loop 192 curvature 1,
@@ -116,14 +119,23 @@ def march(name: str, n: int, curvature: float, side: str):
 
 
 def cell_sines(body, grid: np.ndarray) -> np.ndarray:
-    """Per cell: (e_front x e_march) . n / (|e_front| |e_march|), majority sign positive."""
-    e1 = (np.roll(grid, -1, axis=0) - grid)[:, :-1]
-    e2 = grid[:, 1:] - grid[:, :-1]
-    centre = 0.5 * (grid[:, :-1] + grid[:, 1:])
+    """Per cell and corner (ADR 0029): (e_a x e_b) . n / (|e_a| |e_b|) of the two edges
+    leaving the corner, in the cell's orientation; majority sign positive."""
+    p00, p10 = grid[:, :-1], np.roll(grid, -1, axis=0)[:, :-1]
+    p01, p11 = grid[:, 1:], np.roll(grid, -1, axis=0)[:, 1:]
+    centre = 0.25 * (p00 + p10 + p01 + p11)
     normals = np.asarray(body.project(centre.reshape(-1, 3)).normals).reshape(centre.shape)
-    o = np.einsum("...k,...k->...", np.cross(e1, e2), normals)
-    o = o / (np.linalg.norm(e1, axis=-1) * np.linalg.norm(e2, axis=-1))
-    return o * np.sign(np.median(o))
+
+    def sine(o, a, b):
+        u, v = a - o, b - o
+        cross = np.einsum("...k,...k->...", np.cross(u, v), normals)
+        return cross / (np.linalg.norm(u, axis=-1) * np.linalg.norm(v, axis=-1))
+
+    corners = np.stack(
+        [sine(p00, p10, p01), sine(p10, p11, p00), sine(p11, p01, p10), sine(p01, p00, p11)],
+        axis=-1,
+    )
+    return corners * np.sign(np.median(corners))
 
 
 class TestPlate:
@@ -137,7 +149,7 @@ class TestPlate:
 
         body, _, grid = march(name, n, curvature, "A")
         assert flipped(body, grid) == 0
-        assert cell_sines(body, grid).min() >= 0.1
+        assert cell_sines(body, grid).min() >= 0.05
 
 
 class TestCreases:
