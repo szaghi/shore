@@ -2,6 +2,17 @@
 title: Changelog
 ---
 
+## [0.4.0] — 2026-10-28
+### Added
+- **collar**: Cut the collar at sharp junction corners with split_collar
+
+- **cli**: Build split collars from projects and shore collar --split
+
+- **collar**: Smooth the collar's outer boundary along the loop at corners
+
+- **collar**: Build collars with the smoothed outer boundary by default
+
+
 ## [0.3.0] — 2026-10-27
 ### Added
 - **collar**: Distribute nodes along the junction curve by law and curvature
