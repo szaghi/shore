@@ -1160,6 +1160,21 @@ class TestSplitCollar:
         assert len(p.mesh.blocks) == 6
         assert "split=True" in p.journal()
 
+    def test_collar_volume_option(self, tmp_path):
+        r = runner.invoke(
+            app,
+            ["collar", *self.bodies(tmp_path), *self.ARGS, "--split", "--collar-volume",
+             "smoothed", "-o", str(tmp_path / "c")],
+        )  # fmt: skip
+        assert r.exit_code == 0, r.output
+        r = runner.invoke(
+            app,
+            ["collar", *self.bodies(tmp_path), *self.ARGS, "--collar-volume", "fancy",
+             "-o", str(tmp_path / "d")],
+        )  # fmt: skip
+        assert r.exit_code == 1
+        assert "volume" in r.output
+
     def test_wake_length_needs_split(self, tmp_path):
         r = runner.invoke(
             app,

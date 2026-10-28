@@ -304,13 +304,15 @@ class Project:
         loop_curvature: float = 0.0,
         split: bool = False,
         wake_length: float | None = None,
+        volume: str = "stations",
     ) -> None:
         """Collar block around the junction of *geometry* and *other*, a
         geometry name or a file path (ADR 0010, 0016); with *plane* the
         half-collar of a half model (ADR 0013); ``loop_*`` distribute the
         nodes along the junction curve (ADR 0020); *split* cuts the collar
-        at sharp corners, with wakes of *wake_length* (ADR 0024). Replaces
-        the current component's mesh. See ``BuildCollar``."""
+        at sharp corners, with wakes of *wake_length* (ADR 0024); *volume*
+        the outer-boundary construction (ADR 0025). Replaces the current
+        component's mesh. See ``BuildCollar``."""
         self.execute(
             BuildCollar(
                 str(other),
@@ -332,6 +334,7 @@ class Project:
                 float(loop_curvature),
                 bool(split),
                 None if wake_length is None else float(wake_length),
+                str(volume),
             )
         )
 

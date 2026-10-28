@@ -157,12 +157,10 @@ V1 = [
 
 
 class TestValid:
-    @PENDING
     @pytest.mark.parametrize("name, n_loop, thick, curvature, bound", V1)
     def test_v1_collars(self, name, n_loop, thick, curvature, bound):
         assert min_jacobian([collar(name, n_loop, thick, curvature)]) >= bound
 
-    @PENDING
     @pytest.mark.parametrize("name, bound", [("wing", 0.05), ("lens", 0.2)])
     def test_v1_split_collars(self, name, bound):
         assert min_jacobian(split(name, 4.7, 1.0)) >= bound
@@ -174,7 +172,6 @@ class TestValid:
 
 
 class TestNoHarm:
-    @PENDING
     def test_v2_box_edge(self):
         from shore.collar import build_collar
 
@@ -184,7 +181,6 @@ class TestNoHarm:
         )  # fmt: skip
         assert min_jacobian([block]) >= 0.1
 
-    @PENDING
     def test_v2_ellipse(self):
         from shore.collar import build_collar
 
@@ -195,15 +191,12 @@ class TestNoHarm:
         )  # fmt: skip
         assert min_jacobian([block]) >= 0.1
 
-    @PENDING
     def test_v2_rectangle_adr0022(self):
         assert min_jacobian([collar("rectangle", 96, 4.7, 0.0)]) >= 0.025
 
-    @PENDING
     def test_v2_split_wing(self):
         assert min_jacobian(split("wing", 1.9, 0.0)) >= 0.1
 
-    @PENDING
     def test_v2_half_collar(self):
         from shore.collar import build_collar
 
@@ -222,7 +215,6 @@ class TestNoHarm:
 
 
 class TestDefault:
-    @PENDING
     def test_v3_default_is_stations(self):
         from shore.collar import CollarParams
 
@@ -237,7 +229,6 @@ class TestDefault:
         block = build_collar(a, b, seed, **steps, **kw)
         np.testing.assert_allclose(block.nodes, np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
 
-    @PENDING
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing", "half_ellipse"])
     def test_v3_stations_unchanged(self, name):
         from shore.collar import build_collar
@@ -247,14 +238,12 @@ class TestDefault:
         block = build_collar(a, b, seed, **steps, params=params("stations"), **kw)
         np.testing.assert_allclose(block.nodes, np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
 
-    @PENDING
     def test_v4_unknown_volume(self):
         from shore.exceptions import ParameterError
 
         with pytest.raises(ParameterError, match="volume"):
             collar("rectangle", 32, 1.9, 0.0, volume="elliptic")
 
-    @PENDING
     def test_v5_project(self, tmp_path):
         import trimesh
 

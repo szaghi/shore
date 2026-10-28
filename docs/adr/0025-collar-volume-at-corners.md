@@ -1,6 +1,6 @@
 # 0025 — The collar volume at loop corners
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 
 ## Context
@@ -170,3 +170,33 @@ collars. Validated with the prototype behind the interface (a copy without
 - the blunt base at n_loop 96;
 - loops whose surface grid folds;
 - the default switch.
+
+### Review (2026-10-28, recommendations taken while the user was away)
+
+The defaults are kept as decided:
+- `offset_smoothing` 0.5;
+- `backstep_ratio` 0.5;
+- `"stations"` is the default.
+
+The default switch is left to the user, with the recommendation to adopt
+`"smoothed"` in a separate re-freeze commit.
+
+## Acceptance (2026-10-28): collar-volume spec met
+
+**Kernel.** As decided. `_extrude` checks `CollarParams.volume` and, for
+`"smoothed"`, builds the outer boundary with `_smoothed_outer`, using the
+helpers `_offset_line`, `_trim_origins`, `_along`, `_loop_kernel` and
+`_next_station`. `"stations"` runs the old code path untouched.
+
+**Verdict for `tests/spec/test_collar_volume.py`: 25 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 22
+`@PENDING` lines are removed.
+
+**Unit tests:**
+- `tests/test_collar.py`:
+  - on a planar station the offset line equals ADR 0010's outer line
+    within 1e-12;
+  - the trim's origins bracket the junction;
+  - the loop kernel is normalised and rotation-invariant;
+  - an unknown volume is refused.
+- `tests/test_cli.py`: `--collar-volume smoothed` and a bad value.

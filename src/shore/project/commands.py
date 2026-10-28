@@ -534,8 +534,10 @@ class BuildCollar(Command):
     beta=loop_beta, cluster_at=loop_cluster_at)`` and *loop_curvature*
     (ADR 0020). With *split*, ``split_collar`` (ADR 0024): the loop is cut at
     sharp corners, with wakes of *wake_length* (default: the collar's width
-    on A), six blocks per piece (closed loops only). Replaces the mesh with
-    the collar's block(s), a separate Chimera component.
+    on A), six blocks per piece (closed loops only). *volume* is
+    ``CollarParams.volume`` (ADR 0025): ``"stations"`` or ``"smoothed"``.
+    Replaces the mesh with the collar's block(s), a separate Chimera
+    component.
     """
 
     method: ClassVar[str] = "build_collar"
@@ -561,9 +563,10 @@ class BuildCollar(Command):
     loop_curvature: float = 0.0
     split: bool = False
     wake_length: float | None = None
+    volume: str = "stations"
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        from shore.collar import build_collar, split_collar
+        from shore.collar import CollarParams, build_collar, split_collar
         from shore.geometry import load_geometry
         from shore.mesh.spacing import Spacing1D
 
@@ -599,6 +602,7 @@ class BuildCollar(Command):
             "label": self.label,
             "loop_spacing": loop_spacing,
             "loop_curvature": self.loop_curvature,
+            "params": CollarParams(volume=self.volume),
         }
         seed = np.asarray(self.seed, dtype=np.float64)
         if self.split:

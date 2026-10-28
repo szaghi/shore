@@ -1261,6 +1261,13 @@ def collar(
             "--wake-length", help="With --split: wake length on A (default: the collar's width)."
         ),
     ] = None,
+    collar_volume: Annotated[
+        str,
+        typer.Option(
+            "--collar-volume",
+            help="Outer boundary: stations (default) or smoothed (thick collars at corners).",
+        ),
+    ] = "stations",
     name_a: Annotated[
         str | None, typer.Option("--name-a", help="Geometry name of body A (default: stem).")
     ] = None,
@@ -1312,6 +1319,7 @@ def collar(
             loop_curvature=loop_curvature,
             split=split,
             wake_length=wake_length,
+            volume=collar_volume,
         )
         if output is not None:
             proj.write_geo(output)

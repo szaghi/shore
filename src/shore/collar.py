@@ -75,6 +75,12 @@ class CollarParams:
     oblique_deg: float = 1.0  # warn when an open curve's end is this far off the plane normal
     sharp_deg: float = 105.0  # split_collar: corners turning more than this are cut (ADR 0024)
     wake_ratio: float = 1.2  # split_collar: largest ratio of adjacent wake cells
+    # the outer boundary (ADR 0025): "stations" = per loop station (ADR 0010); "smoothed" =
+    # on the 3-D offset line, the station offsets smoothed along the loop
+    volume: str = "stations"
+    offset_smoothing: float = 0.5  # "smoothed": Gaussian width along the loop, x the thickness
+    backstep_ratio: float = 0.5  # "smoothed": the outer boundary advances >= this x the inner
+    backstep_iterations: int = 200
 
 
 DEFAULT = CollarParams()
@@ -431,6 +437,10 @@ def _extrude(
     *,
     periodic: bool = True,
 ) -> np.ndarray:
+    if params.volume not in ("stations", "smoothed"):
+        raise ParameterError(
+            f"CollarParams.volume must be 'stations' or 'smoothed', got {params.volume!r}."
+        )
     ni, nj, _ = wall.shape
     nk = len(steps_k)
     cum = np.r_[0.0, np.cumsum(steps_k)]
@@ -447,9 +457,12 @@ def _extrude(
     inner = nodes[:, :, k0]
     normals = _normals(inner, periodic)
     rest = cum[-1] - cum[k0]
-    outer = np.stack(
-        [_outer_line(inner[:, j], normals[:, j], rest, junction) for j in range(nj)], axis=1
-    )
+    if params.volume == "smoothed":
+        outer = _smoothed_outer(inner, inner + rest * normals, rest, junction, params, periodic)
+    else:
+        outer = np.stack(
+            [_outer_line(inner[:, j], normals[:, j], rest, junction) for j in range(nj)], axis=1
+        )
     w = (cum[k0:] - cum[k0]) / rest
     sheets = _tfi(inner, outer, w)  # (ni, nj, nk - k0 + 1, 3)
     if sheets.shape[2] > 2:
@@ -457,6 +470,133 @@ def _extrude(
         sheets = np.transpose(sheets, (1, 0, 2, 3))
     nodes[:, :, k0:] = sheets
     return nodes
+
+
+def _smoothed_outer(
+    inner: np.ndarray,
+    offset: np.ndarray,
+    rest: float,
+    junction: int,
+    params: CollarParams,
+    periodic: bool,
+) -> np.ndarray:
+    """The outer boundary of ADR 0025 over the inner layer (ni, nj, 3).
+
+    1. Per station, the offset line trimmed of its swallowtail and redistributed
+       on the 3-D offset polyline (``_offset_line``).
+    2. The station offsets ``outer - inner`` smoothed along the loop with one
+       Gaussian (width ``offset_smoothing x rest`` of junction-row arc length)
+       for every i: neighbouring stations agree, so the boundary fans round
+       convex corners and stops crossing at concave ones.
+    3. Where some row of the boundary still advances along the loop by less
+       than ``backstep_ratio`` x the inner row, the offsets of the two
+       stations are smoothed again locally (1-2-1), until none does.
+    4. Each station's line is trimmed and redistributed again.
+    """
+    nj = inner.shape[1]
+    outer = np.stack([_offset_line(inner[:, j], offset[:, j], junction) for j in range(nj)], axis=1)
+    weights = _loop_kernel(inner[junction], params.offset_smoothing * rest, periodic)
+    shift = np.einsum("jl,ilc->ijc", weights, outer - inner)
+    for _ in range(params.backstep_iterations):
+        ahead = _next_station(inner, periodic) - inner
+        moved = _next_station(inner + shift, periodic) - (inner + shift)
+        length = np.linalg.norm(ahead, axis=-1)
+        along = np.einsum("...c,...c->...", moved, ahead) / np.maximum(length, 1e-300)
+        bad = (along < params.backstep_ratio * length).any(axis=0)
+        if not periodic:
+            bad[-1] = False
+        if not bad.any():
+            break
+        stations = np.flatnonzero(bad | np.roll(bad, 1))
+        if not periodic:
+            stations = stations[(stations > 0) & (stations < nj - 1)]
+        smoothed = shift.copy()
+        before, after = (stations - 1) % nj, (stations + 1) % nj
+        smoothed[:, stations] = (
+            0.25 * shift[:, before] + 0.5 * shift[:, stations] + 0.25 * shift[:, after]
+        )
+        shift = smoothed
+    return np.stack(
+        [_offset_line(inner[:, j], inner[:, j] + shift[:, j], junction) for j in range(nj)], axis=1
+    )
+
+
+def _next_station(layer: np.ndarray, periodic: bool) -> np.ndarray:
+    """The layer shifted by one station along j (an open layer repeats its last)."""
+    if periodic:
+        return np.roll(layer, -1, axis=1)
+    return np.concatenate([layer[:, 1:], layer[:, -1:]], axis=1)
+
+
+def _loop_kernel(row: np.ndarray, width: float, periodic: bool) -> np.ndarray:
+    """Row-normalised Gaussian weights (nj, nj) by arc length along *row*."""
+    closed = np.vstack([row, row[:1]]) if periodic else row
+    segments = np.linalg.norm(np.diff(closed, axis=0), axis=1)
+    s = np.r_[0.0, np.cumsum(segments)][: len(row)]
+    gap = s[:, None] - s[None, :]
+    if periodic:
+        total = float(segments.sum())
+        gap = (gap + 0.5 * total) % total - 0.5 * total
+    weights = np.exp(-0.5 * (gap / width) ** 2)
+    return weights / weights.sum(axis=1, keepdims=True)
+
+
+def _offset_line(inner: np.ndarray, offset: np.ndarray, junction: int) -> np.ndarray:
+    """One station's outer line on its 3-D offset polyline *offset* (ADR 0025).
+
+    The swallowtail is found as ``_outer_line`` finds it, in the best-fit
+    plane; there the crossing becomes the midpoint of the two crossing points
+    of the 3-D polyline, and the nodes are placed by arc length in 3-D with the
+    crease on the junction row. Unlike ``_outer_line``, nothing is flattened
+    onto the plane, so a station whose line is curved out of it (next to a
+    loop corner) keeps its nodes over its own wall.
+    """
+    centre = offset.mean(axis=0)
+    _, _, frame = np.linalg.svd(np.vstack([inner, offset]) - centre, full_matrices=False)
+    local = (offset - centre) @ frame.T
+    first, second = _trim_origins(local[:, :2])
+    pts = 0.5 * (_along(offset, first) + _along(offset, second))
+    crossings = np.flatnonzero(first != second)
+    kept = np.flatnonzero((first == junction) & (second == junction))
+    if kept.size:
+        crease = int(kept[0])
+    else:
+        lo, hi = np.minimum(first, second), np.maximum(first, second)
+        cut = [c for c in crossings if lo[c] <= junction <= hi[c]]
+        crease = int(cut[0]) if cut else int(np.argmin(np.abs(first - junction)))
+    s = _arc(pts)
+    s_inner = _arc(inner)
+    frac_b = s_inner[: junction + 1] / s_inner[junction]
+    frac_a = (s_inner[junction:] - s_inner[junction]) / (s_inner[-1] - s_inner[junction])
+    target = np.r_[s[crease] * frac_b, s[crease] + (s[-1] - s[crease]) * frac_a[1:]]
+    return np.stack([np.interp(target, s, pts[:, c]) for c in range(3)], axis=-1)
+
+
+def _trim_origins(poly: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``_trim``'s cut, as fractional vertex indices of the input on both crossing segments."""
+    pts = poly.copy()
+    first = np.arange(len(pts), dtype=np.float64)
+    second = first.copy()
+    while True:
+        hit = _first_crossing(pts)
+        if hit is None:
+            return first, second
+        a, b, t = hit
+        p, r = pts[a], pts[a + 1] - pts[a]
+        q, w = pts[b], pts[b + 1] - pts[b]
+        u = ((q - p)[0] * r[1] - (q - p)[1] * r[0]) / (r[0] * w[1] - r[1] * w[0])
+        on_a = first[a] + t * (first[a + 1] - first[a])
+        on_b = second[b] + u * (second[b + 1] - second[b])
+        pts = np.vstack([pts[: a + 1], (p + t * r)[None], pts[b + 1 :]])
+        first = np.r_[first[: a + 1], on_a, first[b + 1 :]]
+        second = np.r_[second[: a + 1], on_b, second[b + 1 :]]
+
+
+def _along(line: np.ndarray, index: np.ndarray) -> np.ndarray:
+    """Points of a polyline at fractional vertex indices."""
+    lo = np.clip(np.floor(index).astype(np.int64), 0, len(line) - 2)
+    t = (index - lo)[:, None]
+    return (1.0 - t) * line[lo] + t * line[lo + 1]
 
 
 def _normals(layer: np.ndarray, periodic: bool = True) -> np.ndarray:

@@ -32,7 +32,7 @@ by a later record that supersedes it.
 | [0022](./0022-collars-at-blunt-corners.md) | Graded spacing across corners; collars at blunt corners | Accepted |
 | [0023](./0023-surface-marching-at-creases.md) | Surface marching at creases | Accepted |
 | [0024](./0024-split-collar-at-sharp-corners.md) | The split collar at sharp corners | Accepted |
-| [0025](./0025-collar-volume-at-corners.md) | The collar volume at loop corners | Proposed |
+| [0025](./0025-collar-volume-at-corners.md) | The collar volume at loop corners | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

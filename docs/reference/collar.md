@@ -38,6 +38,7 @@ shore collar [OPTIONS] BODY_A BODY_B
 | `--loop-curvature FLOAT` | `0.0` | Cluster nodes where the curve bends (ADR 0020). Try `1` for rounded sections. |
 | `--split` | off | Cut the collar at sharp corners (> 105 degrees) into blocks joined across wake sheets (ADR 0024). Closed loops only (not with `--plane`). |
 | `--wake-length FLOAT` | collar width on A | With `--split`: length of the wake lines behind the sharp corners. |
+| `--collar-volume TEXT` | `stations` | Outer boundary of the volume: `stations` (per loop station) or `smoothed` (station offsets smoothed along the loop, ADR 0025). Use `smoothed` for thick collars at corners. |
 | `--name-a`, `--name-b TEXT` | file stems | Geometry names in the project. |
 | `-o, --output PATH` | | Output stem for the `.geo` file. |
 | `--adjacency-json PATH` | | Also write the `.adjacency.json` sidecar. |
@@ -76,7 +77,15 @@ whole curve, so adjacent cells stay within 1.2x across the corners too
 (ADR 0022). The collar block is valid at convex corners of up to 90 degrees
 only while it stays thin: up to about 4.7 junction spacings with a uniform
 loop, about 1.9 with `--loop-curvature 1`. Thicker collars and concave
-corners still fold (ADR 0025).
+corners fold with the default per-station outer boundary.
+`--collar-volume smoothed` (ADR 0025) builds each station's outer line on
+its 3-D offset line and smooths the station offsets along the loop, over
+half the collar's thickness, so neighbouring stations agree: it fans round
+convex corners and stops crossing at concave ones. On the rectangular strut
+at 11.8 junction spacings it turns 20 folded cells (52 with curvature) into
+none; on 49 test junctions the folded cells outside a folded wall go from
+2367 to 72. Concave corners at about 5 junction spacings and thicker, and a
+blunt trailing edge's base, still fold a few cells.
 
 Sharp corners, those turning by more than 105 degrees (a sharp trailing
 edge, the tips of a lens), fold even the collar's wall: the surface grid

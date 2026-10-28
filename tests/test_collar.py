@@ -122,3 +122,59 @@ class TestSplitCollarHelpers:
                 Plane(), LensPrism(), np.array([0.0, 0.06, 0.0]), n_loop=32,
                 steps_a=steps, steps_b=steps, steps_k=steps, wake_length="long",
             )  # fmt: skip
+
+
+class TestSmoothedVolume:
+    """Internals of the ``"smoothed"`` outer boundary (ADR 0025)."""
+
+    @staticmethod
+    def station(n_b=8, n_a=10):
+        """A planar L-section: up a wall (x = 0) and along a floor (z = 0), y = 0."""
+        z = np.cumsum(0.01 * 1.15 ** np.arange(n_b))[::-1]
+        x = np.cumsum(0.01 * 1.15 ** np.arange(n_a))
+        line = np.vstack([np.c_[0 * z, 0 * z, z], [[0.0, 0.0, 0.0]], np.c_[x, 0 * x, 0 * x]])
+        corner = [[np.sqrt(0.5), 0.0, np.sqrt(0.5)]]
+        normals = np.vstack(
+            [np.tile([1.0, 0.0, 0.0], (n_b, 1)), corner, np.tile([0.0, 0.0, 1.0], (n_a, 1))]
+        )
+        return line, normals, n_b
+
+    def test_planar_station_matches_adr0010(self):
+        from shore.collar import _offset_line, _outer_line
+
+        line, normals, junction = self.station()
+        old = _outer_line(line, normals, 0.03, junction)
+        new = _offset_line(line, line + 0.03 * normals, junction)
+        np.testing.assert_allclose(new, old, atol=1e-12)
+
+    def test_trim_origins(self):
+        from shore.collar import _trim, _trim_origins
+
+        line, normals, junction = self.station()
+        offset = (line + 0.03 * normals)[:, [0, 2]]
+        pts, _ = _trim(offset, junction)
+        first, second = _trim_origins(offset)
+        assert len(first) == len(pts)
+        cut = np.flatnonzero(first != second)
+        assert cut.size == 1  # one swallowtail, at the crease
+        assert first[cut[0]] < junction < second[cut[0]]
+
+    def test_loop_kernel(self):
+        from shore.collar import _loop_kernel
+
+        theta = np.linspace(0.0, 2.0 * np.pi, 24, endpoint=False)
+        ring = np.c_[np.cos(theta), np.sin(theta), 0.0 * theta]
+        w = _loop_kernel(ring, 0.3, periodic=True)
+        np.testing.assert_allclose(w.sum(axis=1), 1.0)
+        np.testing.assert_allclose(w, np.roll(np.roll(w, 3, axis=0), 3, axis=1))  # rotation
+        open_w = _loop_kernel(ring[:12], 0.3, periodic=False)
+        assert open_w[0, -1] < open_w[-1, -1]
+
+    def test_unknown_volume(self):
+        from shore.collar import CollarParams, extrude_collar
+
+        wall = np.zeros((4, 5, 3))
+        wall[..., 0] = np.arange(4)[:, None]
+        wall[..., 1] = np.arange(5)[None, :]
+        with pytest.raises(ParameterError, match="volume"):
+            extrude_collar(wall, np.full(3, 0.1), 1, params=CollarParams(volume="x"))
