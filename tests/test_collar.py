@@ -83,3 +83,42 @@ class TestHalfCollarCommand:
                 "other.stl", seed=(0, 0, 0), n_loop=8, ds_surface=0.1, growth_surface=1.0,
                 m_a=2, m_b=2, ds_wall=0.01, growth_wall=1.0, nk=3, plane=(1.0, 2.0),
             )  # fmt: skip
+
+
+class TestSplitCollarHelpers:
+    """Internals of split_collar (ADR 0024)."""
+
+    def test_wake_cells(self):
+        from shore.collar import _wake_cells
+
+        cells = _wake_cells(0.001, 0.2, 1.2)
+        assert cells[0] == 0.001
+        assert abs(cells.sum() - 0.2) <= 1e-12
+        ratio = cells[1:] / cells[:-1]
+        assert 1.0 <= ratio.min() and ratio.max() <= 1.2
+        np.testing.assert_array_equal(_wake_cells(0.3, 0.2, 1.2), [0.2])
+
+    def test_loop_corner_nodes(self):
+        from shore.geometry.base import BODY
+        from shore.surface.intersect import DEFAULT as TRACE
+        from shore.surface.intersect import _loop
+        from tests.spec.test_intersection import Plane
+        from tests.spec.test_loop_corners import RECT, PolygonPrism
+
+        args = (Plane(), PolygonPrism(RECT), np.array([0.0, 0.06, 0.0]), 64, None, 0.0)
+        nodes, corners = _loop(*args, BODY, BODY, TRACE)
+        assert len(corners) == 4
+        corner_xy = np.sort(np.round(nodes[corners, :2], 12), axis=0)
+        np.testing.assert_allclose(corner_xy, np.sort(np.asarray(RECT), axis=0), atol=1e-12)
+
+    def test_bad_wake_length(self):
+        from shore.collar import split_collar
+        from tests.spec.test_intersection import Plane
+        from tests.spec.test_loop_corners import LensPrism
+
+        steps = np.full(3, 0.01)
+        with pytest.raises(ParameterError, match="wake_length"):
+            split_collar(
+                Plane(), LensPrism(), np.array([0.0, 0.06, 0.0]), n_loop=32,
+                steps_a=steps, steps_b=steps, steps_k=steps, wake_length="long",
+            )  # fmt: skip

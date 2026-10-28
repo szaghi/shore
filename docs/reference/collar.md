@@ -73,8 +73,24 @@ itself (ADR 0021). With `--loop-curvature`, one graded spacing runs over the
 whole curve, so adjacent cells stay within 1.2x across the corners too
 (ADR 0022). The collar block is valid at convex corners of up to 90 degrees
 only while it stays thin: up to about 4.7 junction spacings with a uniform
-loop, about 1.9 with `--loop-curvature 1`. Thicker collars, concave and
-sharp corners (a trailing edge) still fold: a split collar is a later step.
+loop, about 1.9 with `--loop-curvature 1`. Thicker collars and concave
+corners still fold (ADR 0025).
+
+Sharp corners, those turning by more than 105 degrees (a sharp trailing
+edge, the tips of a lens), fold even the collar's wall: the surface grid
+on the plate cannot turn round them. The Python function
+`shore.collar.split_collar` cuts the loop there (ADR 0024). A wake line runs
+on the plate behind each sharp corner, along its bisector, for
+`wake_length` (default: the collar's width on the plate), with cells
+growing by at most 1.2 from the corner spacing. Over the wake, the wall is
+a virtual sheet: the edge's grid line on the other body, translated along
+the wake. The two sides of the sheet are joined by a shared seam, as in a
+C-grid. Each piece of the loop between sharp corners becomes six blocks
+(the wake, the piece and the other wake, below and above the junction
+row). On a NACA 0012 wing with a sharp trailing edge, the single block
+folds 12 cells (5500 with `--loop-curvature 1`); the split collar's
+smallest scaled Jacobian is 0.155 (0.228). With curvature clustering at the
+corner the split collar must stay thin: about 10 corner spacings.
 
 ## Projects
 

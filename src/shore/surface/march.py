@@ -32,6 +32,14 @@ an interior node whose missing neighbour is the mirror image of its inner
 neighbour across the plane, then put on the surface and the plane by
 alternating projections. On mirror-symmetric bodies this is the symmetric
 half of the periodic march of the mirrored closed curve.
+
+At a crease the node's normal is made orthogonal to the front tangent
+(ADR 0023). At a sharp crease, where the front folds back on itself (the
+sharp trailing edge of a wing), the central difference is much shorter than
+the node spacing; its tangent is then lengthened to the mean arc spacing of
+the node, so the prescribed area does not turn into an outsized step
+(ADR 0024). The split collar (ADR 0024) also holds the two ends of an open
+curve on two different planes (``_Ends``).
 """
 
 from __future__ import annotations
@@ -57,6 +65,7 @@ class MarchParams:
     convergence_gain: float = 16.0  # extra dissipation per unit of front contraction
     distance_clip: float = 2.0  # marching distance kept in [step / clip, step * clip]
     crease_tolerance: float = 0.1  # |n . t| above this: n made orthogonal to t (ADR 0023)
+    sharp_crease: float = 0.5  # at a crease, |t| below this x the arc spacing: t lengthened
     end_tolerance: float = 1e-14  # ends on surface and plane, relative to the model diagonal
     end_iterations: int = 100
 
@@ -111,6 +120,42 @@ def march_surface(
         given with *periodic*, or with the curve's ends off it by more than
         that tolerance.
     """
+    r, s, proj, tol = _checked(geometry, curve, steps, entity)
+    mirror = None
+    if plane is not None:
+        if periodic:
+            raise ParameterError("plane holds the ends of an open curve: not with periodic=True.")
+        mirror = _Mirror.of(plane)
+        off = float(np.max(np.abs(mirror.offset(r[[0, -1]]))))
+        if off > tol:
+            raise ParameterError(
+                f"curve ends are off the plane by up to {off:.3e} (tolerance {tol:.3e})."
+            )
+    return _march(geometry, r, s, proj, tol, periodic, entity, params, mirror)
+
+
+def _march_between(
+    geometry: Geometry,
+    curve: np.ndarray,
+    steps: np.ndarray,
+    ends: _Ends,
+    *,
+    entity: EntityRef = BODY,
+    params: MarchParams = DEFAULT,
+) -> np.ndarray:
+    """``march_surface`` of an open *curve* whose two ends are held on two planes."""
+    r, s, proj, tol = _checked(geometry, curve, steps, entity)
+    for end in (0, -1):
+        off = abs(float(ends.end(end).offset(r[end])))
+        if off > tol:
+            raise ParameterError(f"curve end is off its plane by {off:.3e} (tolerance {tol:.3e}).")
+    return _march(geometry, r, s, proj, tol, False, entity, params, ends)
+
+
+def _checked(
+    geometry: Geometry, curve: np.ndarray, steps: np.ndarray, entity: EntityRef
+) -> tuple[np.ndarray, np.ndarray, object, float]:
+    """The curve and steps as arrays, the curve's projection and the surface tolerance."""
     r = np.asarray(curve, dtype=np.float64)
     if r.ndim != 2 or r.shape[1] != 3 or r.shape[0] < 3:
         raise ParameterError(f"curve must have shape (n, 3) with n >= 3, got {r.shape}.")
@@ -126,21 +171,25 @@ def march_surface(
         raise ParameterError(
             f"curve nodes are off the surface by up to {worst:.3e} (tolerance {tol:.3e})."
         )
-    mirror = None
-    if plane is not None:
-        if periodic:
-            raise ParameterError("plane holds the ends of an open curve: not with periodic=True.")
-        mirror = _Mirror.of(plane)
-        off = float(np.max(np.abs(mirror.offset(r[[0, -1]]))))
-        if off > tol:
-            raise ParameterError(
-                f"curve ends are off the plane by up to {off:.3e} (tolerance {tol:.3e})."
-            )
-    end_tol = params.end_tolerance * tol / 1e-6
+    return r, s, proj, tol
 
+
+def _march(
+    geometry: Geometry,
+    r: np.ndarray,
+    s: np.ndarray,
+    proj: object,
+    tol: float,
+    periodic: bool,
+    entity: EntityRef,
+    params: MarchParams,
+    mirror: _Mirror | _Ends | None,
+) -> np.ndarray:
+    """The march of a checked curve *r* (its projection *proj*) by steps *s*."""
+    end_tol = params.end_tolerance * tol / 1e-6
     out = np.empty((r.shape[0], s.size + 1, 3))
     out[:, 0] = r
-    normals = np.asarray(proj.normals, dtype=np.float64)
+    normals = np.asarray(proj.normals, dtype=np.float64)  # type: ignore[attr-defined]
     for j, step in enumerate(s):
         new = _layer(out[:, j], normals, float(step), periodic, params, mirror)
         landed = geometry.project(new, entity)
@@ -149,7 +198,7 @@ def march_surface(
         if mirror is not None:
             for end in (0, -1):
                 points[end], normals[end] = _on_surface_and_plane(
-                    geometry, entity, points[end], mirror, end_tol, params.end_iterations
+                    geometry, entity, points[end], mirror.end(end), end_tol, params.end_iterations
                 )
         out[:, j + 1] = points
     return out
@@ -192,6 +241,31 @@ class _Mirror:
         """*f* with a ghost node at each end: the mirror image of the inner neighbour."""
         return np.concatenate([self.reflect(f[1:2]), f, self.reflect(f[-2:-1])])
 
+    def end(self, which: int) -> _Mirror:
+        """The plane of end *which* (0 or -1): this one at both ends."""
+        return self
+
+    def matrices(self, first: np.ndarray) -> np.ndarray:
+        """Reflection matrices of the ghosts past the first (*first*) or last end."""
+        return np.broadcast_to(self.matrix, (first.size, 3, 3))
+
+
+@dataclass(frozen=True)
+class _Ends:
+    """Two planes, one for each end of an open curve (ADR 0024)."""
+
+    first: _Mirror
+    last: _Mirror
+
+    def end(self, which: int) -> _Mirror:
+        return self.first if which == 0 else self.last
+
+    def extend(self, f: np.ndarray) -> np.ndarray:
+        return np.concatenate([self.first.reflect(f[1:2]), f, self.last.reflect(f[-2:-1])])
+
+    def matrices(self, first: np.ndarray) -> np.ndarray:
+        return np.where(first[:, None, None], self.first.matrix, self.last.matrix)
+
 
 def _on_surface_and_plane(
     geometry: Geometry,
@@ -212,7 +286,7 @@ def _on_surface_and_plane(
     return x, np.asarray(landed.normals[0], dtype=np.float64)
 
 
-def _central(f: np.ndarray, periodic: bool, mirror: _Mirror | None = None) -> np.ndarray:
+def _central(f: np.ndarray, periodic: bool, mirror: _Mirror | _Ends | None = None) -> np.ndarray:
     """Central difference along the layer; one-sided at free ends, mirrored at a plane."""
     if mirror is not None:
         ghosted = mirror.extend(f)
@@ -226,6 +300,19 @@ def _central(f: np.ndarray, periodic: bool, mirror: _Mirror | None = None) -> np
     return d
 
 
+def _arc_spacing(r: np.ndarray, periodic: bool, mirror: _Mirror | _Ends | None) -> np.ndarray:
+    """Mean length of the two segments at each node (one segment at free ends)."""
+    if mirror is not None:
+        g = mirror.extend(r)
+        ahead, behind = g[2:] - r, r - g[:-2]
+    elif periodic:
+        ahead, behind = np.roll(r, -1, axis=0) - r, r - np.roll(r, 1, axis=0)
+    else:
+        seg = np.diff(r, axis=0)
+        ahead, behind = np.vstack([seg, seg[-1:]]), np.vstack([seg[:1], seg])
+    return 0.5 * (np.linalg.norm(ahead, axis=-1) + np.linalg.norm(behind, axis=-1))
+
+
 def _dot(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.einsum("...j,...j->...", a, b)
 
@@ -236,7 +323,7 @@ def _layer(
     step: float,
     periodic: bool,
     params: MarchParams,
-    mirror: _Mirror | None = None,
+    mirror: _Mirror | _Ends | None = None,
 ) -> np.ndarray:
     """One marching step: the new layer before its projection onto the surface."""
     n_nodes = r.shape[0]
@@ -250,6 +337,13 @@ def _layer(
         normal = normal.copy()
         flat = normal[crease] - (along[crease] / h[crease])[:, None] * t[crease]
         normal[crease] = flat / np.linalg.norm(flat, axis=-1, keepdims=True)
+        # a sharp crease folds the front back: |t| << the spacing (ADR 0024)
+        arc = _arc_spacing(r, periodic, mirror)
+        sharp = crease & (h < params.sharp_crease * arc)
+        if sharp.any():
+            t = t.copy()
+            t[sharp] *= (arc[sharp] / h[sharp])[:, None]
+            h = np.linalg.norm(t, axis=-1)
     b = np.cross(normal, t)
     b /= np.linalg.norm(b, axis=-1, keepdims=True)
     rho = np.minimum(1.0, step / h)
@@ -314,7 +408,7 @@ def _layer(
         if mirror is not None:  # past an end: the ghost moves as the mirrored inner neighbour
             past = (unknown + shift < 0) | (unknown + shift >= n_nodes)
             nb = np.where(past, unknown - shift, nb)
-            mats = np.where(past[:, None, None], mats @ mirror.matrix, mats)
+            mats = np.where(past[:, None, None], mats @ mirror.matrices(unknown + shift < 0), mats)
         free = ~fixed[nb]
         block(u[free], index[nb[free]], mats[free])
         if (~free).any():  # neighbour is a fixed end: known increment

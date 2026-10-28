@@ -117,6 +117,21 @@ def intersection_loop(
         ``tanh2``, or a bad *curvature*; no intersection near *seed*; a
         trace that does not close.
     """
+    return _loop(body_a, body_b, seed, n, spacing, curvature, entity_a, entity_b, params)[0]
+
+
+def _loop(
+    body_a: Geometry,
+    body_b: Geometry,
+    seed: np.ndarray,
+    n: int,
+    spacing: Spacing1D | None,
+    curvature: float,
+    entity_a: EntityRef,
+    entity_b: EntityRef,
+    params: TraceParams,
+) -> tuple[np.ndarray, list[int]]:
+    """``intersection_loop``'s nodes and the indices of its corner nodes (ADR 0024)."""
     if isinstance(n, bool) or not isinstance(n, (int, np.integer)) or n < 3:
         raise ParameterError(f"n must be an integer >= 3, got {n!r}.")
     default = _check_distribution(spacing, curvature, ("uniform", "tanh2"))
@@ -133,7 +148,10 @@ def intersection_loop(
         raise ParameterError(f"no intersection of the two bodies near the seed {x.tolist()}.")
     polyline, corners = tracer.trace(start)
     if corners:  # a node on every corner (ADR 0021)
-        return _resample(tracer, polyline, [0, *corners], n, spacing, curvature, closed=True)
+        nodes, fixed = _resample(
+            tracer, polyline, [0, *corners], n, spacing, curvature, closed=True, with_fixed=True
+        )
+        return nodes, fixed[1:]
 
     # resample by arc length (closing segment included) and polish onto both bodies
     if not default:
@@ -148,7 +166,7 @@ def intersection_loop(
     nodes = np.stack([np.interp(target, s, closed[:, k]) for k in range(3)], axis=-1)
     nodes = tracer.polish(nodes)
     nodes[0] = start
-    return nodes
+    return nodes, []
 
 
 def intersection_curve(
@@ -617,10 +635,12 @@ def _resample(
     *,
     closed: bool,
     plane: tuple[np.ndarray, np.ndarray] | None = None,
-) -> np.ndarray:
+    with_fixed: bool = False,
+) -> np.ndarray | tuple[np.ndarray, list[int]]:
     """Nodes of a curve with fixed vertices (the start or ends, and corners):
     each segment between them gets cells in proportion to its length (its
-    monitor integral with *curvature*) and the law of ADR 0020 by itself."""
+    monitor integral with *curvature*) and the law of ADR 0020 by itself.
+    *with_fixed*: also the node index of each fixed vertex."""
     params = tracer.params
     polyline, fixed = tracer.refine(polyline, closed=closed, fixed=fixed)  # type: ignore[misc]
     pts = np.vstack([polyline, polyline[:1]]) if closed else polyline
@@ -687,6 +707,8 @@ def _resample(
     free[node_of_fixed] = False
     nodes[free] = tracer.polish(nodes[free])
     nodes[node_of_fixed] = pts[ends[: len(node_of_fixed)]]
+    if with_fixed:
+        return nodes, node_of_fixed
     return nodes
 
 

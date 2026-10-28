@@ -1,6 +1,6 @@
 # 0024 — The split collar at sharp corners
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-27
 
 ## Context
@@ -201,3 +201,34 @@ passed.
 **Out of scope:** thicker collars at corners, concave corners and the blunt
 trailing edge's volume (ADR 0025); half-collars with sharp corners; sharp
 corners on A's edges; project and CLI.
+
+### Review (2026-10-27, recommendations taken while the user was away)
+
+The user asked for the night's work to go ahead on the recommendations:
+1. The threshold stays at 105° (`CollarParams.sharp_deg`).
+2. The wake length defaults to the collar's width on A (`sum(steps_a)`).
+3. Next: the project and CLI layers for `split_collar`, then ADR 0025.
+
+## Acceptance (2026-10-27): split-collar spec met
+
+**Kernel.** As decided. `intersect._loop` returns the corner nodes of
+`_resample` (`with_fixed`). `march._march_between` runs the march with an
+`_Ends` pair. `march_surface(plane=)` keeps its path: `_Mirror` answers
+`end` and `matrices` itself, and the march body is shared (`_march`).
+`build_collar`'s closed and half collars go through `_closed_collar` and
+`_wall`, bit-identical to before.
+
+**Verdict for `tests/spec/test_split_collar.py`: 33 passed, 0 skipped,
+0 xfailed** (T2; `scripts/check_spec.py` reports all files ok). All 28
+`@PENDING` lines are removed.
+
+**Unit tests:**
+- `tests/test_surface_march.py`:
+  - on a front folded round a 16° edge, every node marches the step
+    within 1e-4; without the fix the edge node marches 3 % too far;
+  - the same plane at both ends is bit-identical to `plane=`;
+  - each end stays on its own plane.
+- `tests/test_collar.py`:
+  - wake grading;
+  - `_loop`'s corner nodes on the rectangle;
+  - a bad `wake_length`.

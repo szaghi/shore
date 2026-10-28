@@ -176,17 +176,14 @@ def partner_view(face, owner: dict[int, object]) -> np.ndarray:
 
 
 class TestValid:
-    @PENDING
     @pytest.mark.parametrize("curvature", [0.0, 1.0], ids=["uniform", "curvature"])
     @pytest.mark.parametrize("name", ["wing", "lens"])
     def test_s1_valid(self, name, curvature):
         assert min_jacobian(collar(name, curvature)[3]) >= 0.1
 
-    @PENDING
     def test_s1_lens_thicker(self):
         assert min_jacobian(collar("lens", 0.0, MID)[3]) >= 0.1
 
-    @PENDING
     @pytest.mark.parametrize("tip", [20, 30, 45, 60])
     def test_s1_wedges(self, tip):
         b = wedge(tip)
@@ -203,7 +200,6 @@ class TestValid:
 
 
 class TestLayout:
-    @PENDING
     @pytest.mark.parametrize("name", ["wing", "lens"])
     def test_s2_blocks_and_faces(self, name):
         from shore.mesh.face import FaceBC
@@ -231,7 +227,6 @@ class TestLayout:
             assert blk.face("j_lo").bc == (FaceBC.FREE if part == "wake_lo" else FaceBC.SHARED)
             assert blk.face("j_hi").bc == (FaceBC.FREE if part == "wake_hi" else FaceBC.SHARED)
 
-    @PENDING
     @pytest.mark.parametrize("name", ["wing", "lens"])
     def test_s2_seams_match(self, name):
         from shore.mesh.face import FaceBC
@@ -246,7 +241,6 @@ class TestLayout:
                     assert np.array_equal(face_nodes(blk, face.name), partner_view(face, owner))
         assert seams > 0
 
-    @PENDING
     def test_s2_xall_files(self, tmp_path):
         from shore.io.adjacency import write_adjacency_json
         from shore.io.cc_par import write_cc_par
@@ -264,7 +258,6 @@ class TestLayout:
 
 
 class TestWalls:
-    @PENDING
     @pytest.mark.parametrize("name", ["wing", "lens"])
     def test_s3_walls_on_bodies(self, name):
         from shore.mesh.face import FaceBC
@@ -304,7 +297,6 @@ def wake_rows(blocks):
 
 
 class TestWakes:
-    @PENDING
     @pytest.mark.parametrize("length", [None, 0.1], ids=["default", "given"])
     def test_s4_wake_lines(self, length):
         a, _, _, blocks = collar("lens", wake_length=length)
@@ -319,7 +311,6 @@ class TestWakes:
             assert ratio.min() >= 1.0 - 1e-9
             assert ratio.max() <= 1.2 + 1e-9
 
-    @PENDING
     @pytest.mark.parametrize("name", ["wing", "lens"])
     def test_s4_sheets(self, name):
         _, _, _, blocks = collar(name)
@@ -354,7 +345,6 @@ class TestSharpMarch:
         assert flips == 0
         assert drift <= 0.02
 
-    @PENDING
     @pytest.mark.parametrize("name", ["wing", "lens"])
     def test_s5_curvature(self, name):
         flips, drift = sharp_march(name, 1.0)
@@ -392,7 +382,6 @@ class TestUnchanged:
         block = build_collar(a, b, seed, **steps, **kw)
         np.testing.assert_allclose(block.nodes, np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
 
-    @PENDING
     @pytest.mark.parametrize("name", ["rectangle", "blunt_wing"])
     def test_s6_split_collar_without_sharp_corners(self, name):
         a, b, seed, kw = golden_case(name)
@@ -411,7 +400,6 @@ class TestUnchanged:
 
 
 class TestErrors:
-    @PENDING
     @pytest.mark.parametrize("length", [0.0, -1.0, float("nan")])
     def test_s7_bad_wake_length(self, length):
         from shore.exceptions import ParameterError
@@ -419,7 +407,6 @@ class TestErrors:
         with pytest.raises(ParameterError, match="wake_length"):
             collar("lens", wake_length=length)
 
-    @PENDING
     def test_s7_sharp_corner_on_a(self):
         from shore.exceptions import ParameterError
 

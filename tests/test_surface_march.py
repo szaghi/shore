@@ -82,3 +82,66 @@ class TestCrease:
         # nearly a translation (before the fix: 0.071 drift, top layer 0.507-0.583)
         assert np.abs(grid[:, :, :2] - front[:, None]).max() <= 0.02
         assert 0.48 <= grid[:, -1, 2].min() and grid[:, -1, 2].max() <= 0.53
+
+
+class TestSharpCrease:
+    """A front folded back at a sharp edge (ADR 0024)."""
+
+    @staticmethod
+    def folded_front():
+        a, h = np.radians(8.0), 0.001  # a 16 deg wedge, the front around its edge
+        k = np.arange(1, 8)[::-1]
+        upper = np.c_[-k * h * np.cos(a), k * h * np.sin(a), 0.0 * k]
+        lower = np.c_[-k[::-1] * h * np.cos(a), -k[::-1] * h * np.sin(a), 0.0 * k]
+        r = np.vstack([upper, [[0.0, 0.0, 0.0]], lower])
+        n_up, n_lo = np.array([np.sin(a), np.cos(a), 0.0]), np.array([np.sin(a), -np.cos(a), 0.0])
+        normals = np.vstack([np.tile(n_up, (8, 1)), np.tile(n_lo, (7, 1))])
+        return r, normals
+
+    def test_edge_node_marches_the_step(self):
+        from shore.surface.march import MarchParams, _layer
+
+        r, normals = self.folded_front()
+        fixed = np.linalg.norm(_layer(r, normals, 0.01, False, MarchParams()) - r, axis=1)
+        assert np.abs(fixed - 0.01).max() <= 1e-4
+        # without the fix the edge node's area turns into a longer step
+        old = np.linalg.norm(
+            _layer(r, normals, 0.01, False, MarchParams(sharp_crease=0.0)) - r, axis=1
+        )
+        assert old.max() >= 0.0103
+
+    def test_arc_spacing(self):
+        from shore.surface.march import _arc_spacing
+
+        r = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 2.0, 0.0], [0.0, 2.0, 0.0]])
+        np.testing.assert_allclose(_arc_spacing(r, False, None), [1.0, 1.5, 1.5, 1.0])
+        np.testing.assert_allclose(_arc_spacing(r, True, None), [1.5, 1.5, 1.5, 1.5])
+
+
+class TestEnds:
+    """Two end planes (ADR 0024): the same plane twice is the plane mode."""
+
+    def test_same_plane_twice_is_bit_identical(self):
+        from shore.surface.march import _Ends, _march_between, _Mirror
+
+        cylinder = StlGeometry(trimesh.creation.cylinder(radius=1.0, height=4.0, sections=64))
+        theta = np.linspace(0.0, np.pi, 17)
+        arc = np.c_[np.cos(theta), np.sin(theta), 0.0 * theta]
+        arc = np.asarray(cylinder.project(arc).points)
+        plane = ((0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+        steps = np.full(6, 0.05)
+        one = march_surface(cylinder, arc, steps, plane=plane)
+        mirror = _Mirror.of(plane)
+        two = _march_between(cylinder, arc, steps, _Ends(mirror, mirror))
+        assert np.array_equal(one, two)
+
+    def test_each_end_on_its_plane(self):
+        from shore.surface.march import _Ends, _march_between, _Mirror
+
+        cylinder = StlGeometry(trimesh.creation.cylinder(radius=1.0, height=4.0, sections=64))
+        theta = np.linspace(0.0, 0.5 * np.pi, 17)  # a quarter: ends on y = 0 and x = 0
+        arc = np.asarray(cylinder.project(np.c_[np.cos(theta), np.sin(theta), 0.0 * theta]).points)
+        first, last = _Mirror.of(((0, 0, 0), (0, 1, 0))), _Mirror.of(((0, 0, 0), (1, 0, 0)))
+        grid = _march_between(cylinder, arc, np.full(6, 0.05), _Ends(first, last))
+        assert np.abs(grid[0, :, 1]).max() <= 1e-9
+        assert np.abs(grid[-1, :, 0]).max() <= 1e-9
