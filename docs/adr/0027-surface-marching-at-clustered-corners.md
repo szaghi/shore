@@ -1,6 +1,6 @@
 # 0027 — Surface marching at clustered corners
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 
 ## Context
@@ -165,3 +165,24 @@ Validated with the prototype behind the interface: 37 passed.
 | M3 (× 3) | collar walls (L-shape, blunt wing, split lens; n_loop 192, curvature 1) without folds |
 | M4 (× 3) | untriggered collars valid (guards); the parameters |
 | C4b | ADR 0008's concave-L march equals its re-frozen golden; no reversed segment |
+
+### Review (2026-10-28, user decisions)
+
+1. The trigger stays at 24 and the target at 2.
+2. Next step: the collar volume at extreme clustering.
+
+## Acceptance (2026-10-28): clustered-corner marching spec met
+
+**Kernel.** As decided. `_march` runs `_substeps` sub-steps per layer, each
+followed by `_untangle` (which uses `_inverted`).
+
+**Verdicts** (T2; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_march_corners.py`: **15 passed, 0 skipped, 0 xfailed**;
+- `tests/spec/test_march_creases.py`: **22 passed, 0 skipped, 0 xfailed**.
+
+All 14 `@PENDING` lines are removed.
+
+**Unit tests** (`tests/test_surface_march.py`):
+- a run of clustered cells gets `ceil(ratio / 2)` sub-steps;
+- the same cells after a front converged there get none;
+- `_inverted` finds two nodes that overtake each other.

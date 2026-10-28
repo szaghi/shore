@@ -145,3 +145,29 @@ class TestEnds:
         grid = _march_between(cylinder, arc, np.full(6, 0.05), _Ends(first, last))
         assert np.abs(grid[0, :, 1]).max() <= 1e-9
         assert np.abs(grid[-1, :, 0]).max() <= 1e-9
+
+
+class TestClusteredCorners:
+    """Sub-stepping and untangling (ADR 0027)."""
+
+    def test_substeps_ignore_converging_nodes(self):
+        from shore.surface.march import DEFAULT, _substeps
+
+        x = np.r_[0.0, 0.1, 0.2, 0.3, 0.301, 0.302, 0.303, 0.4, 0.5]
+        clustered = np.c_[x, 0.0 * x, 0.0 * x]  # a run of 1e-3 cells, as at a clustered corner
+        uniform = np.c_[np.linspace(0.0, 0.5, 9), 0.0 * x, 0.0 * x]
+        assert _substeps(uniform, uniform, 0.05, False, None, DEFAULT) == 1
+        # clustered from the start: 0.1 / 1e-3 = 100 > 24 -> ceil(100 / 2) sub-steps
+        assert _substeps(clustered, clustered, 0.1, False, None, DEFAULT) == 50
+        # the same cells after a front converged there from uniform: left alone
+        assert _substeps(clustered, uniform, 0.1, False, None, DEFAULT) == 1
+
+    def test_inverted_finds_a_reversed_segment(self):
+        from shore.surface.march import _inverted
+
+        old = np.c_[np.linspace(0.0, 1.0, 6), np.zeros(6), np.zeros(6)]
+        new = old + np.array([0.0, 0.1, 0.0])
+        normals = np.tile([0.0, 0.0, 1.0], (6, 1))
+        assert not _inverted(old, new, normals, False).any()
+        new[[2, 3]] = new[[3, 2]]  # two nodes overtake each other
+        assert _inverted(old, new, normals, False)[2]

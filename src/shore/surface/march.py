@@ -40,6 +40,14 @@ the node spacing; its tangent is then lengthened to the mean arc spacing of
 the node, so the prescribed area does not turn into an outsized step
 (ADR 0024). The split collar (ADR 0024) also holds the two ends of an open
 curve on two different planes (``_Ends``).
+
+At corners where the loop is clustered (ADR 0027) a layer whose step exceeds
+``max_step_ratio`` x the front spacing (counting only nodes not closer than
+on the starting curve, so converging fronts do not trigger it) is marched in
+sub-steps; and a layer that folds against the previous one (a cell
+reversed, or a front segment pointing backwards: converging fronts at a
+concave corner) is smoothed along the front round the fold and re-projected
+until it does not. Marches where neither happens are unchanged.
 """
 
 from __future__ import annotations
@@ -66,6 +74,10 @@ class MarchParams:
     distance_clip: float = 2.0  # marching distance kept in [step / clip, step * clip]
     crease_tolerance: float = 0.1  # |n . t| above this: n made orthogonal to t (ADR 0023)
     sharp_crease: float = 0.5  # at a crease, |t| below this x the arc spacing: t lengthened
+    max_step_ratio: float = 24.0  # a step over this x the spacing is sub-stepped (ADR 0027)
+    substep_ratio: float = 2.0  # ... into sub-steps of at most this x the spacing
+    untangle_iterations: int = 200  # smoothing passes where a layer folds (ADR 0027)
+    untangle_reach: int = 2  # nodes smoothed on each side of a folded cell
     end_tolerance: float = 1e-14  # ends on surface and plane, relative to the model diagonal
     end_iterations: int = 100
 
@@ -191,17 +203,93 @@ def _march(
     out[:, 0] = r
     normals = np.asarray(proj.normals, dtype=np.float64)  # type: ignore[attr-defined]
     for j, step in enumerate(s):
-        new = _layer(out[:, j], normals, float(step), periodic, params, mirror)
-        landed = geometry.project(new, entity)
-        points = np.array(landed.points, dtype=np.float64)
-        normals = np.array(landed.normals, dtype=np.float64)
-        if mirror is not None:
-            for end in (0, -1):
-                points[end], normals[end] = _on_surface_and_plane(
-                    geometry, entity, points[end], mirror.end(end), end_tol, params.end_iterations
-                )
+        points = out[:, j]
+        count = _substeps(points, out[:, 0], float(step), periodic, mirror, params)
+        for _ in range(count):  # sub-steps where the step dwarfs the spacing (ADR 0027)
+            new = _layer(points, normals, float(step) / count, periodic, params, mirror)
+            landed = geometry.project(new, entity)
+            new_points = np.array(landed.points, dtype=np.float64)
+            new_normals = np.array(landed.normals, dtype=np.float64)
+            new_points, new_normals = _untangle(
+                geometry, entity, points, new_points, new_normals, periodic, params
+            )
+            points, normals = new_points, new_normals
+            if mirror is not None:
+                for end in (0, -1):
+                    plane, its = mirror.end(end), params.end_iterations
+                    points[end], normals[end] = _on_surface_and_plane(
+                        geometry, entity, points[end], plane, end_tol, its
+                    )
         out[:, j + 1] = points
     return out
+
+
+def _inverted(old: np.ndarray, new: np.ndarray, normals: np.ndarray, periodic: bool) -> np.ndarray:
+    """Folded cells (j, j + 1) between two layers (ADR 0027): oriented against the
+    majority, or with the new front segment pointing backwards along the old one."""
+    if periodic:
+        ahead = np.roll(old, -1, axis=0) - old
+        new_ahead = np.roll(new, -1, axis=0) - new
+        move = new - old
+        move = 0.5 * (move + np.roll(move, -1, axis=0))
+        nrm = 0.5 * (normals + np.roll(normals, -1, axis=0))
+    else:
+        ahead, new_ahead = np.diff(old, axis=0), np.diff(new, axis=0)
+        move = 0.5 * ((new - old)[:-1] + (new - old)[1:])
+        nrm = 0.5 * (normals[:-1] + normals[1:])
+    orient = _dot(np.cross(ahead, move), nrm)
+    return (orient * np.sign(np.median(orient)) <= 0.0) | (_dot(ahead, new_ahead) <= 0.0)
+
+
+def _untangle(
+    geometry: Geometry,
+    entity: EntityRef,
+    old: np.ndarray,
+    new: np.ndarray,
+    normals: np.ndarray,
+    periodic: bool,
+    params: MarchParams,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The new layer and its normals, smoothed along the front round any cell that folds
+    against *old* (converging fronts, ADR 0027) and re-projected, until none folds.
+
+    A layer without a folded cell is returned as it is."""
+    n = len(new)
+    reach = np.arange(-params.untangle_reach, params.untangle_reach + 2)
+    for _ in range(params.untangle_iterations):
+        bad = _inverted(old, new, normals, periodic)
+        if not bad.any():
+            break
+        nodes = np.unique((np.flatnonzero(bad)[:, None] + reach[None, :]).ravel())
+        nodes = nodes % n if periodic else nodes[(nodes > 0) & (nodes < n - 1)]
+        moved = new.copy()
+        moved[nodes] = 0.5 * new[nodes] + 0.25 * (new[(nodes - 1) % n] + new[(nodes + 1) % n])
+        landed = geometry.project(moved, entity)
+        new = np.array(landed.points, dtype=np.float64)
+        normals = np.array(landed.normals, dtype=np.float64)
+    return new, normals
+
+
+def _substeps(
+    r: np.ndarray,
+    start: np.ndarray,
+    step: float,
+    periodic: bool,
+    mirror: _Mirror | _Ends | None,
+    params: MarchParams,
+) -> int:
+    """Sub-steps of the layer from *r* (ADR 0027): one while *step* is at most
+    ``max_step_ratio`` x the smallest spacing of the nodes not closer together than on
+    the starting curve *start* (converging fronts are left alone); else sub-steps of at
+    most ``substep_ratio`` x that spacing."""
+    h = _arc_spacing(r, periodic, mirror)
+    h = h[h >= 0.9 * _arc_spacing(start, periodic, mirror)]
+    if h.size == 0:
+        return 1
+    ratio = step / float(np.min(h))
+    if ratio <= params.max_step_ratio:
+        return 1
+    return int(np.ceil(ratio / params.substep_ratio))
 
 
 @dataclass(frozen=True)

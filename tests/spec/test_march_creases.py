@@ -219,7 +219,6 @@ class TestUnchanged:
     def test_c4_smooth_marches_unchanged(self, name):
         np.testing.assert_allclose(_golden_case(name), np.load(GOLDEN)[name], rtol=0.0, atol=1e-12)
 
-    @PENDING
     def test_c4b_concave_march_unfolded(self):
         grid = _golden_case("m_concave_l_plane")
         np.testing.assert_allclose(grid, np.load(GOLDEN)["m_concave_l_plane"], rtol=0.0, atol=1e-12)

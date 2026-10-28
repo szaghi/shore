@@ -127,7 +127,6 @@ def cell_sines(body, grid: np.ndarray) -> np.ndarray:
 
 
 class TestPlate:
-    @PENDING
     @pytest.mark.parametrize(
         "name, n, curvature",
         [("l_shape", 192, 1.0), ("l_shape", 384, 0.0), ("l_shape", 384, 1.0),
@@ -142,7 +141,6 @@ class TestPlate:
 
 
 class TestCreases:
-    @PENDING
     @pytest.mark.parametrize(
         "name, n, curvature",
         [("sharp", 192, 1.0), ("lens", 192, 1.0), ("lens", 384, 3.0), ("wedge", 384, 1.0)],
@@ -174,7 +172,6 @@ def jacobians(blocks):
 
 
 class TestCollars:
-    @PENDING
     @pytest.mark.parametrize(
         "kind, name", [("build", "l_shape"), ("build", "blunt"), ("split", "lens")]
     )
@@ -187,7 +184,6 @@ class TestCollars:
         blocks = collar_blocks("build", name, 192, 0.0)
         assert min(float(jac.min()) for jac in jacobians(blocks)) >= 0.1
 
-    @PENDING
     def test_m4_params(self):
         from shore.surface.march import MarchParams
 
