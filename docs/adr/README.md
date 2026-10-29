@@ -46,6 +46,7 @@ by a later record that supersedes it.
 | [0036](./0036-cc-par-as-xall-reads-it.md) | cc.par connections as Xall reads them | Accepted |
 | [0037](./0037-gui-viewer-command-shell.md) | GUI slice 1: viewer and command shell | Accepted |
 | [0038](./0038-gui-geometry-and-slices.md) | GUI slice 2: geometry display and slice planes | Accepted |
+| [0039](./0039-association-editing.md) | Association editing (GUI slice 3) | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

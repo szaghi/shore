@@ -1,4 +1,4 @@
-# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020-0024 frozen 2026-10-27; ADR 0025 frozen 2026-10-28; ADR 0026 frozen and ADR 0024/0025 re-frozen 2026-10-28; ADR 0027 frozen and ADR 0023 re-frozen 2026-10-28; ADR 0027 M1 re-frozen (ADR 0029) 2026-10-28; ADR 0033 frozen 2026-10-28; ADR 0034 frozen 2026-10-28, replacing ADR 0019's spec; ADR 0035 frozen 2026-10-28; ADR 0036 frozen 2026-10-28; ADR 0037 frozen 2026-10-29; ADR 0038 frozen 2026-10-29; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
+# Frozen acceptance specs (ADR 0005 re-frozen; ADR 0007, 0010, 0012, 0013, 0014, 0016, 0017, 0018, 0019 frozen; ADR 0020-0024 frozen 2026-10-27; ADR 0025 frozen 2026-10-28; ADR 0026 frozen and ADR 0024/0025 re-frozen 2026-10-28; ADR 0027 frozen and ADR 0023 re-frozen 2026-10-28; ADR 0027 M1 re-frozen (ADR 0029) 2026-10-28; ADR 0033 frozen 2026-10-28; ADR 0034 frozen 2026-10-28, replacing ADR 0019's spec; ADR 0035 frozen 2026-10-28; ADR 0036 frozen 2026-10-28; ADR 0037 frozen 2026-10-29; ADR 0038 frozen 2026-10-29; ADR 0039 frozen 2026-10-29; ADR 0008, 0009, 0011 re-frozen; 2026-10-26). Checked by scripts/check_spec.py.
 # Spec modules are hashed with their @PENDING lines removed.
 3c6fbe392a7ef5d28034141a61e1c03227da2b1dd5dbb315f819493fe8320aef  tests/spec/test_hyperbolic_marching.py
 ae38c25896db5e94b8f55f23a94bba05d7d80a76d0eb5f5729ec9c3cecec12b7  tests/spec/__init__.py
@@ -39,3 +39,5 @@ dbf91709eed550e60caea04207a9183b21a34a4557fc2b239bad0d70ba00acd7  tests/spec/dat
 8db1447d828eec952e99aaa4f204c6dc02f11c3f48c416014a6a5abec836f7ce  tests_gui/spec/test_gui_shell.py
 cd0d3dbae8e99ccf6cb84549460b31c5d40d6a5d2e2bb053c1e88d1bb60eecb2  tests_gui/conftest.py
 c42dceb99003f5865b99777dd5335cff241ec6ffb5d890364d778e1df5cbd64c  tests_gui/spec/test_gui_inspect.py
+58e4d2dd5ad55fcc104ee5fb24d7741bf7736a27e2bc91776943bb2d25dbd3e1  tests/spec/test_associate.py
+3c471b92234dd98154363a13a0083299a84c3a1c9b08e08eeb308955c29c3c81  tests_gui/spec/test_gui_associate.py
