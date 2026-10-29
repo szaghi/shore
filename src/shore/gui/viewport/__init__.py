@@ -1,0 +1,136 @@
+"""The GUI's renderer interface (ADR 0006, 0037).
+
+Only :mod:`shore.gui.viewport.pygfx_backend` imports pygfx, wgpu or
+rendercanvas. This module holds the interface and the structured-grid
+arithmetic the backends share: a block is drawn as its six boundary faces
+(one quad per boundary cell face, in ``FACES`` order) and its twelve edges,
+and a picked quad maps back to its (block, face, i, j, k) in O(1).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+import numpy as np
+
+FACES = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi")
+
+
+@dataclass(frozen=True)
+class PickResult:
+    """A picked boundary cell face: its block, face and cell, and its centre."""
+
+    key: Any  # the block key the viewport was given
+    face: str
+    cell: tuple[int, int, int]  # (i, j, k) of the cell behind the face, 0-based
+    xyz: np.ndarray  # float64 centre of the picked quad, from the CPU arrays
+
+
+class Viewport(Protocol):
+    """What the GUI needs from a renderer."""
+
+    def set_blocks(self, blocks: Sequence[tuple[Any, np.ndarray]]) -> None:
+        """Replace the scene with these ``(key, nodes (ni, nj, nk, 3))`` blocks."""
+
+    def set_face_scalars(
+        self, values: dict[Any, np.ndarray] | None, clim: tuple[float, float]
+    ) -> None:
+        """Colour each boundary quad by a value (``boundary_values`` order), or clear."""
+
+    def show_all(self) -> None: ...
+
+    def look_at_point(self, xyz: np.ndarray, distance: float) -> None: ...
+
+    def pick(self, x: float, y: float) -> PickResult | None: ...
+
+    def project(self, xyz: np.ndarray) -> tuple[float, float]:
+        """A world point (float64) to logical pixel coordinates."""
+
+    def request_draw(self) -> None: ...
+
+
+def face_grids(nodes: np.ndarray) -> list[np.ndarray]:
+    """The six boundary node grids ``(na, nb, 3)`` of a block, in ``FACES`` order."""
+    return [
+        nodes[0, :, :],
+        nodes[-1, :, :],
+        nodes[:, 0, :],
+        nodes[:, -1, :],
+        nodes[:, :, 0],
+        nodes[:, :, -1],
+    ]
+
+
+def quad_indices(na: int, nb: int, base: int = 0) -> np.ndarray:
+    """Quads ``((na-1)*(nb-1), 4)`` of an ``na x nb`` node grid, a-major."""
+    p, q = np.meshgrid(np.arange(na - 1), np.arange(nb - 1), indexing="ij")
+    v00 = (p * nb + q).ravel()
+    return base + np.stack([v00, v00 + nb, v00 + nb + 1, v00 + 1], axis=1).astype(np.int32)
+
+
+def quad_offsets(shape: tuple[int, int, int]) -> np.ndarray:
+    """Index of each face's first quad in a block's quad list, plus the total."""
+    ni, nj, nk = shape
+    counts = [(nj - 1) * (nk - 1)] * 2 + [(ni - 1) * (nk - 1)] * 2 + [(ni - 1) * (nj - 1)] * 2
+    return np.concatenate([[0], np.cumsum(counts)])
+
+
+def quad_cell(shape: tuple[int, int, int], quad: int) -> tuple[str, tuple[int, int, int]]:
+    """The face and the (i, j, k) cell behind quad number *quad* of a block."""
+    ni, nj, nk = shape
+    offsets = quad_offsets(shape)
+    f = int(np.searchsorted(offsets, quad, side="right") - 1)
+    nb = (nk - 1) if f < 4 else (nj - 1)  # cells along the face's second axis
+    a, b = divmod(int(quad - offsets[f]), nb)
+    face = FACES[f]
+    cell = {
+        "i_lo": (0, a, b),
+        "i_hi": (ni - 2, a, b),
+        "j_lo": (a, 0, b),
+        "j_hi": (a, nj - 2, b),
+        "k_lo": (a, b, 0),
+        "k_hi": (a, b, nk - 2),
+    }[face]
+    return face, cell
+
+
+def quad_centre(nodes: np.ndarray, face: str, cell: tuple[int, int, int]) -> np.ndarray:
+    """float64 centre of the boundary quad of *cell* on *face*."""
+    f = FACES.index(face)
+    grid = face_grids(nodes)[f]
+    i, j, k = cell
+    a, b = {0: (j, k), 1: (j, k), 2: (i, k), 3: (i, k), 4: (i, j), 5: (i, j)}[f]
+    quad = grid[a : a + 2, b : b + 2].reshape(-1, 3)
+    return quad.mean(axis=0)
+
+
+def boundary_values(cell_values: np.ndarray) -> np.ndarray:
+    """Per boundary quad, the value of the cell behind it (``(ni-1, nj-1, nk-1)`` input).
+
+    Quads follow ``FACES`` order and, within a face, ``quad_indices`` order.
+    """
+    v = cell_values
+    faces = [v[0, :, :], v[-1, :, :], v[:, 0, :], v[:, -1, :], v[:, :, 0], v[:, :, -1]]
+    return np.concatenate([f.ravel() for f in faces])
+
+
+def edge_segments(nodes: np.ndarray) -> np.ndarray:
+    """The 12 block edges as line-segment vertex pairs ``(2m, 3)``."""
+    e = [nodes[:, i, k] for i in (0, -1) for k in (0, -1)]
+    e += [nodes[i, :, k] for i in (0, -1) for k in (0, -1)]
+    e += [nodes[i, j, :] for i in (0, -1) for j in (0, -1)]
+    return np.concatenate([np.stack([c[:-1], c[1:]], axis=1).reshape(-1, 3) for c in e])
+
+
+def colormap(values: np.ndarray, clim: tuple[float, float]) -> np.ndarray:
+    """RGBA float32 of *values* on a blue-white-red ramp over *clim* (NaN: grey)."""
+    lo, hi = clim
+    t = np.clip((values - lo) / (hi - lo if hi > lo else 1.0), 0.0, 1.0)
+    blue, white, red = np.array([0.23, 0.30, 0.75]), np.ones(3), np.array([0.71, 0.02, 0.15])
+    lower = (t < 0.5)[:, None]
+    s = np.where(t < 0.5, 2.0 * t, 2.0 * t - 1.0)[:, None]
+    rgb = np.where(lower, red + (white - red) * s, white + (blue - white) * s)
+    rgb[~np.isfinite(values)] = 0.6
+    return np.concatenate([rgb, np.ones((len(values), 1))], axis=1).astype(np.float32)

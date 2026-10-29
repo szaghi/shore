@@ -141,7 +141,6 @@ def same_grids(a, b) -> bool:
 
 
 class TestShell:
-    @PENDING
     def test_g1_journal_fidelity(self, qapp, sphere_stl, tmp_path):
         from shore.project import Project, run_journal
 
@@ -158,7 +157,6 @@ class TestShell:
         journal = run_journal(tmp_path / "saved" / "journal.py", input_dir=tmp_path / "saved")
         assert same_grids(w.session.project, journal)
 
-    @PENDING
     def test_g2_undo_redo(self, qapp, sphere_stl):
         w = window(qapp)
         two_components(w, sphere_stl)
@@ -172,7 +170,6 @@ class TestShell:
         assert w.session.journal_lines() == lines
         assert w.viewport.keys == keys
 
-    @PENDING
     def test_g3_model_tree(self, qapp, sphere_stl):
         w = window(qapp)
         two_components(w, sphere_stl)
@@ -190,7 +187,6 @@ class TestShell:
                 faces = {child.child(i).text(0): child.child(i).text(1) for i in range(6)}
                 assert faces == {f.name: f.bc.name for f in block.faces()}
 
-    @PENDING
     def test_g4_viewport_content(self, qapp, sphere_stl):
         from shore.gui.session import BlockKey
 
@@ -235,7 +231,6 @@ def facing_cells(viewport, key, nodes, face, size):
 
 
 class TestViewport:
-    @PENDING
     def test_g5_picks(self, qapp, sphere_stl):
         w = window(qapp)
         w.run_form("load_geometry", {"path": str(sphere_stl)})
@@ -259,7 +254,6 @@ class TestViewport:
                 checked += 1
         assert checked >= 6
 
-    @PENDING
     def test_g6_float32_trap(self, qapp):
         from shore.gui.viewport.pygfx_backend import PygfxViewport, create_canvas
 
@@ -286,7 +280,6 @@ class TestViewport:
                 assert np.array_equal(r.xyz, centre)
         assert vp.rebase_count > 0
 
-    @PENDING
     def test_g7_quality_colours(self, qapp, sphere_stl):
         from shore.gui.viewport import boundary_values, colormap
         from shore.quality import scaled_jacobian
@@ -313,7 +306,6 @@ LONG = {"topology": "cubed_sphere", "nk": "20", "ds": "0.01", "growth": "1.02",
 
 
 class TestWorker:
-    @PENDING
     def test_g8_responsive_march(self, qapp, sphere_stl):
         from PySide6.QtCore import QTimer
 
@@ -343,7 +335,6 @@ class TestWorker:
         assert max(late) <= 0.100, max(late)
         assert w.session.journal_lines()[-1].startswith("p.march(")
 
-    @PENDING
     def test_g8_cancel(self, qapp, sphere_stl):
         from shore.project.commands import Cancelled
 
@@ -362,7 +353,6 @@ class TestWorker:
 
 
 class TestErrors:
-    @PENDING
     def test_g9_bad_value(self, qapp, sphere_stl):
         w = window(qapp)
         w.run_form("load_geometry", {"path": str(sphere_stl)})
@@ -374,7 +364,6 @@ class TestErrors:
         w.wait_idle()
         assert w.last_error is None and len(w.session.journal_lines()) == 2
 
-    @PENDING
     def test_g9_failing_command(self, qapp, sphere_stl):
         w = window(qapp)
         w.run_form("load_geometry", {"path": str(sphere_stl)})
@@ -393,7 +382,6 @@ class TestErrors:
 
 
 class TestOpen:
-    @PENDING
     @pytest.mark.parametrize("replay", [True, False])
     def test_g10_open_saved(self, qapp, sphere_stl, tmp_path, replay):
         first = window(qapp)
@@ -432,7 +420,6 @@ def imports(path: Path) -> set[str]:
 
 
 class TestIsolation:
-    @PENDING
     def test_g11_imports(self):
         for path in SRC.rglob("*.py"):
             rel = path.relative_to(SRC).as_posix()
@@ -459,7 +446,6 @@ class TestIsolation:
 
 
 class TestForms:
-    @PENDING
     def test_g12_forms_call_project(self):
         from shore.gui.forms import FORMS
         from shore.project import Project

@@ -80,6 +80,9 @@ select = ["E", "F", "B", "I", "UP", "C4", "RUF"]
 [project.scripts]
 shore = "shore.cli:app"
 
+[project.gui-scripts]
+shore-gui = "shore.gui:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=shore --cov-report=term-missing"

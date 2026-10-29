@@ -1481,6 +1481,31 @@ def plot3d(
     _console.print(f"[green]✓[/green] Wrote {_esc(str(output))}")
 
 
+@app.command(name="gui")
+def gui(
+    project_dir: Annotated[
+        Path | None, typer.Argument(help="A saved SHORE project directory to open.")
+    ] = None,
+    no_replay: _NO_REPLAY = False,
+    smoke: Annotated[
+        bool, typer.Option("--smoke", help="Build the window, show it briefly and exit.")
+    ] = False,
+) -> None:
+    """Open the SHORE GUI (ADR 0006, 0037); needs the gui extra.
+
+    Every GUI action is a project command and a line of the journal (shown in
+    the console), so a session saved from the GUI replays headless.
+    """
+    from shore.gui import main as gui_main
+
+    args = [str(project_dir)] if project_dir is not None else []
+    args += ["--no-replay"] if no_replay else []
+    args += ["--smoke"] if smoke else []
+    code = gui_main(args)
+    if code:
+        raise typer.Exit(code)
+
+
 # ---------------------------------------------------------------------------
 # shore config
 # ---------------------------------------------------------------------------

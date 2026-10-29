@@ -1,6 +1,6 @@
 # 0037 — GUI slice 1: viewer and command shell
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -133,10 +133,35 @@ when the rebase is disabled, so it does catch the float32 trap.
 | G11 (× 2) | import isolation; the core imports without the GUI stack |
 | G12 | every form calls an existing Project method with arguments it accepts |
 
-### Performance (to be measured on native Windows at acceptance; T1)
+### Acceptance (2026-10-29): spec met
 
-These are ADR 0006's budgets, measured on the real GUI:
-- orbit at 10⁷ nodes;
-- pick;
-- load to first frame;
-- UI latency during a march.
+**Implementation.** As decided, plus:
+- unit tests (`tests_gui/test_gui_units.py`, 15): form parsing and
+  arguments, the quad ↔ cell arithmetic round trip, the boundary values,
+  the colour map, session errors, cancelled dialogs, the forms panel;
+- `docs/reference/gui.md`;
+- `scripts/gui_bench.py`.
+
+**Verdict** (T2 locally, offscreen Qt with llvmpipe; `scripts/check_spec.py`
+reports all files ok): `tests_gui/spec/test_gui_shell.py` gives **16 passed,
+0 skipped, 0 xfailed**. All 15 `@PENDING` lines are removed.
+
+### Performance (2026-10-29, native Windows; T1)
+
+`scripts/gui_bench.py --nodes 10000000`, Windows 11, Python 3.14.3, RTX
+4070 (wgpu via Vulkan), on the real `MainWindow` with an offscreen canvas
+(frames include the GPU→CPU readback):
+
+| ADR 0006 budget | Measured | Budget |
+|---|---|---|
+| load a project to first frame (9.94·10⁶ nodes, without replay) | 1.14 s | 2 s |
+| orbit | 2.6 ms mean, 3.2 ms p95 | 16 ms |
+| pick → (block, face, cell, xyz) | 0.7 ms | 50 ms |
+| UI lateness during a march on the worker (4.6 s, hyperbolic) | 26 ms | 100 ms |
+
+**Scope of these numbers.**
+- The 10⁷-node project is one box block, about 0.28 M boundary nodes; the
+  spike's 20-block assembly had 0.75 M and orbited at 6.1 ms.
+- Not measured: dragging an associated vertex and moving a slice plane
+  (their features are not in this slice).
+- On-screen frame times in a real window are not measured.

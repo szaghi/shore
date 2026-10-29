@@ -69,6 +69,8 @@ pipx install shore-mesh
 pipx install 'shore-mesh[vis]'
 # CGNS export (shore cgns, Project.write_cgns) needs the [cgns] extra (h5py)
 pipx install 'shore-mesh[cgns]'
+# the desktop GUI (shore gui) needs the [gui] extra; on Windows use native Python, not WSL2
+pipx install 'shore-mesh[gui]'
 ```
 
 This is what the one-liner ends up running. Same isolation

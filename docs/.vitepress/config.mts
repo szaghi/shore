@@ -173,6 +173,12 @@ export default defineConfig({
           ],
         },
         {
+          text: 'GUI',
+          items: [
+            { text: 'shore gui', link: '/reference/gui' },
+          ],
+        },
+        {
           text: 'Inspection and visualisation',
           items: [
             { text: 'shore info',   link: '/reference/info' },
