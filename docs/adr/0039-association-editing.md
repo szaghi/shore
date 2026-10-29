@@ -178,4 +178,5 @@ All `@PENDING` lines are removed.
    refused in ICEM's way? (It is refused.)
 2. **Seam aliasing after a load without replay.** Rebuild the shared views
    from the face graph when loading (so seams stay one memory), or accept
-   coincident copies?
+   coincident copies? *Answered 2026-10-29 by ADR 0040: coincident copies,
+   kept closed by write-through.*

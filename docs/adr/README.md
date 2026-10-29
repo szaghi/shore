@@ -47,6 +47,7 @@ by a later record that supersedes it.
 | [0037](./0037-gui-viewer-command-shell.md) | GUI slice 1: viewer and command shell | Accepted |
 | [0038](./0038-gui-geometry-and-slices.md) | GUI slice 2: geometry display and slice planes | Accepted |
 | [0039](./0039-association-editing.md) | Association editing (GUI slice 3) | Accepted |
+| [0040](./0040-seams-kept-closed.md) | Seams kept closed by in-place edits | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
