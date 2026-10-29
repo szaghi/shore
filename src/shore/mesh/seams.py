@@ -43,12 +43,17 @@ class Seam(NamedTuple):
 
 
 def seams(
-    blocks: list[HexBlock], tol: float, *, only: Collection[tuple[str, str]] | None = None
+    blocks: list[HexBlock],
+    tol: float,
+    *,
+    only: Collection[tuple[str, str]] | None = None,
+    bcs: Collection[FaceBC] = CONNECTED,
 ) -> dict[str, list[Seam]]:
     """Per block label, its seams; every connected pair of faces once on each side.
 
     *tol* is the largest node distance accepted (absolute). With *only*,
-    just the pairs with a side in it (``(label, face)``) are located.
+    just the pairs with a side in it (``(label, face)``) are located; *bcs*
+    are the face BCs taken as connections.
 
     Raises
     ------
@@ -61,7 +66,7 @@ def seams(
     seen: set[frozenset[int]] = set()
     for block in blocks:
         for face in block.faces():
-            if face.bc not in CONNECTED:
+            if face.bc not in bcs:
                 continue
             donor = owner.get(id(face.partner))
             if donor is None:
@@ -216,3 +221,86 @@ def _locate(
         f"{small.label}.{s_face} and {large.label}.{l_face} are not point-matched: "
         "their nodes do not coincide."
     )
+
+
+# ---------------------------------------------------------------------------
+# Write-through seams (ADR 0040)
+# ---------------------------------------------------------------------------
+
+COINCIDENT = (FaceBC.SHARED, FaceBC.DIRICHLET)
+
+
+class Aliases:
+    """Nodes that are one point across SHARED / DIRICHLET seams (ADR 0040).
+
+    Built topologies share most such nodes as numpy views, so writing one
+    writes all; DIRICHLET seams and blocks read back from saved grids (ADR
+    0033) hold copies. After an in-place operation, ``sync`` gives every
+    group the value of its last member the operation changed (block order),
+    as views would; groups it did not change, or changed alike, are left
+    as they are.
+    """
+
+    def __init__(self, blocks: list[HexBlock], tol: float) -> None:
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+
+        self.blocks = blocks
+        index = {b.label: i for i, b in enumerate(blocks)}
+        sizes = [int(np.prod(b.nodes.shape[:3])) for b in blocks]
+        self.offsets = np.concatenate([[0], np.cumsum(sizes)]).astype(np.int64)
+        a_ids: list[np.ndarray] = []
+        b_ids: list[np.ndarray] = []
+        for label, sides in seams(blocks, tol, bcs=COINCIDENT).items():
+            src = blocks[index[label]]
+            for seam in sides:
+                dst = blocks[index[seam.donor]]
+                shape = tuple(int(n) for n in (seam.rng[1] - seam.rng[0] + 1))
+                grids = np.meshgrid(*(np.arange(n) for n in shape), indexing="ij")
+                here = tuple(g + int(o) - 1 for g, o in zip(grids, seam.rng[0], strict=True))
+                there = _map_indices(seam.donor_rng[0], seam.transform, shape)
+                a_ids.append(
+                    self.offsets[index[label]]
+                    + np.ravel_multi_index(here, src.nodes.shape[:3]).ravel()
+                )
+                b_ids.append(
+                    self.offsets[index[seam.donor]]
+                    + np.ravel_multi_index(there, dst.nodes.shape[:3]).ravel()
+                )
+        self.groups: list[np.ndarray] = []  # global node ids, ascending (= block order)
+        if not a_ids:
+            return
+        a, b = np.concatenate(a_ids), np.concatenate(b_ids)
+        total = int(self.offsets[-1])
+        graph = coo_matrix((np.ones(len(a)), (a, b)), shape=(total, total))
+        _, label_of = connected_components(graph, directed=False)
+        nodes = np.unique(np.concatenate([a, b]))
+        order = np.argsort(label_of[nodes], kind="stable")
+        sorted_nodes = nodes[order]
+        cuts = np.flatnonzero(np.diff(label_of[sorted_nodes])) + 1
+        self.groups = [g for g in np.split(sorted_nodes, cuts) if len(g) > 1]
+
+    def _locate(self, ids: np.ndarray) -> list[tuple[int, tuple[np.ndarray, ...]]]:
+        blocks = np.searchsorted(self.offsets, ids, side="right") - 1
+        out = []
+        for b in np.unique(blocks):
+            sel = blocks == b
+            shape = self.blocks[int(b)].nodes.shape[:3]
+            out.append((int(b), np.unravel_index(ids[sel] - self.offsets[b], shape)))
+        return out
+
+    def sync(self, changed: list[np.ndarray]) -> None:
+        """Give each group the value of its last member that *changed* marks.
+
+        *changed* holds one boolean ``(ni, nj, nk)`` mask per block.
+        """
+        flat_changed = np.concatenate([c.reshape(-1) for c in changed])
+        for group in self.groups:
+            moved = group[flat_changed[group]]
+            if not len(moved):
+                continue
+            winner = int(moved[-1])
+            ((b, idx),) = self._locate(np.array([winner]))
+            value = self.blocks[b].nodes[idx][0].copy()
+            for bb, members in self._locate(group):
+                self.blocks[bb].nodes[members] = value

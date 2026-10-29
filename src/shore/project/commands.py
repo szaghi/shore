@@ -17,12 +17,13 @@ project's directory).
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import dataclasses
 import shutil
 import tempfile
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -377,12 +378,46 @@ class Snap(Command):
         )
         restore = project.undo_cache.snapshot(mesh)
         try:
-            for block in mesh.blocks:
-                snap_block(block, resolver)
+            with _seams_written_through(mesh.blocks):
+                for block in mesh.blocks:
+                    snap_block(block, resolver)
         except BaseException:
             restore()
             raise
         return Undo(restore)
+
+
+@contextlib.contextmanager
+def _seams_written_through(blocks: list[Any]) -> Iterator[None]:
+    """Close seams after an in-place edit of *blocks* (ADR 0040): each alias
+    group takes the value of its last member the edit changed."""
+    aliases = _aliases(blocks)
+    before = [b.nodes.copy() for b in blocks] if aliases is not None else []
+    yield
+    if aliases is not None:
+        # a view's change shows in its partner too: compare each block's own nodes
+        aliases.sync(
+            [np.any(b.nodes != old, axis=-1) for b, old in zip(blocks, before, strict=True)]
+        )
+
+
+def _aliases(blocks: list[Any]) -> Any:
+    """Seam alias groups of *blocks* (ADR 0040), or None if a seam is not point-matched."""
+    import warnings
+
+    from shore.mesh.seams import Aliases
+
+    points = np.concatenate([b.nodes.reshape(-1, 3) for b in blocks])
+    scale = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0))) or 1.0
+    try:
+        return Aliases(blocks, 1e-9 * scale)
+    except ParameterError as exc:
+        warnings.warn(
+            f"snap: seams not point-matched ({exc}); seam nodes are not written through",
+            UserWarning,
+            stacklevel=4,
+        )
+        return None
 
 
 def _association_geometries(project: Project, mesh: Mesh, build: BuildState) -> dict[str, Any]:
@@ -541,7 +576,8 @@ class FillFace(Command):
         view = _face_slice(blocks[self.block], self.face)  # type: ignore[arg-type]
         grid = surface_grid(geometry, surfaces[self.surface], view, smoothing=self.smoothing)
         restore = project.undo_cache.snapshot(mesh)
-        view[...] = grid.points
+        with _seams_written_through(mesh.blocks):
+            view[...] = grid.points
         return Undo(restore)
 
 

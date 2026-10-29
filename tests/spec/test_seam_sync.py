@@ -100,7 +100,6 @@ def one_sided(p) -> None:
 
 
 class TestOneSided:
-    @PENDING
     @pytest.mark.parametrize("replay", [True, False])
     def test_s1_seams_closed(self, sphere_stl, naca0012_stl, tmp_path, replay):
         from shore.project import Project
@@ -131,7 +130,6 @@ class TestUnchanged:
 
 
 class TestEdges:
-    @PENDING
     def test_s3_unmatched_seam_warns(self, sphere_stl, naca0012_stl, tmp_path):
         from shore.project import Project
 

@@ -1,6 +1,6 @@
 # 0040 — Seams kept closed by in-place edits
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -106,3 +106,15 @@ Before this ADR the DIRICHLET seam opened even on the replayed project.
 | S2 (× 5) | wall-only snaps of built meshes bit-identical to projecting each block on its own |
 | S3 | an unmatched seam: snap warns and still snaps |
 | S4 | undo restores both sides |
+
+## Acceptance (2026-10-29): spec met
+
+**Implementation.** As decided, plus unit tests of `Aliases`
+(`tests/test_seams.py`):
+- groups join coincident nodes, block corners joining three blocks;
+- the last writer wins;
+- unchanged groups are left untouched.
+
+**Verdict** (T2 locally; `scripts/check_spec.py` reports all files ok):
+`tests/spec/test_seam_sync.py` gives **9 passed, 0 skipped, 0 xfailed**. All
+3 `@PENDING` lines are removed.
