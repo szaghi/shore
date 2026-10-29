@@ -397,19 +397,30 @@ class PygfxViewport:
         a, b = {0: (j, k), 1: (j, k), 2: (i, k), 3: (i, k), 4: (i, j), 5: (i, j)}[f]
         self._outline_quad(grid[a : a + 2, b : b + 2])
 
+    def highlight_polyline(self, points: np.ndarray) -> None:
+        """Outline *points* (float64, (n, 3)): a selected edge or vertex."""
+        pts = np.asarray(points, np.float64).reshape(-1, 3)
+        if len(pts) == 1:  # a vertex: a small cross of the view's pixel size
+            h = 6.0 * self.pixel_size(pts[0])
+            pts = pts[0] + np.array([[-h, 0, 0], [h, 0, 0], [0, 0, 0], [0, -h, 0], [0, h, 0]])
+        geometry = gfx.Geometry(positions=(pts - self._origin).astype(np.float32))
+        self._highlight.geometry = geometry
+        self._highlight.visible = True
+        self.request_draw()
+
     def _outline_quad(self, q: np.ndarray) -> None:
         quad = np.array([q[0, 0], q[1, 0], q[1, 1], q[0, 1]])
         loop = np.vstack([quad, quad[:1]]) - self._origin
-        self._highlight.geometry.positions.data[:] = loop.astype(np.float32)
-        self._highlight.geometry.positions.update_full()
+        self._highlight.geometry = gfx.Geometry(positions=loop.astype(np.float32))
         self._highlight.visible = True
         self.request_draw()
 
     def on_pick(self, callback: Any) -> None:
-        """Call ``callback(pick result or None)`` on a double click in the view."""
+        """Call ``callback(pick result or None, shift)`` on a double click in the view."""
 
         def handler(event: Any) -> None:
-            callback(self.pick(event.x, event.y))
+            shift = "Shift" in (getattr(event, "modifiers", None) or ())
+            callback(self.pick(event.x, event.y), shift)
 
         self.renderer.add_event_handler(handler, "double_click")
 

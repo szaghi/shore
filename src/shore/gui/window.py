@@ -115,6 +115,7 @@ class MainWindow(QMainWindow):
 
         self._build_tree()
         self._build_display()
+        self._build_association()
         self._build_forms()
         self._build_console()
         self._build_actions()
@@ -129,7 +130,7 @@ class MainWindow(QMainWindow):
 
     def _build_tree(self) -> None:
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Model", "Detail"])
+        self.tree.setHeaderLabels(["Model", "Detail", "Association"])
         self.geometry_tree = QTreeWidget()
         self.geometry_tree.setHeaderLabels(["Geometry", "Entities"])
         tabs = QTabWidget()
@@ -139,6 +140,34 @@ class MainWindow(QMainWindow):
         dock.setObjectName("model")
         dock.setWidget(tabs)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+
+    def _build_association(self) -> None:
+        """Pick a block entity and geometry entities, then associate them (ADR 0039)."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        self.selection_mode = QComboBox()
+        self.selection_mode.addItems(["face", "edge", "vertex"])
+        form = QFormLayout()
+        form.addRow("select block", self.selection_mode)
+        self.block_selection_label = QLabel("-")
+        self.geometry_selection_label = QLabel("-")
+        form.addRow("block entity", self.block_selection_label)
+        form.addRow("geometry", self.geometry_selection_label)
+        layout.addLayout(form)
+        layout.addWidget(QLabel("Double click a block, then geometry (shift adds)."))
+        self.associate_button = QPushButton("Associate")
+        self.associate_button.clicked.connect(self.associate_selection)
+        self.dissociate_button = QPushButton("Clear association")
+        self.dissociate_button.clicked.connect(self.clear_association)
+        layout.addWidget(self.associate_button)
+        layout.addWidget(self.dissociate_button)
+        layout.addStretch(1)
+        dock = QDockWidget("Association", self)
+        dock.setObjectName("association")
+        dock.setWidget(panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        self.selected_block: tuple[BlockKey, str] | None = None
+        self.selected_geometry: tuple[str, str, list[int]] | None = None
 
     def _build_display(self) -> None:
         """Visibility toggles and slice planes: view state, not commands (ADR 0038)."""
@@ -306,8 +335,11 @@ class MainWindow(QMainWindow):
             )
             for label, shape, faces in blocks:
                 child = QTreeWidgetItem([label, "x".join(map(str, shape))])
+                linked = self.session.associations(BlockKey(name, label))
                 for face, bc in faces.items():
-                    child.addChild(QTreeWidgetItem([face, bc]))
+                    child.addChild(QTreeWidgetItem([face, bc, linked.pop(face, "")]))
+                for entity, text in linked.items():  # associated edges and vertices
+                    child.addChild(QTreeWidgetItem([entity, "", text]))
                 item.addChild(child)
             self.tree.addTopLevelItem(item)
             item.setExpanded(True)
@@ -554,7 +586,13 @@ class MainWindow(QMainWindow):
         if self.last_error is None:
             self.statusBar().showMessage(f"Saved {self.session.directory}", 5000)
 
-    def _picked(self, result: PickResult | GeometryPick | None) -> None:
+    def pick_at(self, x: float, y: float, *, add: bool = False) -> Any:
+        """Pick at pixel (x, y) as a double click does (shift: *add*)."""
+        result = self.viewport.pick(x, y)
+        self._picked(result, add)
+        return result
+
+    def _picked(self, result: PickResult | GeometryPick | None, add: bool = False) -> None:
         self.last_pick = result
         if result is None:
             self.statusBar().clearMessage()
@@ -563,12 +601,78 @@ class MainWindow(QMainWindow):
         where = f"xyz ({x:.9g}, {y:.9g}, {z:.9g})"
         if isinstance(result, GeometryPick):
             e = result.entity
+            self._select_geometry(result.geometry, e.kind.value, e.index, add)
             self.statusBar().showMessage(f"{result.geometry}  {e.kind.value} {e.index}  {where}")
             return
-        key = result.key.block if isinstance(result.key, SliceKey) else result.key
+        if isinstance(result.key, SliceKey):
+            key = result.key.block
+        else:
+            key = result.key
+            self._select_block(key, result.face, result.xyz)
         self.statusBar().showMessage(
             f"{key.component}/{key.label}  {result.face}  cell {result.cell}  {where}"
         )
+
+    # -- association (ADR 0039) ------------------------------------------------------
+
+    def _select_block(self, key: BlockKey, face: str, xyz: np.ndarray) -> None:
+        """Select the face, or its nearest edge / corner, per the selection mode."""
+        from shore.gui.viewport import (
+            VERTEX_IJK,
+            edge_nodes,
+            nearest_edge,
+            nearest_vertex,
+        )
+
+        block = self.session.block(key)
+        if block is None:
+            return
+        mode = self.selection_mode.currentText()
+        if mode == "edge":
+            entity = nearest_edge(block.nodes, face, xyz)
+            self.viewport.highlight_polyline(edge_nodes(block.nodes, entity))
+        elif mode == "vertex":
+            v = nearest_vertex(block.nodes, face, xyz)
+            entity = f"v{v}"
+            self.viewport.highlight_polyline(block.nodes[VERTEX_IJK[v]])
+        else:
+            entity = face
+        self.selected_block = (key, entity)
+        self.block_selection_label.setText(f"{key.component}/{key.label} {entity}")
+
+    def _select_geometry(self, name: str, kind: str, index: int, add: bool) -> None:
+        current = self.selected_geometry
+        if add and current is not None and current[:2] == (name, kind):
+            indices = current[2] + ([index] if index not in current[2] else [])
+        else:
+            indices = [index]
+        self.selected_geometry = (name, kind, indices)
+        text = name if kind == "body" else f"{name}: {kind} {', '.join(map(str, indices))}"
+        self.geometry_selection_label.setText(text)
+
+    def associate_selection(self) -> None:
+        """Associate the selected block entity with the selected geometry entities."""
+        if self.selected_block is None or self.selected_geometry is None:
+            self._report(ValueError("select a block entity and geometry first"))
+            return
+        key, entity = self.selected_block
+        name, kind, indices = self.selected_geometry
+        self._run_on(key, entity, name, kind, () if kind == "body" else tuple(indices))
+
+    def clear_association(self) -> None:
+        if self.selected_block is None:
+            self._report(ValueError("select a block entity first"))
+            return
+        key, entity = self.selected_block
+        self._run_on(key, entity, "body", "none", ())
+
+    def _run_on(self, key: BlockKey, *args: Any) -> None:
+        def work() -> None:
+            if self.session.project.current_component != key.component:
+                self.session.run("use_component", key.component)
+            self.session.run("associate", key.label, *args)
+
+        self._guard(work)
 
 
 def main(project: str | None = None, *, replay: bool = True, smoke: bool = False) -> int:

@@ -1,6 +1,6 @@
 # 0039 — Association editing (GUI slice 3)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -151,6 +151,26 @@ The core and GUI specs pass with the prototype: 17 and 9 cases.
 | U5 | refusals logged, journal unchanged |
 | U6 | wall associations shown as `body` |
 | U7 | a block of another component: `use_component` first |
+
+### Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, in two commits:
+- the core command and the snap;
+- the GUI.
+
+Unit tests:
+- body association, journal and clear without CAD (`tests/test_project.py`);
+- the selection helpers against `HexBlock`'s naming, the nearest edge and
+  corner, clearing through the window (`tests_gui/test_gui_units.py`).
+
+Docs: `docs/reference/run.md` (Associations), `docs/reference/gui.md`.
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_associate.py`: **17 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_associate.py`: **9 passed, 0 skipped, 0
+  xfailed**.
+
+All `@PENDING` lines are removed.
 
 ### Review questions (for the user)
 

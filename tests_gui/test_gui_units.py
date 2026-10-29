@@ -173,3 +173,57 @@ class TestDisplayPanel:
         assert not w.viewport.visible("geometry")
         w.set_visible("geometry", True)
         assert w.visibility["geometry"].isChecked()
+
+
+class TestAssociationHelpers:
+    def test_edge_and_vertex_naming_match_hexblock(self):
+        from shore.gui.viewport import EDGE_NAMES, VERTEX_IJK, edge_nodes
+        from shore.mesh.block import HexBlock
+        from shore.mesh.edge import _edge_slice
+
+        nodes = np.random.default_rng(3).normal(size=(4, 5, 6, 3))
+        block = HexBlock(label="x", nodes=nodes)
+        assert tuple(e.name for e in block.edges()) == EDGE_NAMES
+        assert tuple(v.ijk for v in block.vertices()) == VERTEX_IJK
+        for e in EDGE_NAMES:
+            assert np.array_equal(edge_nodes(nodes, e), _edge_slice(block, e))
+
+    def test_face_edges_and_vertices(self):
+        from shore.gui.viewport import face_edges, face_vertices
+
+        assert set(face_edges("k_lo")) == {"j_lo_k_lo", "j_hi_k_lo", "i_lo_k_lo", "i_hi_k_lo"}
+        assert set(face_edges("i_hi")) == {"i_hi_k_lo", "i_hi_k_hi", "i_hi_j_lo", "i_hi_j_hi"}
+        assert face_vertices("j_hi") == (2, 3, 6, 7)
+
+    def test_nearest_edge_and_vertex(self):
+        from shore.gui.viewport import nearest_edge, nearest_vertex
+
+        x, y, z = np.meshgrid(np.linspace(0, 2, 3), np.linspace(0, 1, 3), np.linspace(0, 1, 3),
+                              indexing="ij")  # fmt: skip
+        nodes = np.stack([x, y, z], axis=-1)
+        assert nearest_edge(nodes, "k_lo", np.array([1.0, 0.05, 0.0])) == "j_lo_k_lo"
+        assert nearest_edge(nodes, "k_lo", np.array([1.95, 0.5, 0.0])) == "i_hi_k_lo"
+        assert nearest_vertex(nodes, "k_hi", np.array([1.9, 0.9, 1.0])) == 7
+
+
+class TestAssociationWindow:
+    def test_clear_and_labels(self, qapp, sphere_stl):
+        from shore.gui.session import BlockKey
+        from shore.gui.window import MainWindow
+
+        w = MainWindow(offscreen_viewport=True, ask_path=lambda *a: None)
+        w.run_form("load_geometry", {"path": str(sphere_stl)})
+        w.run_form(
+            "build_topology",
+            {"topology": "ogrid", "nk": "4", "ds": "0.05", "growth": "1.1",
+             "params": "{'ni': 9, 'nj': 16}"},
+        )  # fmt: skip
+        w.wait_idle()
+        key = BlockKey("main", "ogrid")
+        assert w.session.associations(key)["k_lo"] == "body"
+        w.clear_association()
+        assert w.last_error is not None  # nothing selected
+        w.selected_block = (key, "k_lo")
+        w.clear_association()
+        assert w.last_error is None and "k_lo" not in w.session.associations(key)
+        assert w.session.journal_lines()[-1] == "p.associate('ogrid', 'k_lo', 'body', 'none')"

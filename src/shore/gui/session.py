@@ -140,6 +140,44 @@ class Session:
             out.append((name, name == current, blocks))
         return out
 
+    def associations(self, key: BlockKey) -> dict[str, str]:
+        """``{entity: label}`` for the associated faces, edges and vertices
+        (``"v0"``..) of a block; labels like ``"body"`` or ``"part: surface 2, 5"``."""
+        block = self.block(key)
+        if block is None:
+            return {}
+        out = {
+            f.name: self.association_label(f.association) for f in block.faces() if f.association
+        }
+        out.update(
+            {e.name: self.association_label(e.association) for e in block.edges() if e.association}
+        )
+        out.update(
+            {
+                f"v{v.index}": self.association_label(v.association)
+                for v in block.vertices()
+                if v.association
+            }
+        )
+        return out
+
+    def association_label(self, association: Any) -> str:
+        """``"geometry"`` for a body, else ``"geometry: kind i, j"`` (indices
+        re-found from the association's fingerprints in the current geometry)."""
+        from shore.geometry.base import EntityKind
+        from shore.geometry.keys import match_keys
+
+        if association.kind is EntityKind.BODY:
+            return association.geometry
+        body = self.project.geometries.get(association.geometry)
+        if body is None:
+            return f"{association.geometry}: {association.kind.value} (geometry missing)"
+        report = match_keys(list(association.keys), body.geometry)
+        if not report.all_matched:
+            return f"{association.geometry}: {association.kind.value} (unresolved)"
+        indices = ", ".join(str(m.ref.index) for m in report.matches)
+        return f"{association.geometry}: {association.kind.value} {indices}"
+
     def block(self, key: BlockKey) -> HexBlock | None:
         mesh = self.project.components.get(key.component)
         if mesh is None:

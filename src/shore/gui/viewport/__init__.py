@@ -178,3 +178,55 @@ def slice_values(cell_values: np.ndarray, axis: str, index: int) -> np.ndarray:
     a = "ijk".index(axis)
     layer = min(index, cell_values.shape[a] - 1)
     return np.take(cell_values, layer, axis=a).ravel()
+
+
+# the 8 corners (HexBlock.vertices() order, index -> (i, j, k) as 0 = lo, -1 = hi)
+VERTEX_IJK = ((0, 0, 0), (0, 0, -1), (0, -1, 0), (0, -1, -1),
+              (-1, 0, 0), (-1, 0, -1), (-1, -1, 0), (-1, -1, -1))  # fmt: skip
+EDGE_NAMES = (
+    "j_lo_k_lo", "j_hi_k_lo", "j_lo_k_hi", "j_hi_k_hi",
+    "i_lo_k_lo", "i_hi_k_lo", "i_lo_k_hi", "i_hi_k_hi",
+    "i_lo_j_lo", "i_hi_j_lo", "i_lo_j_hi", "i_hi_j_hi",
+)  # fmt: skip
+
+
+def edge_nodes(nodes: np.ndarray, name: str) -> np.ndarray:
+    """The node polyline of block edge *name* (``HexBlock`` edge naming)."""
+    fixed = {"i": slice(None), "j": slice(None), "k": slice(None)}
+    for token in (name[:4], name[5:]):  # e.g. "j_lo", "k_hi"
+        fixed[token[0]] = 0 if token.endswith("lo") else -1
+    return nodes[fixed["i"], fixed["j"], fixed["k"]]
+
+
+def face_edges(face: str) -> tuple[str, ...]:
+    """The four edges bounding *face*."""
+    return tuple(e for e in EDGE_NAMES if face in (e[:4], e[5:]))
+
+
+def face_vertices(face: str) -> tuple[int, ...]:
+    """The four corners (vertex indices) of *face*."""
+    a = "ijk".index(face[0])
+    side = 0 if face.endswith("lo") else -1
+    return tuple(v for v, ijk in enumerate(VERTEX_IJK) if ijk[a] == side)
+
+
+def _segment_distance(points: np.ndarray, xyz: np.ndarray) -> float:
+    a, b = points[:-1], points[1:]
+    ab = b - a
+    t = np.clip(
+        np.einsum("ij,ij->i", xyz - a, ab) / np.maximum(np.einsum("ij,ij->i", ab, ab), 1e-300), 0, 1
+    )
+    return float(np.linalg.norm(a + t[:, None] * ab - xyz, axis=1).min())
+
+
+def nearest_edge(nodes: np.ndarray, face: str, xyz: np.ndarray) -> str:
+    """The edge of *face* closest to the point *xyz* (an edge pick)."""
+    return min(face_edges(face), key=lambda e: _segment_distance(edge_nodes(nodes, e), xyz))
+
+
+def nearest_vertex(nodes: np.ndarray, face: str, xyz: np.ndarray) -> int:
+    """The corner of *face* closest to the point *xyz* (a vertex pick)."""
+    return min(
+        face_vertices(face),
+        key=lambda v: float(np.linalg.norm(nodes[VERTEX_IJK[v]] - xyz)),
+    )

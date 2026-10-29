@@ -135,7 +135,6 @@ def top_and_side(w):
 
 
 class TestSelection:
-    @PENDING
     @pytest.mark.parametrize("mode", ["face", "edge", "vertex"])
     def test_u1_block_selection(self, qapp, part, mode):
         from shore.gui.viewport import VERTEX_IJK, edge_nodes
@@ -163,7 +162,6 @@ class TestSelection:
             expected = f"v{nearest}"
         assert w.selected_block == (key, expected)
 
-    @PENDING
     def test_u2_geometry_selection(self, qapp, part):
         w = window(qapp, part)
         only(w, "geometry")
@@ -200,7 +198,6 @@ def select_top_face_and_surfaces(w):
 
 
 class TestAssociating:
-    @PENDING
     def test_u3_associate_and_undo(self, qapp, part):
         w = window(qapp, part)
         top, side = select_top_face_and_surfaces(w)
@@ -216,7 +213,6 @@ class TestAssociating:
         assert w.session.journal_lines() == lines
         assert face_row(w, 0, 0, "k_hi").text(2) == ""
 
-    @PENDING
     def test_u4_snap_after_associating(self, qapp, part):
         w = window(qapp, part)
         select_top_face_and_surfaces(w)
@@ -229,7 +225,6 @@ class TestAssociating:
         on_side = np.isclose(nodes[..., 1], 0.5, atol=1e-9)
         assert np.all(on_top | on_side)
 
-    @PENDING
     def test_u5_refusals(self, qapp, part):
         from shore.gui.window import MainWindow
 
@@ -246,7 +241,6 @@ class TestAssociating:
         assert w.last_error is not None and "Error" in w.log.toPlainText()
         assert w.session.journal_lines() == lines
 
-    @PENDING
     def test_u6_wall_associations_shown(self, qapp, sphere_stl):
         from shore.gui.window import MainWindow
 
@@ -258,7 +252,6 @@ class TestAssociating:
             assert face_row(w, 0, b, "k_lo").text(2) == "body"
             assert face_row(w, 0, b, "k_hi").text(2) == ""
 
-    @PENDING
     def test_u7_other_component(self, qapp, part):
         w = window(qapp, part)
         top, side = select_top_face_and_surfaces(w)
