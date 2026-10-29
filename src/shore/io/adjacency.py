@@ -96,10 +96,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from shore.exceptions import MeshInputError
 from shore.mesh.association import Association
 from shore.mesh.block import HexBlock
-from shore.mesh.face import AxisMap, FaceBC, FaceName
+from shore.mesh.face import FACE_ALONG_AXES, AxisMap, FaceBC, FaceName
 
 ADJACENCY_VERSION = 3
 _READABLE_VERSIONS = (2, 3)
@@ -145,6 +147,7 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
             table.append(a)
         return index[a]
 
+    patches = _shared_face_patches(blocks)
     payload: dict[str, Any] = {"version": ADJACENCY_VERSION, "blocks": []}
     for blk in blocks:
         ni, nj, nk, _ = blk.nodes.shape
@@ -165,6 +168,10 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
             # only when set so existing sidecars round-trip byte-for-byte.
             if f.bc_code is not None:
                 face_obj["bc_code"] = f.bc_code
+            # A face shared with several partners (ADR 0036): one sub-range per
+            # partner. Emitted only for such faces, so other sidecars are unchanged.
+            if (blk.label, f.name) in patches:
+                face_obj["patches"] = patches[(blk.label, f.name)]
             face_payload[f.name] = face_obj
         block_obj: dict[str, Any] = {
             "label": blk.label,
@@ -189,6 +196,42 @@ def write_adjacency_json(blocks: list[HexBlock], path: str | Path) -> Path:
             "blocks": payload["blocks"],
         }
     out.write_text(json.dumps(payload, indent=2) + "\n")
+    return out
+
+
+def _shared_face_patches(blocks: list[HexBlock]) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """Sub-range patches of the faces with several partners (ADR 0036).
+
+    Each patch: ``range`` (0-based node indices ``[[i0, j0, k0], [i1, j1,
+    k1]]``), ``partner`` and ``axis_map`` (this face's along-axes onto the
+    partner face's), located by the faces' nodes.
+    """
+    from shore.mesh.seams import AXES, seams, shared_faces
+
+    shared = shared_faces(blocks)
+    if not shared:
+        return {}
+    points = np.concatenate([b.nodes.reshape(-1, 3) for b in blocks])
+    scale = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0))) or 1.0
+    names = "ijk"
+    out: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for label, sides in seams(blocks, 1e-9 * scale, only=shared).items():
+        for seam in sides:
+            if (label, seam.face) not in shared:
+                continue
+            along = [
+                [names[abs(seam.transform[AXES[a]]) - 1], seam.transform[AXES[a]] < 0]
+                for a in FACE_ALONG_AXES[seam.face]  # type: ignore[index]
+            ]
+            out.setdefault((label, seam.face), []).append(
+                {
+                    "range": (seam.rng - 1).tolist(),
+                    "partner": {"label": seam.donor, "face": seam.donor_face},
+                    "axis_map": along,
+                }
+            )
+    for entries in out.values():
+        entries.sort(key=lambda e: e["range"][0])
     return out
 
 

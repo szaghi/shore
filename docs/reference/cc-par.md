@@ -253,20 +253,16 @@ Patches:
 
 ```
 1   4   135   2    0   8   8   8   0   8  ! 1     A.j_hi -> B.j_lo
-2   3   145   1    0   8   0   0   0   8  ! 2     B.j_lo -> A.j_hi
+2   3   135   1    0   8   0   0   0   8  ! 2     B.j_lo -> A.j_hi
 ```
 
-- `135` (A side): A's i → B's I-min increasing (along, l=1); A's j
-  (perpendicular at Jmax) → B's J-min increasing inward (l=3); A's k
-  → B's K-min increasing (l=5).
-- `145` (B side): B's i → A's I-min increasing (along, l=1); B's j
-  (perpendicular at Jmin) → A's J-max decreasing inward (l=4); B's k
-  → A's K-min increasing (l=5).
-- The two codes differ even though the seam is geometrically symmetric:
-  each side reports its perpendicular partner from its own frame, and
-  the partner is at Jmin on one side and Jmax on the other. Both codes
-  describe the same seam — see the [orientation digits](#orientation-digits-in-detail)
-  table for the digit semantics.
+- `135` on both sides: i → partner I increasing (l=1), k → partner K
+  increasing (l=5), and the perpendicular j → partner J with an **odd**
+  digit (l=3), because the two faces are on opposite sides of their
+  blocks (Jmax meets Jmin). See [orientation digits](#orientation-digits-in-detail).
+- A solver-run INSEAN `cc.par` writes exactly this: 135 on both sides of
+  its 89 j lo ↔ hi seams ([ADR 0036](../adr/0036-cc-par-as-xall-reads-it.md);
+  SHORE wrote 145 on the lo side before).
 - `family = 2` and `family = 1` cross-reference the two patches.
 - A's j-extents are `8 8` (collapsed at j-max); B's j-extents are
   `0 0` (collapsed at j-min).
@@ -280,21 +276,14 @@ maps to cap_north's i** (perpendicular axis swap from Imax→Imin):
 
 ```
 1   2   135  25   8   8   0   8   0   4  ! 2     sub0.i_hi -> cap_north.i_lo
-5   1   235   2   0   0   0   8   0   4  ! 25    cap_north.i_lo -> sub0.i_hi
+5   1   135   2   0   0   0   8   0   4  ! 25    cap_north.i_lo -> sub0.i_hi
 ```
 
-- `135` (sub side): sub's i → cap's I-min increasing (perpendicular,
-  l=1); sub's j → cap's J-min increasing (preserved, l=3); sub's k →
-  cap's K-min increasing (preserved, l=5).
-- `235` (cap side): cap's i → sub's I-max decreasing (perpendicular
-  flipped, l=2); cap's j → sub's J-min increasing (preserved, l=3);
-  cap's k → sub's K-min increasing (preserved, l=5).
-
-The two BCs differ even though the geometric seam is the same — each
-side describes the mapping *from its own axes to its partner's*. The
-asymmetry comes from "Imax meets Imin": the perpendicular-axis digit
-on the sub side records "partner Imin going inward", while on the
-cap side it records "partner Imax going inward".
+- `135` on both sides: i is the perpendicular axis and the faces are on
+  opposite sides (Imax meets Imin), so its digit is odd (l=1); j and k
+  are preserved (l=3, l=5).
+- Cross-axis seams (sub1, sub3 with the caps' j faces) swap axes; see the
+  [table below](#cubed-sphere-cap-equator-codes).
 
 ### Orientation digits in detail
 
@@ -316,9 +305,20 @@ Each digit `l ∈ {1..6}` says how *this side's* axis maps onto a
 | `5` | K, starting at Kmin | increasing inward |
 | `6` | K, starting at Kmax | decreasing inward (flipped) |
 
-Even-valued digits (`2, 4, 6`) flag a **flipped** axis correspondence;
-odd-valued digits (`1, 3, 5`) preserve direction. This is implemented
-in `tadia` / `nadia` subroutines (`calcorn.f90:392-411`):
+**Along the face** (the two axes in the face plane), an odd digit runs
+up from the partner patch's lower extent and an even one down from its
+upper extent, by the node's offset from this patch's lower extent.
+
+**Across the face** (the perpendicular axis), the digit's parity says on
+which side of the partner block the partner face lies, *relative to this
+face's side*: **odd when the two faces are on opposite sides** (lo ↔ hi),
+**even when on the same side** (lo ↔ lo, hi ↔ hi). This is the
+pre-processor's `normind` (`overset/src/metrix.f90`): with `m = 1` on a lo
+face and `0` on a hi face, an odd digit puts the partner face at `m ×` its
+upper extent and an even one at `(1 - m) ×` it.
+
+The along-face mapping in `tadia` (`calcorn.f90:392-411`, cell indices;
+`tangind` in `metrix.f90` for nodes):
 
 ```fortran-free-form
 ! tadia: along-seam axis index
@@ -330,19 +330,22 @@ else if (l.eq.5) then; ka = nla(5) + n          ! Kmin, increasing
 else if (l.eq.6) then; ka = nla(6) + 1 - n      ! Kmax, decreasing
 ```
 
-For a same-axis seam with no flips, the side whose perpendicular face
-is at min (e.g. `j_lo`) emits `135` and the side at max (e.g. `j_hi`)
-emits `145`. The codes are *not* symmetric: each side describes the
-mapping in its own frame, and the perpendicular digit reflects which
-boundary of the partner the seam lies on.
+For a same-axis seam with no flips (lo ↔ hi), both sides emit `135`.
+A lo ↔ lo seam (the C-grid wake cut, `k_lo` ↔ `k_lo` with i reversed)
+emits `236` from both sides.
+
+Before [ADR 0036](../adr/0036-cc-par-as-xall-reads-it.md), SHORE picked
+the perpendicular digit from the partner's side alone. That is right on
+hi faces and reversed on lo faces, so every lo-face connection sent Xall
+to the wrong nodes. Regenerate `cc.par` files written by earlier versions.
 
 Decoding examples:
 
 | Code | li | lj | lk | Meaning |
 |---|---|---|---|---|
 | `135` | 1 | 3 | 5 | i→Imin↑, j→Jmin↑, k→Kmin↑ — *no flips, perpendicular goes Imin* |
-| `145` | 1 | 4 | 5 | i→Imin↑, j→Jmax↓, k→Kmin↑ — *perpendicular Jmax-flipped (mirror of 135)* |
-| `235` | 2 | 3 | 5 | i→Imax↓, j→Jmin↑, k→Kmin↑ — *perpendicular Imax-flipped* |
+| `145` | 1 | 4 | 5 | i→I↑, j→J same side (lo ↔ lo or hi ↔ hi), k→K↑ |
+| `235` | 2 | 3 | 5 | perpendicular i on the same side as the partner's; j→J↑, k→K↑ |
 | `415` | 4 | 1 | 5 | i→Jmax↓, j→Imin↑, k→Kmin↑ — *axis swap (i↔j) + flip on i* |
 | `245` | 2 | 4 | 5 | i→Imax↓, j→Jmax↓, k→Kmin↑ — *both i and j flipped* |
 
@@ -371,7 +374,7 @@ above for the full Xall BC vocabulary.
 |---|---|---|---|
 | `WALL` | `1` (`parete`, viscous wall) | `0` | Body wall. |
 | `FREE` | `--free-bc` (default `40`), or per-block `free_face_bc` via `--meta`, or per-**face** `bc_code` | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a **positive** natural BC in `[1, 19]`: `3` inflow, `4` outflow, `9` extrapolation (see warning below). Per-block `--meta` overrides `--free-bc`; a per-face `bc_code` (see [per-face BC](#per-face-bc-codes)) overrides both. |
-| `SHARED` | orientation code (≥ 100) | partner patch index | Code derived from the face's `axis_map` plus the partner face name — see [orientation digits](#orientation-digits-in-detail). For a same-axis seam with no flips the codes are `135` / `145` per side. |
+| `SHARED` | orientation code (≥ 100) | partner patch index | Code derived from the face's `axis_map` plus the partner face name — see [orientation digits](#orientation-digits-in-detail). For a same-axis lo ↔ hi seam with no flips the code is `135` on both sides. A face shared with several partners (CH's `body.k_hi`) gets a patch per partner, from the sidecar's `patches` (ADR 0036). |
 | `DIRICHLET` | orientation code | partner patch index | Same derivation as `SHARED`; cross-axis seams (e.g. cubed-sphere cap-equator) are produced naturally from the `axis_map` without per-topology lookup tables. |
 | `PERIODIC` | `40` + `UserWarning` | `0` | `cc.par` has no first-class periodic BC; use Xall chimera boxes for periodic stitching. |
 
@@ -411,14 +414,14 @@ codes that fall out of the axis_map derivation are:
 
 | Sub | Pole | Cap face | Sub-side code | Cap-side code |
 |---|---|---|---|---|
-| sub0 | north | `cap_north.i_lo` | `135` | `235` |
+| sub0 | north | `cap_north.i_lo` | `135` | `135` |
 | sub1 | north | `cap_north.j_hi` | `415` | `325` |
 | sub2 | north | `cap_north.i_hi` | `245` | `245` |
-| sub3 | north | `cap_north.j_lo` | `325` | `425` |
-| sub0 | south | `cap_south.j_lo` | `315` | `315` |
-| sub1 | south | `cap_south.i_hi` | `235` | `135` |
-| sub2 | south | `cap_south.j_hi` | `425` | `415` |
-| sub3 | south | `cap_south.i_lo` | `145` | `145` |
+| sub3 | north | `cap_north.j_lo` | `325` | `415` |
+| sub0 | south | `cap_south.j_lo` | `415` | `325` |
+| sub1 | south | `cap_south.i_hi` | `135` | `135` |
+| sub2 | south | `cap_south.j_hi` | `325` | `415` |
+| sub3 | south | `cap_south.i_lo` | `245` | `245` |
 
 These values are not hard-coded in the writer: they are computed
 from the `axis_map` field that `CubedSphereTopology` stamps onto each

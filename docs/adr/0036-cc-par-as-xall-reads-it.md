@@ -1,6 +1,6 @@
 # 0036 — cc.par connections as Xall reads them
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 
 ## Context
@@ -144,6 +144,23 @@ written before this ADR.
 | Q4 (× 2) | CH sharp and blunt: `write_xall` works; `body.k_hi` gets three patches and is the only face with `patches` |
 | Q5 (× 9) | the other sidecars are byte-identical to before |
 | Q6 | a CH project saves, loads without replay and saves the same files |
+
+### Acceptance (2026-10-28): spec met
+
+**Implementation.** As decided:
+- `mesh/seams.py` (`seams`, `shared_faces`, `transform_vector`), shared by
+  `io/cgns.py`;
+- `write_adjacency_json` writes `patches` on shared faces;
+- `write_cc_par`: `_sub_patch` and the family resolution for shared faces;
+  `_orientation_code_from_axis_map`'s normal digit by side parity;
+- `tests/test_cc_par.py`: 10 lo-face codes updated (three of them, 415,
+  135 and 325, appear with the same face pairs in the INSEAN file);
+- `docs/reference/cc-par.md` rewritten on the codes.
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_cc_par_xall.py`: **45 passed, 0 skipped, 0 xfailed**.
+  All `@PENDING` lines are removed.
+- `tests/spec/test_exports.py` still 61 passed (the seam code moved).
 
 ### Review questions (for the user)
 

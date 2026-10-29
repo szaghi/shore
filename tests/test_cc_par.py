@@ -308,12 +308,11 @@ class TestPatchBCMapping:
         patches = _parse_patches(out.read_text())
         a_seam = next(p for p in patches if p["block"] == 1 and p["face"] == 4)  # a.j_hi
         b_seam = next(p for p in patches if p["block"] == 2 and p["face"] == 3)  # b.j_lo
-        # a.j_hi → b.j_lo: this perp at max (j_hi), partner perp at min (j_lo,
-        # increasing inward) → lj=3 → 135.  The reverse side b.j_lo → a.j_hi:
-        # partner perp at max (j_hi, decreasing inward) → lj=4 → 145.
-        # Both sides describe the same seam but from their own frame.
+        # A j_hi <-> j_lo seam: the faces are on opposite sides of their blocks,
+        # so Xall's pre-processor reads an odd normal digit (normind, ADR 0036):
+        # 135 from both sides, as in a solver-run INSEAN cc.par.
         assert a_seam["bc"] == 135
-        assert b_seam["bc"] == 145
+        assert b_seam["bc"] == 135
         # Cross-referenced patch indices (symmetric).
         assert a_seam["family"] == b_seam["idx"]
         assert b_seam["family"] == a_seam["idx"]
@@ -556,16 +555,16 @@ class TestOrientationCodeDerivation:
     @pytest.mark.parametrize(
         ("face", "partner", "pairs", "expected"),
         [
-            # Cubed-sphere cap-equator seams (sub side codes from the
-            # historical table).
+            # Cubed-sphere cap-equator seams, sub side; the normal digit is odd
+            # for opposite sides (lo <-> hi), even for the same side (ADR 0036).
             ("i_hi", "i_lo", (("j", False), ("k", False)), 135),  # sub0/N
             ("i_hi", "j_hi", (("i", False), ("k", False)), 415),  # sub1/N
             ("i_hi", "i_hi", (("j", True), ("k", False)), 245),  # sub2/N
             ("i_hi", "j_lo", (("i", True), ("k", False)), 325),  # sub3/N
-            ("i_lo", "j_lo", (("i", False), ("k", False)), 315),  # sub0/S
-            ("i_lo", "i_hi", (("j", False), ("k", False)), 235),  # sub1/S
-            ("i_lo", "j_hi", (("i", True), ("k", False)), 425),  # sub2/S
-            ("i_lo", "i_lo", (("j", True), ("k", False)), 145),  # sub3/S
+            ("i_lo", "j_lo", (("i", False), ("k", False)), 415),  # sub0/S
+            ("i_lo", "i_hi", (("j", False), ("k", False)), 135),  # sub1/S
+            ("i_lo", "j_hi", (("i", True), ("k", False)), 325),  # sub2/S
+            ("i_lo", "i_lo", (("j", True), ("k", False)), 245),  # sub3/S
         ],
     )
     def test_cubed_sphere_sub_side_codes(self, face, partner, pairs, expected):
@@ -579,14 +578,14 @@ class TestOrientationCodeDerivation:
             # (j, k) for i_lo/i_hi and (i, k) for j_lo/j_hi; the AxisMap
             # below uses the canonical cap-side along-axis order, then
             # maps to the sub partner's along-axes (j, k).
-            ("i_lo", "i_hi", (("j", False), ("k", False)), 235),  # cap_n.i_lo ↔ sub0
+            ("i_lo", "i_hi", (("j", False), ("k", False)), 135),  # cap_n.i_lo ↔ sub0
             ("j_hi", "i_hi", (("j", False), ("k", False)), 325),  # cap_n.j_hi ↔ sub1
             ("i_hi", "i_hi", (("j", True), ("k", False)), 245),  # cap_n.i_hi ↔ sub2
-            ("j_lo", "i_hi", (("j", True), ("k", False)), 425),  # cap_n.j_lo ↔ sub3
-            ("j_lo", "i_lo", (("j", False), ("k", False)), 315),  # cap_s.j_lo ↔ sub0
+            ("j_lo", "i_hi", (("j", True), ("k", False)), 415),  # cap_n.j_lo ↔ sub3
+            ("j_lo", "i_lo", (("j", False), ("k", False)), 325),  # cap_s.j_lo ↔ sub0
             ("i_hi", "i_lo", (("j", False), ("k", False)), 135),  # cap_s.i_hi ↔ sub1
             ("j_hi", "i_lo", (("j", True), ("k", False)), 415),  # cap_s.j_hi ↔ sub2
-            ("i_lo", "i_lo", (("j", True), ("k", False)), 145),  # cap_s.i_lo ↔ sub3
+            ("i_lo", "i_lo", (("j", True), ("k", False)), 245),  # cap_s.i_lo ↔ sub3
         ],
     )
     def test_cubed_sphere_cap_side_codes(self, face, partner, pairs, expected):
@@ -605,14 +604,14 @@ class TestCubedSphereCapEquator:
 
     def test_cubed_sphere_sub0_north_cap_pair(self, tmp_path):
         """sub0.i_hi (block 1, face 2) <-> cap_north.i_lo (block 5, face 1).
-        Per the table: sub-side BC=135, cap-side BC=235."""
+        Opposite sides: BC=135 on both (ADR 0036)."""
         payload = _build_cubed_sphere_payload()
         out = write_cc_par(payload, tmp_path / "cc.par", grd_filename="x.grd")
         patches = _parse_patches(out.read_text())
         sub0_ihi = next(p for p in patches if p["block"] == 1 and p["face"] == 2)
         cap_n_ilo = next(p for p in patches if p["block"] == 5 and p["face"] == 1)
         assert sub0_ihi["bc"] == 135
-        assert cap_n_ilo["bc"] == 235
+        assert cap_n_ilo["bc"] == 135
         assert sub0_ihi["family"] == cap_n_ilo["idx"]
         assert cap_n_ilo["family"] == sub0_ihi["idx"]
 

@@ -300,7 +300,6 @@ class TestBlockSets:
     def test_q1_no_connections(self, sets, name):  # already holds: a guard
         assert connection_errors(sets, name) == []
 
-    @PENDING
     @pytest.mark.parametrize("name", CONNECTED)
     def test_q1_connections(self, sets, name):
         assert connection_errors(sets, name) == []
@@ -309,7 +308,6 @@ class TestBlockSets:
     def test_q2_tiling(self, sets, name):  # already holds: a guard
         assert tiling(sets, name) == []
 
-    @PENDING
     @pytest.mark.parametrize("name", ["ch", "ch_blunt"])
     def test_q2_tiling_ch(self, sets, name):
         assert tiling(sets, name) == []
@@ -347,7 +345,6 @@ class TestBlockSets:
 
 
 class TestCH:
-    @PENDING
     @pytest.mark.parametrize("name", ["ch", "ch_blunt"])
     def test_q4_ch(self, sets, name, tmp_path):
         project, blocks = sets[name]
@@ -375,7 +372,6 @@ class TestCH:
         _, sidecar, _ = write(sets, name)
         assert sidecar == before(name, "json")
 
-    @PENDING
     def test_q6_ch_project_round_trip(self, sets, tmp_path):
         from shore.project import Project
 

@@ -62,6 +62,11 @@ Mapping from SHORE's ``FaceBC`` enum to ``cc.par`` BC codes:
   + ``family = partner patch index``.  The 3-digit orientation code
   ``lᵢ lⱼ lₖ`` is derived from this face's ``axis_map`` plus the
   partner face's name (see :func:`_orientation_code_from_axis_map`).
+  The normal digit is odd when the two faces are on opposite sides of
+  their blocks and even when on the same side, as the overset
+  pre-processor reads it (``metrix.f90`` ``normind``, ADR 0036).  A face
+  whose sidecar entry carries ``patches`` (shared with several partners)
+  gets one patch per partner over that partner's sub-range.
 - ``PERIODIC``   → ``cc.par`` has no first-class periodic BC; emits
   ``40`` with a ``UserWarning``.
 - ``SYMMETRY``   → ``2`` (natural-BC index of the symmetry plane; the
@@ -197,6 +202,8 @@ class _Patch:
     family: int  # partner patch index (1-based) or 0
     extents: tuple[int, int, int, int, int, int]  # Imin Imax Jmin Jmax Kmin Kmax in cells
     patch_index: int = 0  # filled in after global ordering
+    face_name: str = ""
+    partner: tuple[str, str] | None = None  # (label, face) of a sub-range patch's partner
 
 
 @dataclass
@@ -319,6 +326,11 @@ def write_cc_par(
         block_payload = next(b for b in payload["blocks"] if b["label"] == entry.label)
         for face_name in _FACE_NAMES:
             face = block_payload["faces"][face_name]
+            if face.get("patches") and face["bc"] in ("SHARED", "DIRICHLET"):
+                # A face shared with several partners (ADR 0036): a patch each.
+                for sub_patch in face["patches"]:
+                    entry.patches.append(_sub_patch(block_idx, entry.label, face_name, sub_patch))
+                continue
             patch = _resolve_patch(
                 block_idx=block_idx,
                 block_label=entry.label,
@@ -327,28 +339,29 @@ def write_cc_par(
                 shape_cells=entry.shape_cells,
                 free_face_bc=entry.meta.free_face_bc,
             )
+            patch.face_name = face_name
             entry.patches.append(patch)
 
     # Pass 3: assign global 1-based patch indices.
     patch_counter = 0
-    by_label_face: dict[tuple[str, str], int] = {}
+    by_label_face: dict[tuple[str, str], list[_Patch]] = {}
     for entry in entries:
-        for patch, face_name in zip(entry.patches, _FACE_NAMES, strict=True):
+        for patch in entry.patches:
             patch_counter += 1
             patch.patch_index = patch_counter
-            by_label_face[(entry.label, face_name)] = patch_counter
+            by_label_face.setdefault((entry.label, patch.face_name), []).append(patch)
 
     # Pass 4: resolve `family` references for connection patches.
     # The first pass left family = -1 for connection patches whose partner
     # patch index wasn't yet known; we now have the (label, face) → index map.
     for entry in entries:
         block_payload = next(b for b in payload["blocks"] if b["label"] == entry.label)
-        for patch, face_name in zip(entry.patches, _FACE_NAMES, strict=True):
+        for patch in entry.patches:
+            face_name = patch.face_name
             if patch.family != -1:
                 continue
-            # Re-fetch the partner from the resolved cap-equator table or the
-            # adjacency JSON.
-            partner_label, partner_face = _partner_for(
+            # The partner of a sub-range patch is its own; otherwise the face's.
+            partner_label, partner_face = patch.partner or _partner_for(
                 entry.label, face_name, block_payload["faces"][face_name]
             )
             if partner_label is None:
@@ -356,13 +369,20 @@ def write_cc_par(
                 patch.bc = _BC_OFFGEN
                 patch.family = 0
                 continue
-            partner_idx = by_label_face.get((partner_label, partner_face))
-            if partner_idx is None:
+            candidates = by_label_face.get((partner_label, partner_face))  # type: ignore[arg-type]
+            if not candidates:
                 raise ParameterError(
                     f"cc.par: block {entry.label!r} face {face_name!r} points to "
                     f"unknown partner ({partner_label!r}, {partner_face!r})"
                 )
-            patch.family = partner_idx
+            if len(candidates) > 1:  # the partner face is shared: its patch for this face
+                candidates = [c for c in candidates if c.partner == (entry.label, face_name)]
+                if len(candidates) != 1:
+                    raise ParameterError(
+                        f"cc.par: {partner_label!r}.{partner_face} has no patch for "
+                        f"{entry.label!r}.{face_name}"
+                    )
+            patch.family = candidates[0].patch_index
 
     # Pass 5: validate symmetry for connections.
     _validate_symmetry(entries)
@@ -457,6 +477,25 @@ def _resolve_patch(
     raise ParameterError(f"cc.par: unknown FaceBC name {bc_name!r} on {block_label!r}.{face_name}")
 
 
+def _sub_patch(block_idx: int, label: str, face_name: str, payload: dict[str, Any]) -> _Patch:
+    """One patch over a sub-range of a face shared with several partners (ADR 0036)."""
+    (i0, j0, k0), (i1, j1, k1) = payload["range"]
+    partner = payload["partner"]
+    axis_map = _axis_map_from_json(payload["axis_map"], source=f"{label}.{face_name}")
+    if axis_map is None:
+        raise ParameterError(f"cc.par: {label}.{face_name} sub-range patch has no axis_map")
+    code = _orientation_code_from_axis_map(face_name, partner["face"], axis_map)
+    return _Patch(
+        block_idx,
+        _FACE_TO_INDEX[face_name],
+        code,
+        -1,
+        (i0, i1, j0, j1, k0, k1),
+        face_name=face_name,
+        partner=(partner["label"], partner["face"]),
+    )
+
+
 def _face_extents(
     face_name: str, shape_cells: tuple[int, int, int]
 ) -> tuple[int, int, int, int, int, int]:
@@ -533,16 +572,17 @@ def _orientation_code_from_axis_map(
 
     Independent of any topology table; testable in isolation.
     """
-    perp_axis_self, _self_at_max = _PERP_AXIS_AND_MAX[face_name]
+    perp_axis_self, self_at_max = _PERP_AXIS_AND_MAX[face_name]
     perp_axis_partner, partner_perp_at_max = _PERP_AXIS_AND_MAX[partner_face_name]
 
     # Build the (partner_axis, flipped) tuple per this side's axis label.
-    # Perpendicular axis on this side maps to the partner's perpendicular
-    # axis: partner is *at* its boundary, so direction is fixed by which
-    # boundary (Imin/Imax/...).
+    # Perpendicular axis: Xall's pre-processor (overset ``normind``) reads an
+    # odd digit as "the partner face is on the opposite side" (lo <-> hi) and
+    # an even one as "on the same side" (lo <-> lo, hi <-> hi), whichever side
+    # this face is on (ADR 0036; before it, lo faces had the parity reversed).
     self_along: tuple[str, str] = FACE_ALONG_AXES[face_name]  # ("j", "k") for i_lo/i_hi
     by_axis: dict[str, tuple[str, bool]] = {
-        perp_axis_self: (perp_axis_partner, partner_perp_at_max),
+        perp_axis_self: (perp_axis_partner, partner_perp_at_max == self_at_max),
         self_along[0]: axis_map.along[0],
         self_along[1]: axis_map.along[1],
     }
@@ -561,13 +601,12 @@ def _digit_for(partner_axis: str, flipped_or_at_max: bool) -> int:
     ``flipped_or_at_max`` overloads two semantics that map to the same
     digit choice:
 
-    - For an *along-seam* mapping it is the AxisMap flip flag.
-    - For the *perpendicular* mapping it is whether the partner face is
-      at its axis maximum (``*_hi``).
-
-    Both reduce to: ``True`` ⇒ partner-axis at max, decreasing
-    (digits 2/4/6); ``False`` ⇒ partner-axis at min, increasing
-    (digits 1/3/5).
+    - For an *along-seam* mapping it is the AxisMap flip flag: the partner
+      index runs down from its patch's maximum (digits 2/4/6) or up from
+      its minimum (1/3/5).
+    - For the *perpendicular* mapping it is whether both faces are on the
+      same side of their blocks (lo <-> lo or hi <-> hi: 2/4/6) or on
+      opposite sides (1/3/5).
     """
     base = _AXIS_TO_INDEX[partner_axis] * 2 + 1  # 1, 3, 5 for i, j, k
     return base + (1 if flipped_or_at_max else 0)
