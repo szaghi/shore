@@ -45,6 +45,7 @@ by a later record that supersedes it.
 | [0035](./0035-cgns-plot3d-export.md) | CGNS and Plot3D exports | Accepted |
 | [0036](./0036-cc-par-as-xall-reads-it.md) | cc.par connections as Xall reads them | Accepted |
 | [0037](./0037-gui-viewer-command-shell.md) | GUI slice 1: viewer and command shell | Accepted |
+| [0038](./0038-gui-geometry-and-slices.md) | GUI slice 2: geometry display and slice planes | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

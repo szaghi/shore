@@ -52,7 +52,7 @@ jobs:
       - name: Format check
         if: ${{ !cancelled() }}
         run: ruff format --check src/ tests/
-      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0037)
+      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0038)
         if: ${{ !cancelled() }}
         run: python scripts/check_spec.py
 
@@ -87,8 +87,8 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Install software Vulkan and Qt runtime libraries
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3
-      - name: Install package + test + GUI deps
-        run: pip install -e ".[dev,gui]"
+      - name: Install package + test + GUI + CAD deps (ADR 0038's CAD cases)
+        run: pip install -e ".[dev,gui,cad]"
       - name: Run GUI tests
         run: pytest tests_gui --no-cov
 
