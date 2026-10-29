@@ -61,7 +61,6 @@ ds              = 1.0e-5
 growth          = 1.15
 smooth          = 0.3        # 0 = no smoothing; 1 = full Laplacian replacement
 smooth_iters    = 3          # number of Jacobi sweeps per layer
-blend_normals_k = 5          # blend STL surface normals into the first 5 layers
 
 # ----------------------------------------------------------------------
 # Surface (k=0) spacing

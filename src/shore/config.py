@@ -28,7 +28,6 @@ Schema (single body, ``version = 1``)
     smooth_iters  = 2                        # Laplacian sweeps per layer
     smooth_mode   = "limited"                # limited | legacy (unlimited, folds thin layers)
     march_scheme  = "algebraic"              # algebraic | hyperbolic (Steger-Chaussee)
-    blend_normals_k = 0                      # deprecated (ADR 0019); keep 0
 
     [surface]
     i_spacing = "uniform"                    # uniform | tanh | tanh2
@@ -111,7 +110,7 @@ class MarchConfig:
     smooth_iters: int = 2
     smooth_mode: str = "limited"
     march_scheme: str = "algebraic"
-    blend_normals_k: int = 0
+    blend_normals_k: int | None = None  # removed (ADR 0034): 0 accepted with a notice
 
 
 @dataclass
@@ -402,6 +401,8 @@ def dump_template(stream=None) -> None:
     emit("")
     emit("[march]")
     for f in fields(m):
+        if f.name == "blend_normals_k":  # removed (ADR 0034): never advertised
+            continue
         emit(f"{f.name} = {getattr(m, f.name)!r}")
     emit("")
     emit("[surface]")

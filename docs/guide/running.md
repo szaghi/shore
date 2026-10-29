@@ -58,7 +58,7 @@ Key parameters:
 | `--volume-k-spacing` | `geometric` | Wall-normal spacing law |
 | `--volume-k-beta` | 3.0 | Clustering strength for tanh/tanh2 k-spacing |
 | `--volume-k-thickness` | — | Total wall-normal thickness (required for tanh/tanh2) |
-| `--blend-normals-k` | 0 | **Deprecated** ([ADR 0019](../adr/0019-deprecate-normal-blending.md)): layers over which to blend body normals into the marching direction (0 = off); refused on C-grids |
+| `--blend-normals-k` | — | **Removed** ([ADR 0034](../adr/0034-remove-normal-blending.md)): hidden; `0` prints a notice, anything else exits 1 |
 
 Spacing examples:
 

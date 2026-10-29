@@ -118,7 +118,6 @@ def _march_one_layer(
     smooth_strength: float,
     smooth_iters: int,
     periodic: tuple[bool, bool],
-    normals_override: np.ndarray | None = None,
     ghost_rows: dict[str, np.ndarray] | None = None,
     smooth_mode: str = "limited",
     march_scheme: str = "algebraic",
@@ -127,9 +126,6 @@ def _march_one_layer(
 
     Parameters
     ----------
-    normals_override :
-        When provided, replaces the grid-computed normals for this step.
-        Shape must match ``(ni, nj, 3)``.  Used for STL-normal blending.
     ghost_rows :
         Optional virtual neighbour rows (per-face) for centred-difference
         normals at multi-block seams; see ``_compute_normals``.
@@ -139,11 +135,8 @@ def _march_one_layer(
         ``'legacy'``: the full Laplacian motion (folds thin first layers).
     """
     if march_scheme == "hyperbolic":
-        return hyperbolic_layer(layer, step, periodic, ghost_rows, normals_override)
-    if normals_override is not None:
-        normals = normals_override
-    else:
-        normals = _compute_normals(layer, periodic=periodic, ghost_rows=ghost_rows)
+        return hyperbolic_layer(layer, step, periodic, ghost_rows)
+    normals = _compute_normals(layer, periodic=periodic, ghost_rows=ghost_rows)
     raw = layer + step * normals
     new_layer = raw
     for _ in range(smooth_iters):
@@ -168,7 +161,6 @@ def _march_cap_layer(
     smooth_iters: int,
     eq_rows: list[np.ndarray],
     pole: str = "north",
-    normals_override: np.ndarray | None = None,
     ghost_rows: dict[str, np.ndarray] | None = None,
     smooth_mode: str = "limited",
     march_scheme: str = "algebraic",
@@ -192,9 +184,6 @@ def _march_cap_layer(
     eq_rows :
         List of 4 equatorial pole-row arrays, shape (nc, 3) each, giving the
         target positions of the 4 boundary edges for the next layer.
-    normals_override :
-        When provided, replaces grid-computed normals for this step.
-        Used for STL-normal blending.
 
     Returns
     -------
@@ -205,16 +194,13 @@ def _march_cap_layer(
         target = layer.copy()
         _overwrite_cap_boundaries(target, eq_rows, pole=pole)
         new_layer = hyperbolic_layer(
-            layer, step, (False, False), ghost_rows, normals_override, boundary_target=target
+            layer, step, (False, False), ghost_rows, boundary_target=target
         )
         _overwrite_cap_boundaries(new_layer, eq_rows, pole=pole)
         return new_layer
 
     # 1. Normal-based displacement.
-    if normals_override is not None:
-        normals = normals_override
-    else:
-        normals = _compute_normals(layer, periodic=(False, False), ghost_rows=ghost_rows)
+    normals = _compute_normals(layer, periodic=(False, False), ghost_rows=ghost_rows)
     raw = layer + step * normals
 
     # 2. Laplacian smoothing passes (same as equatorial blocks), constrained

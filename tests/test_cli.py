@@ -1214,8 +1214,8 @@ class TestSplitCollar:
         assert len(split.mesh.blocks) == 6
 
 
-class TestBlendDeprecation:
-    """blend_normals_k on CH (ADR 0019): refused like the C-grid it wraps."""
+class TestBlendRemoval:
+    """blend_normals_k is removed (ADR 0034): refused on CH as everywhere."""
 
     def test_ch_blend_refused(self, naca0012_stl, tmp_path):
         args = [
@@ -1227,4 +1227,4 @@ class TestBlendDeprecation:
         ]  # fmt: skip
         r = runner.invoke(app, args)
         assert r.exit_code == 1
-        assert "C-grid" in r.output
+        assert "removed" in r.output

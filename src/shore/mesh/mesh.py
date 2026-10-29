@@ -27,7 +27,6 @@ from shore.topology.sphere_cap import (
     _march_cap_layer,
     _march_one_layer,
 )
-from shore.volume.hyperbolic import _compute_normals
 from shore.volume.spacing import build_k_steps
 
 # ---------------------------------------------------------------------------
@@ -48,11 +47,21 @@ from shore.volume.spacing import build_k_steps
 
 _K_EDGE_NAMES = ("i_lo_j_lo", "i_hi_j_lo", "i_lo_j_hi", "i_hi_j_hi")
 
-BLEND_DEPRECATION = (
-    "blend_normals_k is deprecated (ADR 0019): blending body normals into the marching "
-    "direction showed no benefit over the grid normals and is refused on C-grids; it will "
-    "be removed in a future release. Use blend_normals_k=0."
+BLEND_REMOVED = (
+    "blend_normals_k was removed (ADR 0034; deprecated by ADR 0019): blending body normals "
+    "into the marching direction showed no benefit over the grid normals and folded "
+    "C-grids. Delete the option; a project that used it loads only without replay."
 )
+BLEND_ZERO = "blend_normals_k was removed (ADR 0034) and 0 is all it accepts; delete the option."
+
+
+def check_blend_normals_k(blend_normals_k: int | None) -> None:
+    """Refuse the removed ``blend_normals_k`` (ADR 0034); warn on an explicit 0."""
+    if blend_normals_k is None:
+        return
+    if blend_normals_k != 0:
+        raise ParameterError(BLEND_REMOVED)
+    warnings.warn(BLEND_ZERO, DeprecationWarning, stacklevel=3)
 
 
 def _block_user_k_spacing(block: HexBlock) -> Spacing1D | None:
@@ -307,8 +316,8 @@ class Mesh:
         Used by topologies whose input is a numeric array (e.g. a
         cross-section polyline) rather than a triangulated body.  The
         resulting :class:`Mesh` has ``body = None``; methods that
-        depend on ``self.body`` (e.g. STL-normal blending in
-        :meth:`march`) will fail loudly if called.
+        depend on ``self.body`` (e.g. :meth:`snap`) will fail loudly if
+        called.
 
         Parameters
         ----------
@@ -369,8 +378,7 @@ class Mesh:
         ----------
         path :
             STL, or a CAD file (STEP/IGES/BREP, needs ``shore-mesh[cad]``).
-            For CAD the k=0 ray casts are snapped to the exact surface and
-            the marcher's normal blending reads exact-geometry normals.
+            For CAD the k=0 ray casts are snapped to the exact surface.
         topology :
             Wired topology builder (e.g. ``CubedSphereTopology()``).
         ni, nj :
@@ -470,7 +478,7 @@ class Mesh:
         smooth_iters: int = 2,
         steps: np.ndarray | None = None,
         layer_callback: Callable[[int, float], None] | None = None,
-        blend_normals_k: int = 0,
+        blend_normals_k: int | None = None,
         smooth_mode: str = "limited",
         march_scheme: str = "algebraic",
     ) -> None:
@@ -493,13 +501,9 @@ class Mesh:
         layer_callback :
             Optional ``(k, jmin_global)`` called after each accepted layer.
         blend_normals_k :
-            Number of layers over which to blend STL surface normals into the
-            grid-computed normals.  0 (default) disables blending.  At layer k
-            the blend weight is ``alpha = 1 - k / blend_normals_k`` so k=0
-            uses pure STL normals and the blend reaches zero at
-            k=blend_normals_k.  Requires ``self.body.mesh``.  **Deprecated**
-            (ADR 0019): it showed no benefit over the grid normals, and on
-            C-grid topologies it folds the wake cut, so it is refused there.
+            **Removed** (ADR 0034): only ``None`` (the default) or 0 are
+            accepted; 0 warns. It blended body normals into the first layers'
+            marching directions, with no benefit (ADR 0019).
         smooth_mode :
             ``'limited'`` (default): the Laplacian smoothing motion is
             limited per node where it would damage the layer (it may pull a
@@ -524,17 +528,18 @@ class Mesh:
         NotImplementedError
             If the topology has no registered marcher.
         ParameterError
-            ``blend_normals_k > 0`` on a C-grid topology (``cgrid``, ``ch``).
+            ``blend_normals_k`` other than 0 (removed, ADR 0034).
 
         Warns
         -----
         DeprecationWarning
-            ``blend_normals_k > 0``.
+            ``blend_normals_k=0`` given explicitly.
         """
         if march_scheme not in ("algebraic", "hyperbolic"):
             raise ParameterError(
                 f"march_scheme must be 'algebraic' or 'hyperbolic', got {march_scheme!r}."
             )
+        check_blend_normals_k(blend_normals_k)
         from shore.mesh.topology import (
             CGridTipCap,
             CGridTopology,
@@ -547,15 +552,6 @@ class Mesh:
         if isinstance(self.topology, CGridTipCap):
             # The tip cap is fully volumetric at build time — nothing to march.
             return
-
-        if blend_normals_k > 0:
-            if isinstance(self.topology, (CGridTopology, CHTopology)):
-                raise ParameterError(
-                    "blend_normals_k > 0 is not supported on C-grid topologies: the blend "
-                    "gives the off-body wake-cut nodes the trailing-edge normal and folds "
-                    "the first layer (ADR 0019). Use blend_normals_k=0."
-                )
-            warnings.warn(BLEND_DEPRECATION, DeprecationWarning, stacklevel=2)
 
         if isinstance(self.topology, OHTopology):
             # March the wrap (first 6 blocks) using the cubed-sphere marcher;
@@ -571,7 +567,6 @@ class Mesh:
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
-                blend_normals_k=blend_normals_k,
             )
             self.topology.fill_channel_blocks(self.blocks)
         elif isinstance(self.topology, CHTopology):
@@ -587,7 +582,6 @@ class Mesh:
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
-                blend_normals_k=blend_normals_k,
             )
             self.topology.fill_channel_blocks(self.blocks)
         elif isinstance(self.topology, CubedSphereTopology):
@@ -600,7 +594,6 @@ class Mesh:
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
-                blend_normals_k=blend_normals_k,
             )
         elif isinstance(self.topology, OGridTopology):
             self._march_ogrid(
@@ -612,7 +605,6 @@ class Mesh:
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
-                blend_normals_k=blend_normals_k,
             )
         elif isinstance(self.topology, CGridTopology):
             self._march_cgrid(
@@ -624,7 +616,6 @@ class Mesh:
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
-                blend_normals_k=blend_normals_k,
             )
         else:
             raise NotImplementedError(
@@ -639,7 +630,6 @@ class Mesh:
         smooth_iters: int,
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
-        blend_normals_k: int = 0,
         smooth_mode: str = "limited",
         march_scheme: str = "algebraic",
     ) -> None:
@@ -654,7 +644,6 @@ class Mesh:
             smooth_iters=smooth_iters,
             steps=steps,
             layer_callback=layer_callback,
-            blend_normals_k=blend_normals_k,
         )
 
     def _march_caps_blocks(
@@ -666,7 +655,6 @@ class Mesh:
         smooth_iters: int,
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
-        blend_normals_k: int = 0,
         smooth_mode: str = "limited",
         march_scheme: str = "algebraic",
     ) -> None:
@@ -686,10 +674,6 @@ class Mesh:
 
         _steps = _resolve_k_steps(wrap_blocks, nk, ds, growth, steps)
 
-        do_blend = blend_normals_k > 0
-        if do_blend:
-            body_normals = self.body.normals
-
         for k in range(nk - 1):
             step = float(_steps[k])
 
@@ -704,49 +688,22 @@ class Mesh:
             new_subs: list[np.ndarray] = []
             for q in range(len(sub_blocks)):
                 layer_q = sub_k[q]
-                ni_q, nj_q = layer_q.shape[:2]
 
                 # Ghost rows for sub_q at this layer (pre-march).  i_lo and
                 # i_hi come from the cap blocks (rotated/reversed per the
                 # _overwrite_cap_boundaries mapping); j_lo and j_hi come from
                 # adjacent sub-blocks via the periodic ring.
                 ghost = _sub_ghost_rows(q, sub_k, cn_k, cs_k)
-
-                if do_blend and k < blend_normals_k:
-                    alpha = 1.0 - k / blend_normals_k
-                    grid_n = _compute_normals(
-                        layer_q,
-                        periodic=(False, False),
-                        ghost_rows=ghost,
-                    )
-                    stl_n = body_normals(layer_q.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
-                    blended = alpha * stl_n + (1.0 - alpha) * grid_n
-                    mag = np.linalg.norm(blended, axis=-1, keepdims=True)
-                    normals_override: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
-                else:
-                    normals_override = None
                 new_q = _march_one_layer(
                     layer_q,
                     step,
                     smooth_strength,
                     smooth_iters,
                     periodic=(False, False),
-                    normals_override=normals_override,
                     ghost_rows=ghost,
                     smooth_mode=smooth_mode,
                     march_scheme=march_scheme,
                 )
-                # Note: a previous "pole-row STL-normal override" used to run
-                # here whenever do_blend was True, on the assumption that the
-                # Laplacian smoothing's boundary clamp pulled the cap-equator
-                # seam rows inward.  With seam-aware ghost rows in place that
-                # clamp produces only sub-FP-noise drift, and the override
-                # itself amplifies the C1 cap-equator seam deviation by a
-                # factor of ~2 at k=NK-1.  See
-                # tests/test_cap_gnomonic.py::TestBlendNormalsK_C1SeamSurvives
-                # for the regression that pinned this down.  The override has
-                # been removed; the alpha-weighted blend at lines above is
-                # the only remaining STL-normal contribution.
                 new_subs.append(new_q)
 
             # Re-stitch shared edges to absorb FP noise from the
@@ -783,34 +740,6 @@ class Mesh:
             cap_north_ghost = _cap_ghost_rows("north", sub_k, ni)
             cap_south_ghost = _cap_ghost_rows("south", sub_k, ni)
 
-            if do_blend and k < blend_normals_k:
-                alpha = 1.0 - k / blend_normals_k
-                cn_layer = cn_k
-                nc_c = cn_layer.shape[0]
-                grid_n = _compute_normals(
-                    cn_layer,
-                    periodic=(False, False),
-                    ghost_rows=cap_north_ghost,
-                )
-                stl_n = body_normals(cn_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
-                blended = alpha * stl_n + (1.0 - alpha) * grid_n
-                mag = np.linalg.norm(blended, axis=-1, keepdims=True)
-                cap_north_no: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
-
-                cs_layer = cs_k
-                grid_n = _compute_normals(
-                    cs_layer,
-                    periodic=(False, False),
-                    ghost_rows=cap_south_ghost,
-                )
-                stl_n = body_normals(cs_layer.reshape(-1, 3)).reshape(nc_c, nc_c, 3)
-                blended = alpha * stl_n + (1.0 - alpha) * grid_n
-                mag = np.linalg.norm(blended, axis=-1, keepdims=True)
-                cap_south_no: np.ndarray | None = blended / np.where(mag < 1e-15, 1.0, mag)
-            else:
-                cap_north_no = None
-                cap_south_no = None
-
             new_cap_north = _march_cap_layer(
                 cn_k,
                 step,
@@ -818,7 +747,6 @@ class Mesh:
                 smooth_iters,
                 north_eq_rows,
                 pole="north",
-                normals_override=cap_north_no,
                 ghost_rows=cap_north_ghost,
                 smooth_mode=smooth_mode,
                 march_scheme=march_scheme,
@@ -830,7 +758,6 @@ class Mesh:
                 smooth_iters,
                 south_eq_rows,
                 pole="south",
-                normals_override=cap_south_no,
                 ghost_rows=cap_south_ghost,
                 smooth_mode=smooth_mode,
                 march_scheme=march_scheme,
@@ -873,7 +800,6 @@ class Mesh:
         smooth_iters: int,
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
-        blend_normals_k: int = 0,
         smooth_mode: str = "limited",
         march_scheme: str = "algebraic",
     ) -> None:
@@ -904,10 +830,6 @@ class Mesh:
         nk = body.nodes.shape[2]
         _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
 
-        do_blend = blend_normals_k > 0
-        if do_blend:
-            body_normals = self.body.normals
-
         periodic = (False, False)
 
         for k in range(nk - 1):
@@ -930,26 +852,6 @@ class Mesh:
             }
             lower_ghost = {"i_lo": b_k[-2, :, :]}  # body row -2 (before lower-TE)
 
-            # ----- per-block STL-blend normals override --------------
-            # Compute the blend factor once for this layer; reuse it
-            # for all three blocks.
-            do_blend_now = do_blend and k < blend_normals_k
-            blend_alpha = (1.0 - k / blend_normals_k) if do_blend_now else 0.0
-
-            def _blend(
-                layer: np.ndarray,
-                ghost: dict,
-                *,
-                _alpha: float = blend_alpha,
-                _periodic: tuple[bool, bool] = periodic,
-            ) -> np.ndarray:
-                grid_n = _compute_normals(layer, periodic=_periodic, ghost_rows=ghost)
-                ni_q, nj_q = layer.shape[:2]
-                stl_n = body_normals(layer.reshape(-1, 3)).reshape(ni_q, nj_q, 3)
-                blended = _alpha * stl_n + (1.0 - _alpha) * grid_n
-                mag = np.linalg.norm(blended, axis=-1, keepdims=True)
-                return blended / np.where(mag < 1e-15, 1.0, mag)
-
             # ----- advance each block --------------------------------
             new_u = _march_one_layer(
                 u_k,
@@ -957,7 +859,6 @@ class Mesh:
                 smooth_strength,
                 smooth_iters,
                 periodic=periodic,
-                normals_override=_blend(u_k, upper_ghost) if do_blend_now else None,
                 ghost_rows=upper_ghost,
                 smooth_mode=smooth_mode,
                 march_scheme=march_scheme,
@@ -968,7 +869,6 @@ class Mesh:
                 smooth_strength,
                 smooth_iters,
                 periodic=periodic,
-                normals_override=_blend(b_k, body_ghost) if do_blend_now else None,
                 ghost_rows=body_ghost,
                 smooth_mode=smooth_mode,
                 march_scheme=march_scheme,
@@ -979,7 +879,6 @@ class Mesh:
                 smooth_strength,
                 smooth_iters,
                 periodic=periodic,
-                normals_override=_blend(l_k, lower_ghost) if do_blend_now else None,
                 ghost_rows=lower_ghost,
                 smooth_mode=smooth_mode,
                 march_scheme=march_scheme,
@@ -1044,7 +943,6 @@ class Mesh:
         smooth_iters: int,
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
-        blend_normals_k: int = 0,
         smooth_mode: str = "limited",
         march_scheme: str = "algebraic",
     ) -> None:
@@ -1070,7 +968,6 @@ class Mesh:
                 smooth_iters=smooth_iters,
                 steps=steps,
                 layer_callback=layer_callback,
-                blend_normals_k=blend_normals_k,
             )
             return
         # blocks == 1: legacy single-block path.
@@ -1078,24 +975,11 @@ class Mesh:
         nk = block.nodes.shape[2]
         _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
 
-        do_blend = blend_normals_k > 0
-        if do_blend:
-            body_normals = self.body.normals
-
-        ni, nj, _, _ = block.nodes.shape
         periodic = (False, False)
 
         for k in range(nk - 1):
             step = float(_steps[k])
             layer = block.nodes[:, :, k, :]
-
-            normals_override = None
-            if do_blend and k < blend_normals_k:
-                alpha = 1.0 - k / blend_normals_k
-                grid_n = _compute_normals(layer, periodic=periodic)
-                stl_n = body_normals(layer.reshape(-1, 3)).reshape(ni, nj, 3)
-                normals_override = alpha * stl_n + (1.0 - alpha) * grid_n
-                normals_override /= np.linalg.norm(normals_override, axis=-1, keepdims=True)
 
             new_layer = _march_one_layer(
                 layer,
@@ -1105,7 +989,6 @@ class Mesh:
                 march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 periodic=periodic,
-                normals_override=normals_override,
             )
 
             jmin = _check_jacobian(
@@ -1131,7 +1014,6 @@ class Mesh:
         smooth_iters: int,
         steps: np.ndarray | None,
         layer_callback: Callable[[int, float], None] | None,
-        blend_normals_k: int = 0,
         smooth_mode: str = "limited",
         march_scheme: str = "algebraic",
     ) -> None:
@@ -1139,31 +1021,17 @@ class Mesh:
 
         The j-direction is periodic; the i-boundaries (south / north
         polar singular axis rows) are clamped during Laplacian
-        smoothing.  Optional STL-normal blending applies the same
-        alpha-weighted blend as the cubed-sphere marcher.
+        smoothing.
         """
         block = self.blocks[0]
         nk = block.nodes.shape[2]
         _steps = _resolve_k_steps(self.blocks, nk, ds, growth, steps)
 
-        do_blend = blend_normals_k > 0
-        if do_blend:
-            body_normals = self.body.normals
-
-        ni, nj, _, _ = block.nodes.shape
         periodic = (False, True)
 
         for k in range(nk - 1):
             step = float(_steps[k])
             layer = block.nodes[:, :, k, :]
-
-            normals_override = None
-            if do_blend and k < blend_normals_k:
-                alpha = 1.0 - k / blend_normals_k
-                grid_n = _compute_normals(layer, periodic=periodic)
-                stl_n = body_normals(layer.reshape(-1, 3)).reshape(ni, nj, 3)
-                normals_override = alpha * stl_n + (1.0 - alpha) * grid_n
-                normals_override /= np.linalg.norm(normals_override, axis=-1, keepdims=True)
 
             new_layer = _march_one_layer(
                 layer,
@@ -1173,7 +1041,6 @@ class Mesh:
                 march_scheme=march_scheme,
                 smooth_iters=smooth_iters,
                 periodic=periodic,
-                normals_override=normals_override,
             )
 
             jmin = _check_jacobian(

@@ -128,7 +128,6 @@ def blended(tmp_path) -> Path:
 
 
 class TestRefused:
-    @PENDING
     @pytest.mark.parametrize("topology", ["ogrid", "cubed_sphere", "cgrid"])
     def test_r1_mesh_march_refuses(self, sphere_stl, naca0012_stl, topology):
         mesh = project(stl_for(topology, sphere_stl, naca0012_stl), topology).mesh
@@ -139,7 +138,6 @@ class TestRefused:
                 mesh.march(ds=0.05, growth=1.1, blend_normals_k=3)
         assert all(np.array_equal(a, b.nodes) for a, b in zip(before, mesh.blocks, strict=True))
 
-    @PENDING
     def test_r2_project_and_journal_refuse(self, sphere_stl, tmp_path):
         from shore.project import run_journal
 
@@ -160,7 +158,6 @@ class TestRefused:
             with pytest.raises(ParameterError, match=REMOVED):
                 run_journal(tmp_path / "j.py")
 
-    @PENDING
     def test_r3_cli_flag_exits(self, sphere_stl, tmp_path):
         from shore.cli import app
 
@@ -169,7 +166,6 @@ class TestRefused:
         assert r.exit_code == 1, r.output
         assert cli_says_removed(r.output), r.output
 
-    @PENDING
     def test_r4_config_key_exits(self, sphere_stl, tmp_path):
         from shore.cli import app
 
@@ -187,7 +183,6 @@ class TestRefused:
 
 
 class TestZero:
-    @PENDING
     def test_r5_mesh_march_zero(self, sphere_stl):
         plain = project(sphere_stl, "ogrid").mesh
         plain.march(ds=0.05, growth=1.1)
@@ -199,7 +194,6 @@ class TestZero:
         for a, b in zip(plain.blocks, mesh.blocks, strict=True):
             assert np.array_equal(a.nodes, b.nodes)
 
-    @PENDING
     def test_r5_project_march_zero(self, sphere_stl):
         plain = project(sphere_stl, "ogrid")
         plain.march()
@@ -212,7 +206,6 @@ class TestZero:
         for a, b in zip(plain.mesh.blocks, p.mesh.blocks, strict=True):
             assert np.array_equal(a.nodes, b.nodes)
 
-    @PENDING
     def test_r6_cli_flag_zero(self, sphere_stl, tmp_path):
         from shore.cli import app
 
@@ -224,7 +217,6 @@ class TestZero:
         assert cli_says_removed(r.output), r.output
         assert same_tree(tmp_path / "a", tmp_path / "b")
 
-    @PENDING
     def test_r6_config_key_zero(self, sphere_stl, tmp_path):
         from shore.cli import app
 
@@ -292,7 +284,6 @@ class TestBlendedProject:
         with np.load(DATA / "blend_removal_default.npz") as gold:
             assert not np.allclose(nodes, gold["ogrid_algebraic/00"])  # really blended
 
-    @PENDING
     def test_r9b_replay_refused(self, blended):
         from shore.project import Project
 

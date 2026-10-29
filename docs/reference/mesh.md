@@ -99,7 +99,7 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 | `--smooth FLOAT` | 0.2 | Laplacian blend strength per layer [0–1] |
 | `--smooth-iters INTEGER` | 2 | Laplacian sweeps applied after each layer |
 | `--smooth-mode TEXT` | `limited` | `limited`: per node, smoothing may pull the layer back by at most ¼ of the step and move it sideways by at most ¼ of the step, so small first steps cannot fold; nodes within those limits are smoothed exactly as before. `legacy`: unlimited (reproduces grids made before this option; folds thin first layers on curved walls). |
-| `--blend-normals-k INTEGER` | 0 | **Deprecated** ([ADR 0019](../adr/0019-deprecate-normal-blending.md)): layers over which to blend body normals into the grid-computed normals (0 = off). It showed no benefit over the grid normals, is refused on `cgrid` / `ch`, and will be removed. |
+| `--blend-normals-k INTEGER` | — | **Removed** ([ADR 0034](../adr/0034-remove-normal-blending.md)), hidden from `--help`: `0` prints a notice and runs, anything else exits 1. It blended body normals into the first layers ([ADR 0019](../adr/0019-deprecate-normal-blending.md)). |
 
 ### Topology
 
@@ -313,8 +313,7 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
 
 - CAD input (`.step`/`.stp`, `.iges`/`.igs`, `.brep`/`.brp`) needs the
   optional backend: `pip install 'shore-mesh[cad]'`. Ray-cast k=0 nodes
-  (`cubed_sphere`, `ogrid`, `oh`) are snapped onto the exact CAD surface,
-  and the deprecated `--blend-normals-k` reads exact-geometry normals. The C-grid family
+  (`cubed_sphere`, `ogrid`, `oh`) are snapped onto the exact CAD surface. The C-grid family
   (`cgrid`, `ch`) still slices a tessellation of the CAD body (deflection
   10⁻³ × the bounding-box diagonal); exact CAD sections are future work.
 - The STL must be a single connected, watertight mesh. Multi-body STL files

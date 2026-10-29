@@ -184,11 +184,11 @@ def _save_project(proj: Project, directory: Path | None) -> None:
 
 
 _BLEND_K = Annotated[
-    int,
+    int | None,
     typer.Option(
         "--blend-normals-k",
-        help="Deprecated (ADR 0019): layers over which to blend body normals into the "
-        "marching direction (0 = off). No measured benefit; refused on C-grids.",
+        help="Removed (ADR 0034): only 0 is accepted, with a notice; delete it.",
+        hidden=True,
     ),
 ]
 _VERBOSE = Annotated[bool, typer.Option("--verbose", "-v", help="Show rich progress bar.")]
@@ -716,7 +716,7 @@ def mesh(
     volume_k_spacing: _VOLUME_K_SPACING = "geometric",
     volume_k_beta: _VOLUME_K_BETA = 3.0,
     volume_k_thickness: _VOLUME_K_THICKNESS = None,
-    blend_normals_k: _BLEND_K = 0,
+    blend_normals_k: _BLEND_K = None,
     topology: Annotated[
         str,
         typer.Option(
@@ -856,11 +856,17 @@ def mesh(
     blend_normals_k = _pick(
         "blend_normals_k", blend_normals_k, cfg.march.blend_normals_k if cfg else None
     )
-    if blend_normals_k > 0:
+    if blend_normals_k is not None and blend_normals_k != 0:
         _err.print(
-            "[yellow]Warning:[/yellow] --blend-normals-k (and [march] blend_normals_k) is "
-            "deprecated (ADR 0019): it showed no benefit over the grid normals, is refused on "
-            "C-grid topologies, and will be removed. Use 0."
+            "[red]Error:[/red] --blend-normals-k (and [march] blend_normals_k) was removed "
+            "(ADR 0034): blending body normals showed no benefit over the grid normals (ADR "
+            "0019). Delete the option."
+        )
+        raise typer.Exit(1)
+    if blend_normals_k is not None:
+        _err.print(
+            "[yellow]Warning:[/yellow] --blend-normals-k (and [march] blend_normals_k) was "
+            "removed (ADR 0034); 0 is still accepted, but delete the option."
         )
     surface_i_spacing = _pick(
         "surface_i_spacing", surface_i_spacing, cfg.surface.i_spacing if cfg else None
@@ -1131,10 +1137,14 @@ def mesh(
                     prog.update(t, advance=1, info=message)
 
                 proj.march(
-                    smooth, smooth_iters, blend_normals_k, smooth_mode, march_scheme, progress=_cb
+                    smooth,
+                    smooth_iters,
+                    smooth_mode=smooth_mode,
+                    march_scheme=march_scheme,
+                    progress=_cb,
                 )
         else:
-            proj.march(smooth, smooth_iters, blend_normals_k, smooth_mode, march_scheme)
+            proj.march(smooth, smooth_iters, smooth_mode=smooth_mode, march_scheme=march_scheme)
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
         raise typer.Exit(1) from None

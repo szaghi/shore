@@ -41,7 +41,7 @@ by a later record that supersedes it.
 | [0031](./0031-polishing-exact-cycles.md) | Polishing: stop at exact cycles | Accepted |
 | [0032](./0032-stl-projection-cache.md) | STL projection: each query point computed once | Accepted |
 | [0033](./0033-load-without-replay.md) | Loading a saved project without replay | Accepted |
-| [0034](./0034-remove-normal-blending.md) | Remove the marcher's normal blending (`blend_normals_k`) | Proposed |
+| [0034](./0034-remove-normal-blending.md) | Remove the marcher's normal blending (`blend_normals_k`) | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

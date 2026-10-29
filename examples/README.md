@@ -28,7 +28,7 @@ a fresh checkout.
 | File | What it does |
 |---|---|
 | `visualize_cubed_sphere.py` | Build a 6-block cubed-sphere or single-block O-grid mesh from an STL; accepts every `shore mesh` flag on the CLI. Without `--generate` it acts as a generic `.geo` / `.npz` viewer. |
-| `config_fuselage.toml` | Annotated TOML config for `shore mesh -c`. Demonstrates every section (tanh wall-normal spacing, equator clustering at the cap seams, blended STL normals). |
+| `config_fuselage.toml` | Annotated TOML config for `shore mesh -c`. Demonstrates every section (tanh wall-normal spacing, equator clustering at the cap seams). |
 | `tour.ipynb` | Jupyter notebook covering generation, Jacobian analysis, spacing-law comparison, and the C1 cap-equator seam-matching demo. |
 
 ### [`02-primitives/`](02-primitives/) — parametric backgrounds

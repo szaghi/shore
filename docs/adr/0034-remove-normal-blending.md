@@ -1,6 +1,6 @@
 # 0034 — Remove the marcher's normal blending (`blend_normals_k`)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 - **Supersedes:** the deprecation interface of [ADR 0019](./0019-deprecate-normal-blending.md)
 
@@ -122,3 +122,30 @@ deleted together with its hash.
 | R7 | no warning without the option |
 | R8 (× 5) | unblended marches equal the golden (atol 1e-10) |
 | R9a, R9b | the blended project loads without replay; its replayed load is refused |
+
+## Acceptance (2026-10-28): blend removal spec met
+
+**Implementation.** As decided:
+- `check_blend_normals_k` in `mesh/mesh.py` (`BLEND_REMOVED`, `BLEND_ZERO`);
+- the `March` command's tombstone field, refused in `apply` before the undo
+  snapshot;
+- `Project.march`'s notice for 0;
+- the hidden CLI flag and the config key; `dump_template` skips the key (the
+  prototype emitted `blend_normals_k = None`, invalid TOML; caught by the
+  template round-trip unit test, not the spec);
+- the blend removed from every marcher, and `normals_override` from
+  `_march_one_layer`, `_march_cap_layer` and `hyperbolic_layer`.
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_blend_removal.py`: **18 passed, 0 skipped, 0 xfailed**.
+  All 11 `@PENDING` lines are removed.
+- The five golden marches are bit-identical, not only within atol 1e-10.
+
+**Tests and examples.**
+- Removed: the unit tests of blending itself
+  (`TestBlendNormalsK_C1SeamSurvives`, the blended march across a sharp
+  edge).
+- Changed: the CAD sphere march runs without the blend; CH's refusal now
+  names the removal.
+- Examples 01, 05 and 08 no longer set the option. Example 01's fuselage
+  config used K = 5 and would now exit 1.

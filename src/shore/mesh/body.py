@@ -149,12 +149,12 @@ class Body:
     def normals(self, points: np.ndarray) -> np.ndarray:
         """Unit outward surface normals at the closest body points (..., 3).
 
-        The marcher's normal blending (``blend_normals_k``) reads these. A CAD
-        body gives its exact geometry normals. An STL body gives the blend of
-        trimesh's vertex normals (``_stl_normals``), not the crease-aware
-        normals of ``StlGeometry`` (ADR 0014): those jump by the edge angle
-        across a sharp edge, and blended into the first marching steps they
-        fold the cells straddling it (ADR 0015).
+        A CAD body gives its exact geometry normals. An STL body gives the
+        blend of trimesh's vertex normals (``_stl_normals``), smooth across
+        sharp edges, not the crease-aware normals of ``StlGeometry`` (ADR
+        0014, 0015). ADR 0005's acceptance spec measures k-line angles against
+        them; the marcher's normal blending that also read them is removed
+        (ADR 0034).
         """
         if self.is_cad:
             return self.geometry.project(points).normals

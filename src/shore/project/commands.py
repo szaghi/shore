@@ -31,7 +31,7 @@ import numpy as np
 
 from shore.exceptions import ParameterError, ShoreError
 from shore.mesh.body import Body
-from shore.mesh.mesh import Mesh
+from shore.mesh.mesh import BLEND_REMOVED, Mesh
 from shore.pipeline import (
     apply_splits,
     build_primitive,
@@ -323,11 +323,13 @@ class March(Command):
 
     smooth_strength: float = 0.2
     smooth_iters: int = 2
-    blend_normals_k: int = 0
+    blend_normals_k: int = 0  # removed (ADR 0034): kept so old journals load without replay
     smooth_mode: str = "limited"
     march_scheme: str = "algebraic"
 
     def apply(self, project: Project, ctx: Context) -> Undo:
+        if self.blend_normals_k:
+            raise ParameterError(BLEND_REMOVED)
         mesh, build = project.require_mesh()
         if not build.marchable:
             raise ParameterError(
@@ -349,7 +351,6 @@ class March(Command):
                 smooth_iters=self.smooth_iters,
                 steps=build.spacing.build_steps(build.nk),
                 layer_callback=layer,
-                blend_normals_k=self.blend_normals_k,
                 smooth_mode=self.smooth_mode,
                 march_scheme=self.march_scheme,
             )

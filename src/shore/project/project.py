@@ -37,6 +37,7 @@ import hashlib
 import runpy
 import shutil
 import tomllib
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -46,7 +47,7 @@ import numpy as np
 
 from shore.exceptions import MeshInputError, ParameterError
 from shore.mesh.body import Body
-from shore.mesh.mesh import Mesh
+from shore.mesh.mesh import BLEND_ZERO, Mesh
 from shore.project.commands import (
     BuildCollar,
     BuildPrimitive,
@@ -253,16 +254,22 @@ class Project:
         self,
         smooth_strength: float = 0.2,
         smooth_iters: int = 2,
-        blend_normals_k: int = 0,
+        blend_normals_k: int | None = None,
         smooth_mode: str = "limited",
         march_scheme: str = "algebraic",
         *,
         progress: ProgressFn | None = None,
         cancel: CancelToken | None = None,
     ) -> None:
-        """Extrude the blocks from the wall; *progress* / *cancel* are hooks."""
+        """Extrude the blocks from the wall; *progress* / *cancel* are hooks.
+
+        ``blend_normals_k`` is removed (ADR 0034): 0 warns, anything else is
+        refused when the command runs (a journal loaded without replay keeps it).
+        """
+        if blend_normals_k == 0:
+            warnings.warn(BLEND_ZERO, DeprecationWarning, stacklevel=2)
         self.execute(
-            March(smooth_strength, smooth_iters, blend_normals_k, smooth_mode, march_scheme),
+            March(smooth_strength, smooth_iters, blend_normals_k or 0, smooth_mode, march_scheme),
             progress=progress,
             cancel=cancel,
         )

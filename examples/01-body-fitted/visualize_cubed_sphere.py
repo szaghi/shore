@@ -78,7 +78,6 @@ def generate_sphere(
     volume_k_spacing: str = "geometric",
     volume_k_beta: float = 3.0,
     volume_k_thickness: float | None = None,
-    blend_normals_k: int = 0,
 ) -> list[Path]:
     """Create sphere.stl + 6 sphere_<label>.geo files via the
     cubed-sphere topology.
@@ -139,7 +138,6 @@ def generate_sphere(
             ds=ds, growth=growth,
             smooth_strength=smooth, smooth_iters=smooth_iters,
             steps=steps, layer_callback=_cb,
-            blend_normals_k=blend_normals_k,
         )
         print()
 
@@ -230,8 +228,6 @@ def main() -> None:
                      help=argparse.SUPPRESS)
     gen.add_argument("--cap-pull", type=float, default=None,
                      help=argparse.SUPPRESS)
-    gen.add_argument("--blend-normals-k", type=int, default=0,
-                     help="Layers over which to blend STL surface normals (0 = off)")
 
     parser.add_argument("input", type=Path, nargs="?", default=None,
                         help=".geo or .npz file to visualise")
@@ -299,7 +295,6 @@ def main() -> None:
             volume_k_spacing=args.volume_k_spacing,
             volume_k_beta=args.volume_k_beta,
             volume_k_thickness=args.volume_k_thickness,
-            blend_normals_k=args.blend_normals_k,
         )
 
         if args.vtk:

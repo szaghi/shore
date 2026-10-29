@@ -107,8 +107,7 @@ topologies whose input is a numeric array — typically a cross-section
 polyline from another mesh — rather than a triangulated body.
 
 The resulting `Mesh` has `body = None`; methods that depend on
-`self.body` (e.g. `blend_normals_k > 0` STL-normal blending in
-[`Mesh.march`](#meshmarch)) will fail loudly if called.
+`self.body` (e.g. `Mesh.snap`) will fail loudly if called.
 
 For [`CGridTipCap`](./api-topology#cgridtipcap), `surface` is a
 `(ni_body, 3)` cross-section polyline and `nk` is the cap's
@@ -141,7 +140,9 @@ def march(
     smooth_iters: int = 2,
     steps: np.ndarray | None = None,
     layer_callback: Callable[[int, float], None] | None = None,
-    blend_normals_k: int = 0,
+    blend_normals_k: int | None = None,
+    smooth_mode: str = "limited",
+    march_scheme: str = "algebraic",
 ) -> None
 ```
 
@@ -164,7 +165,9 @@ is fully volumetric at build time and `march()` is a **silent no-op**.
 | `smooth_iters` | `int` | `2` | Number of Laplacian sweeps applied after each extrusion step. |
 | `steps` | `np.ndarray \| None` | `None` | Pre-computed per-layer step sizes, shape `(nk-1,)`. Highest precedence — overrides `ds`/`growth` and any per-edge `spacing_k`. |
 | `layer_callback` | `Callable[[int, float], None] \| None` | `None` | Called as `layer_callback(k, jmin_global)` after each accepted layer. The CLI's Rich progress bar uses this hook. |
-| `blend_normals_k` | `int` | `0` | Number of layers over which to blend STL surface normals into the grid-computed normals. `0` disables. At layer `k < blend_normals_k`, blend weight is `alpha = 1 - k / blend_normals_k`, so `k=0` extrudes along pure STL normals and the blend reaches zero at `k = blend_normals_k`. **Deprecated** (ADR 0019): it showed no benefit over the grid normals; `DeprecationWarning` for `> 0`, `ParameterError` on C-grid topologies. Requires `self.body.mesh`. |
+| `blend_normals_k` | `int \| None` | `None` | **Removed** ([ADR 0034](../adr/0034-remove-normal-blending.md)): `0` is still accepted with a `DeprecationWarning`; anything else raises `ParameterError`. It blended body normals into the first layers' marching directions, with no benefit ([ADR 0019](../adr/0019-deprecate-normal-blending.md)). |
+| `smooth_mode` | `str` | `"limited"` | `"limited"` bounds the smoothing motion per node (a quarter of the step); `"legacy"` reproduces old grids. |
+| `march_scheme` | `str` | `"algebraic"` | `"algebraic"` (normal extrusion + smoothing) or `"hyperbolic"` (Steger-Chaussee, [ADR 0005](../adr/0005-marching-schemes.md)). |
 
 **k-step precedence**
 

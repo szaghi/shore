@@ -76,7 +76,6 @@ growth          = 1.15               # geometric growth ratio
 smooth          = 0.2                # Laplacian blend strength [0–1]
 smooth_iters   = 2                   # Laplacian sweeps per layer
 smooth_mode    = "limited"           # limited | legacy
-blend_normals_k = 0                  # STL-normal blend window (0 = off)
 
 [surface]
 i_spacing = "uniform"                # uniform | tanh | tanh2
@@ -146,7 +145,6 @@ just the alias map.
 | `march.smooth` | `--smooth` |
 | `march.smooth_iters` | `--smooth-iters` |
 | `march.smooth_mode` | `--smooth-mode` |
-| `march.blend_normals_k` | `--blend-normals-k` |
 | `surface.i_spacing` | `--surface-i-spacing` |
 | `surface.i_beta` | `--surface-i-beta` |
 | `surface.j_spacing` | `--surface-j-spacing` |
@@ -159,7 +157,7 @@ just the alias map.
 
 A config representative of a real boundary-layer mesh — fixed
 far-field thickness, tanh wall-normal clustering, equator clustering
-at the cap seams, STL-normal blending in the first 5 layers:
+at the cap seams:
 
 ```toml
 # fuselage.toml
@@ -179,7 +177,6 @@ ds              = 1.0e-5      # ignored when k_spacing != geometric
 growth          = 1.15        # ignored when k_spacing != geometric
 smooth          = 0.3
 smooth_iters    = 3
-blend_normals_k = 5
 
 [surface]
 i_spacing = "tanh"

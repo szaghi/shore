@@ -235,8 +235,8 @@ class TestCornerNormals:
         np.testing.assert_allclose(StlGeometry(mesh).project(points).normals, [[0, 0, 1]])
 
 
-class TestBodyNormalsForBlending:
-    """The marcher's normal blending keeps trimesh's vertex normals on STL (ADR 0015)."""
+class TestBodyNormals:
+    """``Body.normals`` keeps trimesh's vertex normals on STL (ADR 0015)."""
 
     def test_stl_body_normals_are_the_vertex_normal_blend(self):
         mesh = trimesh.creation.box(extents=(4.0, 4.0, 1.0))
@@ -246,22 +246,6 @@ class TestBodyNormalsForBlending:
         np.testing.assert_array_equal(
             normals.reshape(-1, 3), _stl_normals(mesh, points.reshape(-1, 3))
         )
-
-    def test_blended_cubed_sphere_march_across_a_sharp_edge(self, tmp_path):
-        # with the crease-aware normals the first layer folded at the cylinder's rim
-        import warnings
-
-        from shore.mesh.mesh import Mesh
-        from shore.mesh.topology import CubedSphereTopology
-
-        trimesh.creation.cylinder(radius=0.5, height=1.6, sections=96).export(
-            str(tmp_path / "cyl.stl")
-        )
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mesh = Mesh.from_stl(tmp_path / "cyl.stl", CubedSphereTopology(), ni=33, nj=64, nk=4)
-            mesh.march(ds=0.01, growth=1.15, blend_normals_k=5)
-        assert len(mesh.blocks) == 6
 
 
 class TestProjectCache:

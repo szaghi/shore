@@ -68,7 +68,6 @@ class TestLoadConfigBasics:
             growth = 1.2
             smooth = 0.3
             smooth_iters = 4
-            blend_normals_k = 5
 
             [surface]
             i_spacing = "tanh"
@@ -87,7 +86,7 @@ class TestLoadConfigBasics:
         assert cfg.grid.nk == 50
         assert cfg.grid.theta_cap == pytest.approx(math.radians(30.0))
         assert cfg.march.ds == pytest.approx(1e-4)
-        assert cfg.march.blend_normals_k == 5
+        assert cfg.march.blend_normals_k is None  # removed (ADR 0034)
         assert cfg.surface.i_spacing == "tanh"
         assert cfg.surface.j_spacing == "tanh2"
         assert cfg.volume.k_spacing == "tanh"
@@ -193,6 +192,10 @@ class TestDumpTemplate:
         p.write_text(text)
         cfg = load_config(p)
         assert cfg.grid.ni == GridConfig().ni  # defaults preserved
+
+    def test_template_omits_removed_blend(self, capsys):
+        dump_template()
+        assert "blend_normals_k" not in capsys.readouterr().out  # removed (ADR 0034)
 
     def test_template_advertises_current_version(self, capsys):
         dump_template()

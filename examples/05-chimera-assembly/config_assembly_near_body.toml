@@ -50,7 +50,6 @@ ds              = 0.01
 growth          = 1.1
 smooth          = 0.2
 smooth_iters    = 2
-blend_normals_k = 0
 
 [surface]
 i_spacing = "uniform"

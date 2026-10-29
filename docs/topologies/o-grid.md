@@ -34,7 +34,7 @@ shore mesh -c ogrid.toml
 The output is one `<stem>.geo` file with shape `(ni, nj, nk, 3)` and
 j-periodic. All ``shore mesh`` flags apply equally — `--ni`, `--nj`,
 `--nk`, `--ds`, `--growth`, `--smooth`, `--smooth-iters`, the spacing
-laws, `--blend-normals-k`, `--theta-cap` / `--theta-cap-deg`. The
+laws, `--theta-cap` / `--theta-cap-deg`. The
 legacy cap-shaping flags (`--cap-pull`, `--cap-squareness`) are
 deprecated for both topologies and silently ignored (the cap k=0 is now
 built by gnomonic flat-square projection).

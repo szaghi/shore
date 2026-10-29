@@ -86,7 +86,6 @@ def generate_oh_hybrid(
     channel_k_beta: float,
     smooth: float = 0.2,
     smooth_iters: int = 2,
-    blend_normals_k: int = 0,
 ) -> list[Path]:
     """Create sphere.stl + 12 oh_<label>.geo files via the OH hybrid topology.
 
@@ -142,7 +141,6 @@ def generate_oh_hybrid(
         ds=ds, growth=growth,
         smooth_strength=smooth, smooth_iters=smooth_iters,
         layer_callback=_cb,
-        blend_normals_k=blend_normals_k,
     )
     print()
     print("  channel blocks filled by ruled-surface from wrap envelope to box.")
@@ -200,8 +198,6 @@ def main() -> None:
                           "k=last is the box face).")
     gen.add_argument("--channel-k-beta", type=float, default=3.0,
                      help="Clustering strength for tanh / tanh2 channel spacing.")
-    gen.add_argument("--blend-normals-k", type=int, default=0,
-                     help="Layers over which to blend STL surface normals (0 = off).")
 
     parser.add_argument("input", type=Path, nargs="?", default=None,
                         help=".geo file to visualise (any single OH block).")
@@ -241,7 +237,6 @@ def main() -> None:
             channel_k_law=args.channel_k_law,
             channel_k_beta=args.channel_k_beta,
             smooth=args.smooth, smooth_iters=args.smooth_iters,
-            blend_normals_k=args.blend_normals_k,
         )
 
         if args.vtk:

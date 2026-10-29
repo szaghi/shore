@@ -121,9 +121,9 @@ class TestSphereAcceptance:
         diff = np.abs(_k0(step) - _k0(stl)).max()
         assert diff <= _stl_sag(cad / "sphere.stl")
 
-    def test_march_with_exact_normals(self, cad):
+    def test_march_on_step(self, cad):
         mesh = Mesh.from_file(cad / "sphere.step", CubedSphereTopology(), ni=17, nj=32, nk=6)
-        mesh.march(ds=1e-2, growth=1.1, blend_normals_k=3)
+        mesh.march(ds=1e-2, growth=1.1)
         for block in mesh.blocks:
             r = np.linalg.norm(block.nodes, axis=-1)
             assert np.all(np.diff(r, axis=2) > 0.0)  # every layer moves outward

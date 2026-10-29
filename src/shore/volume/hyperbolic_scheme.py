@@ -146,7 +146,6 @@ def hyperbolic_layer(
     step: float,
     periodic: tuple[bool, bool],
     ghost_rows: dict[str, np.ndarray] | None = None,
-    normals_override: np.ndarray | None = None,
     boundary_target: np.ndarray | None = None,
     params: HyperbolicParams = DEFAULT,
 ) -> np.ndarray:
@@ -162,8 +161,6 @@ def hyperbolic_layer(
         ``(periodic_i, periodic_j)``.
     ghost_rows :
         Neighbour rows across block seams (see ``_compute_normals``).
-    normals_override :
-        Replaces the local marching direction (normal blending).
     boundary_target :
         Full (ni, nj, 3) array whose non-periodic edge rows are the required
         new boundary positions (Dirichlet-pinned cap edges); interior values
@@ -174,11 +171,7 @@ def hyperbolic_layer(
     ti, tj = _tangents(layer, periodic, ghost)
     n = np.cross(ti, tj)
     area = np.linalg.norm(n, axis=-1)
-    nhat = (
-        normals_override
-        if normals_override is not None
-        else _compute_normals(layer, periodic=periodic, ghost_rows=ghost_rows)
-    )
+    nhat = _compute_normals(layer, periodic=periodic, ghost_rows=ghost_rows)
 
     # local cell size and the stabilisation ramp rho = min(1, step / h)
     h = np.sqrt(np.maximum(area, 1e-300))
