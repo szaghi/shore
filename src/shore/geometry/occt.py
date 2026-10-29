@@ -74,7 +74,7 @@ from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS, TopoDS_Shape
 
 from shore.exceptions import MeshInputError, ParameterError
-from shore.geometry.base import BODY, EntityKind, EntityRef, Projection
+from shore.geometry.base import BODY, Display, EntityKind, EntityRef, Projection
 from shore.geometry.keys import EntityKey, make_key
 from shore.geometry.stl import StlGeometry
 from shore.surface.projector import ProjectionResult
@@ -282,6 +282,19 @@ class OcctGeometry:
     @property
     def bounds(self) -> np.ndarray:
         return self._bounds.copy()
+
+    def display(self) -> Display:
+        """The model as drawn (ADR 0038): the tier-1 tessellation, each
+        triangle owned by its face; edges as polylines; vertices."""
+        vertices = [_xyz(BRep_Tool.Pnt_s(v)) for v in self.vertices]
+        return Display(
+            points=self._verts.copy(),
+            triangles=self._tris.copy(),
+            triangle_entity=self._tri_face.astype(np.int64),
+            surface_kind=EntityKind.SURFACE,
+            curves=tuple(pts.copy() for pts, _ in self._edge_polys),
+            vertices=np.array(vertices, dtype=np.float64).reshape(-1, 3),
+        )
 
     def entities(self, kind: EntityKind) -> tuple[EntityRef, ...]:
         n = {

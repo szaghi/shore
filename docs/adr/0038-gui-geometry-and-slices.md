@@ -1,6 +1,6 @@
 # 0038 — GUI slice 2: geometry display and slice planes
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -124,3 +124,15 @@ slices. The journal was unchanged by every view action.
 | V6 | quality colours on a slice = colour map of the scaled Jacobian of its cells |
 | V7 (× 2) | view state changes neither journal nor history; slices of removed blocks dropped |
 | V8 (× 2) | `display()` of STL and OCCT: consistent arrays, one curve per edge, one point per vertex |
+
+## Acceptance (2026-10-29): spec met
+
+**Implementation.** As decided, plus:
+- unit tests: the slice cell and value round trip, the last plane, the
+  Display dock's buttons and toggles (`tests_gui/test_gui_units.py`), and
+  `StlGeometry.display()` (`tests/test_geometry.py`, main suite);
+- `docs/reference/gui.md`.
+
+**Verdict** (T2 locally, offscreen Qt with llvmpipe; `scripts/check_spec.py`
+reports all files ok): `tests_gui/spec/test_gui_inspect.py` gives **12
+passed, 0 skipped, 0 xfailed**, and slice 1's spec still gives 16 passed.

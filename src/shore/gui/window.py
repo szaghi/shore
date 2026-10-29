@@ -16,6 +16,7 @@ import traceback
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -27,10 +28,12 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMainWindow,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QTabWidget,
     QToolBar,
     QTreeWidget,
@@ -41,7 +44,7 @@ from PySide6.QtWidgets import (
 
 from shore.gui.forms import FORMS, Field, Form, form
 from shore.gui.session import BlockKey, Session
-from shore.gui.viewport import PickResult, boundary_values
+from shore.gui.viewport import GeometryPick, PickResult, SliceKey, boundary_values, slice_values
 from shore.project.commands import CancelToken
 
 AskPath = Callable[[str, str], str | None]  # (kind: "file" | "dir" | "save", title) -> path
@@ -111,6 +114,7 @@ class MainWindow(QMainWindow):
             self.setCentralWidget(self.canvas)
 
         self._build_tree()
+        self._build_display()
         self._build_forms()
         self._build_console()
         self._build_actions()
@@ -126,10 +130,54 @@ class MainWindow(QMainWindow):
     def _build_tree(self) -> None:
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Model", "Detail"])
+        self.geometry_tree = QTreeWidget()
+        self.geometry_tree.setHeaderLabels(["Geometry", "Entities"])
+        tabs = QTabWidget()
+        tabs.addTab(self.tree, "Model")
+        tabs.addTab(self.geometry_tree, "Geometry")
         dock = QDockWidget("Model", self)
         dock.setObjectName("model")
-        dock.setWidget(self.tree)
+        dock.setWidget(tabs)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+
+    def _build_display(self) -> None:
+        """Visibility toggles and slice planes: view state, not commands (ADR 0038)."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        self.visibility: dict[str, QCheckBox] = {}
+        for kind, label in (("block", "Blocks"), ("geometry", "Geometry"), ("slice", "Slices")):
+            box = QCheckBox(label)
+            box.setChecked(True)
+            box.toggled.connect(lambda on, k=kind: self.set_visible(k, on))
+            layout.addWidget(box)
+            self.visibility[kind] = box
+        form = QFormLayout()
+        self.slice_block = QComboBox()
+        self.slice_axis = QComboBox()
+        self.slice_axis.addItems(["i", "j", "k"])
+        self.slice_index = QSpinBox()
+        self.slice_index.setRange(0, 0)
+        self.slice_block.currentIndexChanged.connect(lambda _: self._slice_range())
+        self.slice_axis.currentIndexChanged.connect(lambda _: self._slice_range())
+        form.addRow("block", self.slice_block)
+        form.addRow("axis", self.slice_axis)
+        form.addRow("index", self.slice_index)
+        layout.addLayout(form)
+        add = QPushButton("Add slice")
+        add.clicked.connect(self._add_slice_from_panel)
+        layout.addWidget(add)
+        self.slice_list = QListWidget()
+        layout.addWidget(self.slice_list)
+        remove = QPushButton("Remove slice")
+        remove.clicked.connect(self._remove_selected_slice)
+        layout.addWidget(remove)
+        layout.addStretch(1)
+        dock = QDockWidget("Display", self)
+        dock.setObjectName("display")
+        dock.setWidget(panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        self.slices: list[SliceKey] = []
+        self._geometry_shown: list[tuple[str, int]] = []
 
     def _build_forms(self) -> None:
         panel = QWidget()
@@ -268,12 +316,104 @@ class MainWindow(QMainWindow):
         keys = [key for key, _ in blocks]
         # node values change in place (a march fills the layers): always re-upload
         self.viewport.set_blocks([(key, b.nodes) for key, b in blocks])
+        geometries = list(self.session.project.geometries.items())
+        shown = [(name, id(body)) for name, body in geometries]
+        if shown != self._geometry_shown:
+            self._geometry_shown = shown
+            self.viewport.set_geometries([(n, b.geometry.display()) for n, b in geometries])
+            self.geometry_tree.clear()
+            for name, body in geometries:
+                d = body.geometry.display()
+                if d.curves or len(d.vertices):
+                    n_faces = int(d.triangle_entity.max()) + 1 if len(d.triangle_entity) else 0
+                    text = f"{n_faces} faces, {len(d.curves)} edges, {len(d.vertices)} vertices"
+                else:
+                    text = f"{len(d.triangles)} triangles"
+                self.geometry_tree.addTopLevelItem(QTreeWidgetItem([name, text]))
         if keys != self._shown:  # frame the view when the set of blocks changes
             self._shown = keys
             self.viewport.show_all()
+        self._refresh_slices()
         if self.quality_action.isChecked():
             self.refresh_quality()
         self._update_actions()
+
+    # -- view state (ADR 0038): not commands, never journaled ---------------------------
+
+    def set_visible(self, kind: str, visible: bool) -> None:
+        """Show or hide all blocks, geometries or slices."""
+        self.viewport.show(kind, visible)
+        box = self.visibility[kind]
+        if box.isChecked() != visible:
+            box.setChecked(visible)
+
+    def add_slice(self, block: BlockKey, axis: str, index: int) -> SliceKey:
+        """Show the constant-*axis* plane *index* of *block*."""
+        node = self.session.block(block)
+        if node is None:
+            raise KeyError(f"no block {block}")
+        n = node.nodes.shape["ijk".index(axis)]
+        if not 0 <= index < n:
+            raise IndexError(f"{axis} = {index} outside 0..{n - 1}")
+        key = SliceKey(block, axis, index)
+        if key not in self.slices:
+            self.slices.append(key)
+        self._refresh_slices()
+        if self.quality_action.isChecked():
+            self.refresh_quality()
+        return key
+
+    def remove_slice(self, key: SliceKey) -> None:
+        if key in self.slices:
+            self.slices.remove(key)
+        self._refresh_slices()
+
+    def _refresh_slices(self) -> None:
+        """Keep the slices whose block still exists and holds the index."""
+        kept = []
+        for key in self.slices:
+            block = self.session.block(key.block)
+            if block is not None and key.index < block.nodes.shape["ijk".index(key.axis)]:
+                kept.append(key)
+        self.slices = kept
+        self.viewport.set_slices([(k, self.session.block(k.block).nodes) for k in kept])
+        self.slice_list.clear()
+        for k in kept:
+            self.slice_list.addItem(f"{k.block.component}/{k.block.label}  {k.axis} = {k.index}")
+        current = self.slice_block.currentData()
+        self.slice_block.blockSignals(True)
+        self.slice_block.clear()
+        for bkey, _ in self.session.blocks():
+            self.slice_block.addItem(f"{bkey.component}/{bkey.label}", bkey)
+        if current is not None:
+            i = self.slice_block.findData(current)
+            self.slice_block.setCurrentIndex(max(i, 0))
+        self.slice_block.blockSignals(False)
+        self._slice_range()
+
+    def _slice_range(self) -> None:
+        block = (
+            self.session.block(self.slice_block.currentData()) if self.slice_block.count() else None
+        )
+        n = (
+            block.nodes.shape["ijk".index(self.slice_axis.currentText())]
+            if block is not None
+            else 1
+        )
+        self.slice_index.setRange(0, n - 1)
+
+    def _add_slice_from_panel(self) -> None:
+        if self.slice_block.count():
+            self.add_slice(
+                self.slice_block.currentData(),
+                self.slice_axis.currentText(),
+                self.slice_index.value(),
+            )
+
+    def _remove_selected_slice(self) -> None:
+        row = self.slice_list.currentRow()
+        if 0 <= row < len(self.slices):
+            self.remove_slice(self.slices[row])
 
     def refresh_quality(self) -> None:
         """Colour boundary quads by the scaled Jacobian of their cells, or clear."""
@@ -282,9 +422,11 @@ class MainWindow(QMainWindow):
             return
         from shore.quality import scaled_jacobian
 
-        values = {
-            key: boundary_values(scaled_jacobian(b.nodes)) for key, b in self.session.blocks()
-        }
+        metrics = {key: scaled_jacobian(b.nodes) for key, b in self.session.blocks()}
+        values: dict[Any, np.ndarray] = {key: boundary_values(m) for key, m in metrics.items()}
+        for sk in self.slices:
+            if sk.block in metrics:
+                values[sk] = slice_values(metrics[sk.block], sk.axis, sk.index)
         self.viewport.set_face_scalars(values, clim=(-1.0, 1.0))
 
     def _update_actions(self) -> None:
@@ -412,16 +554,20 @@ class MainWindow(QMainWindow):
         if self.last_error is None:
             self.statusBar().showMessage(f"Saved {self.session.directory}", 5000)
 
-    def _picked(self, result: PickResult | None) -> None:
+    def _picked(self, result: PickResult | GeometryPick | None) -> None:
         self.last_pick = result
         if result is None:
             self.statusBar().clearMessage()
             return
-        key = result.key
         x, y, z = (float(v) for v in result.xyz)
+        where = f"xyz ({x:.9g}, {y:.9g}, {z:.9g})"
+        if isinstance(result, GeometryPick):
+            e = result.entity
+            self.statusBar().showMessage(f"{result.geometry}  {e.kind.value} {e.index}  {where}")
+            return
+        key = result.key.block if isinstance(result.key, SliceKey) else result.key
         self.statusBar().showMessage(
-            f"{key.component}/{key.label}  {result.face}  cell {result.cell}  "
-            f"xyz ({x:.9g}, {y:.9g}, {z:.9g})"
+            f"{key.component}/{key.label}  {result.face}  cell {result.cell}  {where}"
         )
 
 

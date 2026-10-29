@@ -271,3 +271,16 @@ class TestProjectCache:
         g.project(np.random.default_rng(0).normal(size=(40, 3)))
         g.project(np.random.default_rng(1).normal(size=(40, 3)))
         assert len(g._closest) <= 50
+
+
+class TestDisplay:
+    """``StlGeometry.display()``: the mesh as the GUI draws it (ADR 0038)."""
+
+    def test_stl_display_is_the_mesh(self, unit_sphere):
+        from shore.geometry.base import EntityKind
+
+        d = StlGeometry(unit_sphere).display()
+        assert d.surface_kind is EntityKind.BODY
+        assert np.array_equal(d.points, unit_sphere.vertices)
+        assert np.array_equal(d.triangles, unit_sphere.faces)
+        assert not d.triangle_entity.any() and d.curves == () and len(d.vertices) == 0

@@ -19,11 +19,29 @@ FACES = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi")
 
 
 @dataclass(frozen=True)
+class SliceKey:
+    """A constant-index plane of a block: ``axis`` in ``"ijk"``, node ``index``."""
+
+    block: Any
+    axis: str
+    index: int
+
+
+@dataclass(frozen=True)
+class GeometryPick:
+    """A picked geometry entity and the float64 point on it."""
+
+    geometry: str
+    entity: Any  # shore.geometry.base.EntityRef
+    xyz: np.ndarray
+
+
+@dataclass(frozen=True)
 class PickResult:
     """A picked boundary cell face: its block, face and cell, and its centre."""
 
-    key: Any  # the block key the viewport was given
-    face: str
+    key: Any  # the block key the viewport was given (a SliceKey for a slice plane)
+    face: str  # a face name, or "i=5" for a slice plane
     cell: tuple[int, int, int]  # (i, j, k) of the cell behind the face, 0-based
     xyz: np.ndarray  # float64 centre of the picked quad, from the CPU arrays
 
@@ -134,3 +152,29 @@ def colormap(values: np.ndarray, clim: tuple[float, float]) -> np.ndarray:
     rgb = np.where(lower, red + (white - red) * s, white + (blue - white) * s)
     rgb[~np.isfinite(values)] = 0.6
     return np.concatenate([rgb, np.ones((len(values), 1))], axis=1).astype(np.float32)
+
+
+def slice_grid(nodes: np.ndarray, axis: str, index: int) -> np.ndarray:
+    """The node grid ``(na, nb, 3)`` of the constant-*axis* plane *index*."""
+    a = "ijk".index(axis)
+    return np.take(nodes, index, axis=a)
+
+
+def slice_cell(
+    shape: tuple[int, int, int], axis: str, index: int, quad: int
+) -> tuple[int, int, int]:
+    """The cell of a slice quad: on the plane's + side, or its - side on the last plane."""
+    a = "ijk".index(axis)
+    others = [n for d, n in enumerate(shape) if d != a]
+    p, q = divmod(quad, others[1] - 1)
+    layer = min(index, shape[a] - 2)
+    cell = [p, q]
+    cell.insert(a, layer)
+    return (cell[0], cell[1], cell[2])
+
+
+def slice_values(cell_values: np.ndarray, axis: str, index: int) -> np.ndarray:
+    """Per slice quad, the value of its cell (``slice_cell``), in quad order."""
+    a = "ijk".index(axis)
+    layer = min(index, cell_values.shape[a] - 1)
+    return np.take(cell_values, layer, axis=a).ravel()

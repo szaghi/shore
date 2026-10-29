@@ -9,7 +9,7 @@ Backends: ``StlGeometry`` (triangulated STL, via trimesh) and, later,
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -45,6 +45,24 @@ class EntityRef:
 
 BODY = EntityRef(EntityKind.BODY, 0)
 """The whole body, the target of every pre-association projection."""
+
+
+@dataclass(frozen=True, eq=False)
+class Display:
+    """A geometry as it is drawn (ADR 0038): triangles, curves and points.
+
+    Each triangle belongs to entity ``EntityRef(surface_kind,
+    triangle_entity[t])``: the body of an STL, a face of a CAD model. Curve
+    ``c`` is the polyline of ``EntityRef(CURVE, c)``, point ``p`` the
+    position of ``EntityRef(POINT, p)``. Coordinates are float64.
+    """
+
+    points: np.ndarray  # (n, 3) triangle vertices
+    triangles: np.ndarray  # (m, 3) indices into points
+    triangle_entity: np.ndarray  # (m,) entity index of each triangle
+    surface_kind: EntityKind
+    curves: tuple[np.ndarray, ...] = ()
+    vertices: np.ndarray = field(default_factory=lambda: np.empty((0, 3)))
 
 
 @dataclass

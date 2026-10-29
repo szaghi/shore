@@ -126,3 +126,50 @@ class TestWindow:
         ]
         w.command.setCurrentIndex(w.command.findData("march"))
         assert set(w._form_values()) == {f.name for f in form("march").fields}
+
+
+class TestSlices:
+    @pytest.mark.parametrize(("axis", "index"), [("i", 0), ("j", 2), ("k", 4)])
+    def test_slice_cell_and_values_agree(self, axis, index):
+        from shore.gui.viewport import slice_cell, slice_grid, slice_values
+
+        shape = (4, 5, 6)
+        nodes = np.random.default_rng(2).normal(size=(*shape, 3))
+        cells = np.arange(np.prod([n - 1 for n in shape]), dtype=float).reshape(3, 4, 5)
+        grid = slice_grid(nodes, axis, index)
+        values = slice_values(cells, axis, index)
+        assert len(values) == (grid.shape[0] - 1) * (grid.shape[1] - 1)
+        for quad in range(len(values)):
+            assert values[quad] == cells[slice_cell(shape, axis, index, quad)]
+
+    def test_last_plane_maps_to_the_last_cells(self):
+        from shore.gui.viewport import slice_cell
+
+        assert slice_cell((4, 5, 6), "k", 5, 0) == (0, 0, 4)
+
+
+class TestDisplayPanel:
+    def test_panel_buttons_and_toggles(self, qapp, sphere_stl):
+        from shore.gui.window import MainWindow
+
+        w = MainWindow(offscreen_viewport=True, ask_path=lambda *a: None)
+        w.run_form("load_geometry", {"path": str(sphere_stl)})
+        w.run_form(
+            "build_primitive",
+            {"kind": "box", "params": "{'vmin': (0, 0, 0), 'vmax': (1, 1, 1), 'ni': 4, "
+                                      "'nj': 4, 'nk': 4}"},
+        )  # fmt: skip
+        w.wait_idle()
+        assert w.slice_block.count() == 1 and w.slice_index.maximum() == 3
+        w.slice_axis.setCurrentText("j")
+        w.slice_index.setValue(2)
+        w._add_slice_from_panel()
+        assert [(k.axis, k.index) for k in w.slices] == [("j", 2)]
+        assert w.slice_list.count() == 1
+        w.slice_list.setCurrentRow(0)
+        w._remove_selected_slice()
+        assert w.slices == [] and w.slice_list.count() == 0
+        w.visibility["geometry"].setChecked(False)
+        assert not w.viewport.visible("geometry")
+        w.set_visible("geometry", True)
+        assert w.visibility["geometry"].isChecked()

@@ -25,7 +25,7 @@ import trimesh.proximity
 import trimesh.triangles
 
 from shore.exceptions import ParameterError
-from shore.geometry.base import BODY, EntityKind, EntityRef, Projection
+from shore.geometry.base import BODY, Display, EntityKind, EntityRef, Projection
 from shore.geometry.keys import EntityKey, make_key
 from shore.surface.io import load_stl
 from shore.surface.projector import ProjectionResult, Projector
@@ -76,6 +76,16 @@ class StlGeometry:
     @property
     def bounds(self) -> np.ndarray:
         return np.asarray(self.mesh.bounds, dtype=np.float64).copy()
+
+    def display(self) -> Display:
+        """The mesh as drawn (ADR 0038): every triangle belongs to the body."""
+        faces = np.asarray(self.mesh.faces)
+        return Display(
+            points=np.asarray(self.mesh.vertices, dtype=np.float64),
+            triangles=faces,
+            triangle_entity=np.zeros(len(faces), dtype=np.int64),
+            surface_kind=EntityKind.BODY,
+        )
 
     def entities(self, kind: EntityKind) -> tuple[EntityRef, ...]:
         return (BODY,) if kind is EntityKind.BODY else ()

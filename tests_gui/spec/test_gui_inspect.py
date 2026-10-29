@@ -139,7 +139,6 @@ def facing_triangles(vp, display, step: int = 1):
 
 
 class TestGeometry:
-    @PENDING
     def test_v1_shown_and_listed(self, qapp, sphere_stl, step_part):
         w = window(qapp)
         w.run_form("load_geometry", {"path": str(sphere_stl)})
@@ -157,7 +156,6 @@ class TestGeometry:
             err = np.abs(w.viewport.uploaded_positions(name) - d.points).max()
             assert err <= 1e-6 * extent
 
-    @PENDING
     def test_v2_stl_picks(self, qapp, sphere_stl):
         from shore.geometry.base import BODY
         from shore.gui.viewport import GeometryPick
@@ -175,7 +173,6 @@ class TestGeometry:
             checked += 1
         assert checked >= 5
 
-    @PENDING
     def test_v3_cad_face_picks(self, qapp, step_part):
         from shore.geometry.base import EntityKind, EntityRef
         from shore.gui.viewport import GeometryPick
@@ -196,7 +193,6 @@ class TestGeometry:
             faces.add(expected.index)
         assert len(faces) >= 3
 
-    @PENDING
     @pytest.mark.parametrize("kind", ["CURVE", "POINT"])
     def test_v4_cad_edge_and_vertex_picks(self, qapp, step_part, kind):
         from shore.geometry.base import EntityKind
@@ -233,7 +229,6 @@ class TestGeometry:
 
 
 class TestSlices:
-    @PENDING
     def test_v5_slice_picks(self, qapp, sphere_stl):
         from shore.gui.viewport import PickResult, SliceKey, slice_grid
 
@@ -265,7 +260,6 @@ class TestSlices:
                 checked += 1
         assert checked >= 6
 
-    @PENDING
     def test_v5_invalid_slices(self, qapp, sphere_stl):
         from shore.gui.session import BlockKey
 
@@ -278,7 +272,6 @@ class TestSlices:
             w.add_slice(key, "k", 99)
         assert w.slices == []
 
-    @PENDING
     def test_v6_quality_on_slices(self, qapp, sphere_stl):
         from shore.gui.viewport import colormap, slice_values
         from shore.quality import scaled_jacobian
@@ -292,7 +285,6 @@ class TestSlices:
         expected = colormap(slice_values(scaled_jacobian(block.nodes), "i", 3), (-1.0, 1.0))
         assert np.array_equal(w.viewport.face_colours(sk), expected)
 
-    @PENDING
     def test_v7_view_state_not_journaled(self, qapp, sphere_stl):
         w = window(qapp)
         sphere_session(w, sphere_stl)
@@ -308,7 +300,6 @@ class TestSlices:
         assert list(w.session.project.history) == history
         assert not w.viewport.visible("block") and not w.viewport.visible("geometry")
 
-    @PENDING
     def test_v7_slices_follow_blocks(self, qapp, sphere_stl):
         w = window(qapp)
         sphere_session(w, sphere_stl)
@@ -330,7 +321,6 @@ class TestSlices:
 
 
 class TestDisplay:
-    @PENDING
     def test_v8_stl_display(self, sphere_stl):
         from shore.geometry import load_geometry
         from shore.geometry.base import EntityKind
@@ -343,7 +333,6 @@ class TestDisplay:
         assert np.array_equal(d.triangle_entity, np.zeros(len(g.mesh.faces)))
         assert d.curves == () and len(d.vertices) == 0
 
-    @PENDING
     def test_v8_cad_display(self, step_part):
         from shore.geometry import load_geometry
         from shore.geometry.base import EntityKind
