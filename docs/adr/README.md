@@ -43,6 +43,7 @@ by a later record that supersedes it.
 | [0033](./0033-load-without-replay.md) | Loading a saved project without replay | Accepted |
 | [0034](./0034-remove-normal-blending.md) | Remove the marcher's normal blending (`blend_normals_k`) | Accepted |
 | [0035](./0035-cgns-plot3d-export.md) | CGNS and Plot3D exports | Accepted |
+| [0036](./0036-cc-par-as-xall-reads-it.md) | cc.par connections as Xall reads them | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
