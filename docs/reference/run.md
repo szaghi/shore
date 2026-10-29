@@ -208,3 +208,12 @@ p.ogrid(faces=[("b4", "k_hi"), ("b22", "k_lo"), ...])  # a layer on the faces of
 Around a body, layer the faces of the hole (or O-grid the centre block
 before deleting its core): the grid lines then leave the wall nearly normal
 to it (within 6 degrees around a sphere, against 41 for the plain lattice).
+
+### Moving vertices
+
+`p.move_vertex("b0", "v7", (1.2, 1.3, 1.1))` moves vertex `v7` of block
+`b0`, and every block sharing it
+([ADR 0045](../adr/0045-move-blocking-vertex.md)). A vertex with an
+association (its own, or inherited from its edges or faces) goes to the
+projection of the point onto it, so it slides on its geometry. After a
+geometry edit, premesh re-projects it.

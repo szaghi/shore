@@ -207,3 +207,18 @@ def test_centres():
     shared = [c for lab, f, c in faces if (lab, f) == ("b0", "i_hi")]
     np.testing.assert_allclose(shared[0], [1.0, 0.5, 0.5])
     assert ("b1", "i_lo") not in {(lab, f) for lab, f, _ in faces}  # once, by its first block
+
+
+def test_move_vertex():
+    b = bk.split(bk.box((0, 0, 0), (2, 1, 1), 5, 3, 3), "b0", "i", 0.5)
+    m = bk.move(b, "b0", "v7", (1.1, 1.2, 1.3))
+    assert m.points[m.block("b1")[3]].tolist() == [1.1, 1.2, 1.3]
+    assert b.points[b.block("b1")[3]].tolist() == [1.0, 1.0, 1.0]  # the input is kept
+    assert len(m.centres("vertex")) == 12
+    with pytest.raises(ParameterError):
+        bk.move(b, "b0", "k_lo", (0, 0, 0))
+    with pytest.raises(ParameterError):
+        bk.move(b, "b0", "v0", (0, 0, np.inf))
+    a = bk.associate(b, "b0", "k_hi", Association.body())
+    with pytest.raises(ParameterError):  # associated, but no geometry to project on
+        bk.move(a, "b0", "v7", (1, 1, 1))

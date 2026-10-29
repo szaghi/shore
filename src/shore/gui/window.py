@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.addWidget(QLabel("Double click a blocking edge (orange) or marker; shift adds."))
         self.blocking_mode = QComboBox()
-        self.blocking_mode.addItems(["edge", "face", "block"])
+        self.blocking_mode.addItems(["edge", "face", "block", "vertex"])
         self.blocking_mode.currentTextChanged.connect(lambda _: self._refresh_markers())
         self.skeleton_selection_label = QLabel("-")
         self.blocking_selection_label = QLabel("-")
@@ -231,11 +231,15 @@ class MainWindow(QMainWindow):
         form.addRow("selection", self.blocking_selection_label)
         form.addRow("O-grid factor", self.ogrid_factor)
         form.addRow("O-grid nodes", self.ogrid_nodes)
+        self.move_xyz = QLineEdit("0, 0, 0")
+        form.addRow("move to x, y, z", self.move_xyz)
         layout.addLayout(form)
         for text, slot in (
             ("Split here", self.split_selection),
             ("O-grid", self._ogrid_from_panel),
             ("Delete blocks", self.delete_selection),
+            ("Move vertex", self._move_from_panel),
+            ("Move vertex to geometry pick", self.move_selection_to_pick),
             ("Associate with geometry", self.associate_blocking_selection),
             ("Clear selection", self.clear_blocking_selection),
         ):
@@ -249,11 +253,12 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self.selected_skeleton: SkeletonPick | None = None
         self.blocking_selection: list[SkeletonKey] = []
+        self.last_geometry_point: np.ndarray | None = None
         self._skeleton_box: tuple[float, ...] | None = None
 
     def _refresh_markers(self) -> None:
         mode = self.blocking_mode.currentText()
-        markers = self.session.skeleton_markers(mode) if mode in ("face", "block") else []
+        markers = self.session.skeleton_markers(mode) if mode != "edge" else []
         self.viewport.set_markers(markers)
 
     def select_skeleton(self, key: SkeletonKey, *, add: bool = False) -> None:
@@ -344,6 +349,37 @@ class MainWindow(QMainWindow):
 
         self._guard(work)
         self._show_blocking_selection()
+
+    def move_selection(self, xyz: Any) -> None:
+        """Run ``Project.move_vertex`` for the one selected blocking vertex
+        (ADR 0045): to *xyz*, onto its association if it has one."""
+
+        def work() -> None:
+            component = self._selection_component()
+            vertices = [k for k in self.blocking_selection if k.edge.startswith("v")]
+            if len(vertices) != 1 or len(self.blocking_selection) != 1:
+                raise ValueError("select one blocking vertex (selection mode: vertex)")
+            k = vertices[0]
+            self._run_in(component, "move_vertex", k.block, k.edge, tuple(float(x) for x in xyz))
+
+        self._guard(work)
+
+    def _move_from_panel(self) -> None:
+        try:
+            xyz = [float(x) for x in self.move_xyz.text().replace(",", " ").split()]
+            if len(xyz) != 3:
+                raise ValueError(f"three coordinates are needed, got {self.move_xyz.text()!r}")
+        except ValueError as exc:
+            self._report(exc)
+            return
+        self.move_selection(xyz)
+
+    def move_selection_to_pick(self) -> None:
+        """Move the selected blocking vertex to the last picked geometry point."""
+        if self.last_geometry_point is None:
+            self._report(ValueError("double click the geometry first"))
+            return
+        self.move_selection(self.last_geometry_point)
 
     def associate_blocking_selection(self) -> None:
         """Associate each selected blocking face or edge with the geometry
@@ -664,7 +700,11 @@ class MainWindow(QMainWindow):
         self.viewport.set_skeleton(skeleton)
         self._refresh_markers()
         valid = {k for k, _ in skeleton}
-        valid |= {k for kind in ("face", "block") for k, _ in self.session.skeleton_markers(kind)}
+        valid |= {
+            k
+            for kind in ("face", "block", "vertex")
+            for k, _ in self.session.skeleton_markers(kind)
+        }
         self.blocking_selection = [k for k in self.blocking_selection if k in valid]
         self._show_blocking_selection()
         box = None
@@ -935,6 +975,7 @@ class MainWindow(QMainWindow):
             )
             return
         if isinstance(result, GeometryPick):
+            self.last_geometry_point = np.asarray(result.xyz, np.float64).copy()
             e = result.entity
             self._select_geometry(result.geometry, e.kind.value, e.index, add)
             self.statusBar().showMessage(f"{result.geometry}  {e.kind.value} {e.index}  {where}")

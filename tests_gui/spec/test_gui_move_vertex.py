@@ -72,7 +72,6 @@ def pick_vertex(w, k):
 
 
 class TestMoveVertex:
-    @PENDING
     def test_x1_markers(self, qapp):
         w = window(qapp)
         keys = w.viewport.marker_keys
@@ -81,7 +80,6 @@ class TestMoveVertex:
         np.testing.assert_array_equal(dict(w.session.skeleton_markers("vertex"))[key("b0", "v7")],
                                       [4.0, 4.0, 4.0])  # fmt: skip
 
-    @PENDING
     def test_x2_move_from_panel(self, qapp):
         w = window(qapp)
         pick = pick_vertex(w, key("b0", "v7"))
@@ -95,7 +93,6 @@ class TestMoveVertex:
         uploaded = w.viewport.uploaded_positions("skeleton")
         assert np.any(np.all(np.abs(uploaded - [4.2, 4.3, 4.1]) < 1e-5, axis=1))
 
-    @PENDING
     def test_x3_move_to_geometry_pick(self, qapp, sphere_stl):
         from shore.gui.viewport import GeometryPick
 
@@ -113,7 +110,6 @@ class TestMoveVertex:
         moved = w.session.project.blocking.points[w.session.project.blocking.block("b1")[6]]
         np.testing.assert_array_equal(moved, pick.xyz)
 
-    @PENDING
     def test_x4_two_selected(self, qapp):
         w = window(qapp)
         lines = w.session.journal_lines()
@@ -122,7 +118,6 @@ class TestMoveVertex:
         w.move_selection((0.0, 0.0, 0.0))
         assert w.last_error is not None and w.session.journal_lines() == lines
 
-    @PENDING
     def test_x4_bad_text(self, qapp):
         w = window(qapp)
         lines = w.session.journal_lines()

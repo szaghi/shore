@@ -163,6 +163,15 @@ FORMS: tuple[Form, ...] = (
         ),
     ),
     Form(
+        "move_vertex",
+        "Move blocking vertex",
+        (
+            Field("block", "text", "b0", keyword=False),
+            Field("vertex", "text", "v0", label="v0..v7", keyword=False),
+            Field("xyz", "literal", (0.0, 0.0, 0.0), label="(x, y, z)", keyword=False),
+        ),
+    ),
+    Form(
         "associate_blocking",
         "Associate blocking entity",
         (

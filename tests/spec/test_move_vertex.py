@@ -80,7 +80,6 @@ def distance(path, pts):
 
 
 class TestMove:
-    @PENDING
     def test_m1_free_vertex(self):
         p = row()
         p.move_vertex("b0", "v7", (1.2, 1.3, 1.1))
@@ -96,7 +95,6 @@ class TestMove:
 
         assert min(float(scaled_jacobian(x.nodes).min()) for x in (a, b)) > 0.5
 
-    @PENDING
     def test_m2_associated_vertex(self, sphere_stl):
         p = on_sphere(sphere_stl)
         p.move_vertex("b0", "v7", (0.3, 0.9, 0.9))
@@ -106,7 +104,6 @@ class TestMove:
         p.premesh()
         np.testing.assert_allclose(p.mesh.blocks[0].nodes[-1, -1, -1], moved, atol=1e-12)
 
-    @PENDING
     def test_m3_edited_body(self, sphere_stl, tmp_path):
         from shore.project.project import run_journal
 
@@ -122,7 +119,6 @@ class TestMove:
         q = run_journal(tmp_path / "journal.py", input_dir=tmp_path / "in")
         assert distance(tmp_path / "in" / "sphere.stl", q.mesh.blocks[0].nodes[-1, -1, -1]) < 1e-9
 
-    @PENDING
     def test_m4_undo_replay(self, tmp_path):
         from shore.project.project import run_journal
 
@@ -140,7 +136,6 @@ class TestMove:
 
 
 class TestRefusals:
-    @PENDING
     @pytest.mark.parametrize(
         "args",
         [

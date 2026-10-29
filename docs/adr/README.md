@@ -52,7 +52,7 @@ by a later record that supersedes it.
 | [0042](./0042-blocking-skeleton-premesh.md) | Blocking: a block skeleton, split and premeshed (phase 7, slice 1) | Accepted |
 | [0043](./0043-ogrid-insertion.md) | O-grid insertion in a blocking (phase 7, slice 2) | Accepted |
 | [0044](./0044-blocking-selection.md) | Selecting blocking faces and blocks in the GUI (phase 7, slice 3) | Accepted |
-| [0045](./0045-move-blocking-vertex.md) | Moving blocking vertices (phase 7, slice 4) | Proposed |
+| [0045](./0045-move-blocking-vertex.md) | Moving blocking vertices (phase 7, slice 4) | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

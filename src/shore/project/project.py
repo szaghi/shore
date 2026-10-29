@@ -66,6 +66,7 @@ from shore.project.commands import (
     LoadBlocks,
     LoadGeometry,
     March,
+    MoveVertex,
     Ogrid,
     Premesh,
     ProgressFn,
@@ -382,6 +383,15 @@ class Project:
             return tuple((str(b), str(f)) for b, f in items)
 
         self.execute(Ogrid(tuple(blocks), pairs(faces), pairs(exclude), float(factor), int(nodes)))
+
+    def move_vertex(self, block: str, vertex: str, xyz: Sequence[float]) -> None:
+        """Move blocking vertex *vertex* (``v0``..``v7``) of *block* to *xyz*,
+        onto its association if it has one (``MoveVertex``, ADR 0045)."""
+        try:
+            point = tuple(float(x) for x in xyz)
+        except (TypeError, ValueError) as err:
+            raise ParameterError(f"move_vertex: xyz must be three numbers, got {xyz!r}.") from err
+        self.execute(MoveVertex(block, vertex, point))  # type: ignore[arg-type]
 
     def associate_blocking(
         self,

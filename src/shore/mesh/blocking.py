@@ -149,10 +149,17 @@ class Blocking:
         return out
 
     def centres(self, kind: str) -> list[tuple[str, str, np.ndarray]]:
-        """Skeleton centres of every ``"face"`` (once, named by its first block)
-        or ``"block"``: ``(block, face or "", centre)``."""
+        """Skeleton centres of every ``"face"`` (once, named by its first block),
+        ``"block"`` or ``"vertex"`` (its point, once, named ``v0``..``v7`` by
+        its first block): ``(block, name, centre)``, the name ``""`` for a block."""
         if kind == "block":
             return [(label, "", self.points[list(v)].mean(axis=0)) for label, v in self.blocks]
+        if kind == "vertex":
+            seen: dict[int, tuple[str, str, np.ndarray]] = {}
+            for label, verts in self.blocks:
+                for n, v in enumerate(verts):
+                    seen.setdefault(v, (label, f"v{n}", self.points[v].copy()))
+            return list(seen.values())
         out = []
         for key, owners in self.faces().items():
             b, name = owners[0]
@@ -437,6 +444,32 @@ def ogrid(
                 continue
             out.associations[("e", na, nc)] = assoc
             out.associations.pop(("e", a, c), None)
+    return out
+
+
+def move(
+    blocking: Blocking,
+    label: str,
+    vertex: str,
+    xyz: Any,
+    resolver: AssociationResolver | None = None,
+) -> Blocking:
+    """Move vertex *vertex* (``v0``..``v7``) of block *label* to *xyz*: onto
+    the projection of *xyz* on the vertex's association (own or inherited),
+    when it has one, so an associated vertex slides on its geometry."""
+    key, what = blocking.entity(label, vertex)
+    if what != "vertex":
+        raise ParameterError(f"move_vertex: {vertex!r} is not a vertex (v0..v7) of {label!r}.")
+    point = np.asarray(xyz, dtype=np.float64)
+    if point.shape != (3,) or not np.all(np.isfinite(point)):
+        raise ParameterError(f"move_vertex: xyz must be three finite numbers, got {xyz!r}.")
+    assoc = effective_associations(blocking).get(key)
+    if assoc is not None:
+        if resolver is None:
+            raise ParameterError("move_vertex: the vertex is associated but no geometry is given.")
+        point = np.asarray(resolver.project(assoc, point), dtype=np.float64)
+    out = blocking.copy()
+    out.points[key[1]] = point
     return out
 
 

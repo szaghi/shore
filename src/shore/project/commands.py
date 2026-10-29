@@ -748,6 +748,29 @@ class Ogrid(Command):
 
 
 @dataclass(frozen=True)
+class MoveVertex(Command):
+    """Move a blocking vertex (ADR 0045): vertex *vertex* (``v0``..``v7``) of
+    block *block* to *xyz*, projected onto its association (own or inherited)
+    when it has one, so an associated vertex slides on its geometry."""
+
+    method: ClassVar[str] = "move_vertex"
+    positional: ClassVar[tuple[str, ...]] = ("block", "vertex", "xyz")
+
+    block: str
+    vertex: str
+    xyz: tuple[float, float, float]
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.association import AssociationResolver
+        from shore.mesh.blocking import move
+
+        blocking = project.require_blocking("move_vertex")
+        geometries = {name: body.geometry for name, body in project.geometries.items()}
+        moved = move(blocking, self.block, self.vertex, self.xyz, AssociationResolver(geometries))
+        return _replace_blocking(project, moved)
+
+
+@dataclass(frozen=True)
 class AssociateBlocking(Command):
     """Associate a face, edge or vertex of a blocking block with geometry
     (ADR 0042): as ``associate`` (ADR 0039), on the blocking. Entities without

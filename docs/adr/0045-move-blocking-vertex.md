@@ -1,6 +1,6 @@
 # 0045 — Moving blocking vertices (phase 7, slice 4)
 
-- **Status:** Proposed (spec frozen 2026-10-29)
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -88,3 +88,17 @@ one.
 | X2 | a picked vertex moved from the panel: journal, skeleton redrawn |
 | X3 | a vertex moved to a picked geometry point |
 | X4 (× 2) | refusals: two entities selected, a bad coordinate text |
+
+## Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, plus:
+- a unit test of `move` (`tests/test_blocking_unit.py`): shared vertex,
+  input kept, refusals, an associated vertex without geometry;
+- `docs/reference/run.md` (Moving vertices) and `docs/reference/gui.md`.
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_move_vertex.py`: **9 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_move_vertex.py`: **5 passed, 0 skipped, 0
+  xfailed**.
+
+All `@PENDING` lines are removed.
