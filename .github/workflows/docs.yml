@@ -1,55 +1,64 @@
 name: Deploy docs to GitHub Pages
 
+# Runs after "Python package" succeeds on a push to main and publishes the
+# coverage report that run uploaded, instead of running the test suite a second
+# time (it was 349 of the 3001 minutes billed in October 2026). A manual
+# dispatch has no such run: it runs the tests itself, as before.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
-      - 'tests/**'
-      - 'src/**'
-      - 'pyproject.toml'
+  workflow_run:
+    workflows: ["Python package"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read   # download the coverage artifact of the triggering run
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install package + test deps
-        run: pip install -e ".[dev]"
-      - name: Run pytest with coverage
-        run: pytest
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: docs/public/coverage*.json
-          retention-days: 7
-
   build:
-    needs: test
+    # a pull request or tag run of the checks must not deploy
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
+      # the commit the checks ran on, not the head of main when this job starts
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Download coverage report
+        if: github.event_name == 'workflow_run'
         uses: actions/download-artifact@v4
         with:
           name: coverage-report
           path: docs/public/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/setup-python@v5
+        if: github.event_name != 'workflow_run'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Run pytest with coverage
+        if: github.event_name != 'workflow_run'
+        run: |
+          pip install -e ".[dev]"
+          pytest
+
+      # both files are git-ignored: without them the badge and the coverage page go stale
+      - name: Check coverage report
+        run: test -s docs/public/coverage.json && test -s docs/public/coverage-badge.json
 
       - uses: actions/setup-node@v4
         with:
