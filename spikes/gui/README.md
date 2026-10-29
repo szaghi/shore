@@ -76,7 +76,7 @@ Run from WSL through `py.exe` on a copy of this directory (`results/adam-NVIDIA-
 ### Still to run
 
 - [x] Windows 11 native Python, RTX 4070 (Vulkan), 2026-10-29: above
-- [ ] Windows: the on-screen window (docks, theme, HiDPI) checked by eye: `python app.py --nodes 10000000`
+- [x] Windows: the on-screen window (docks, theme, HiDPI) checked by eye: `python app.py --nodes 10000000` (user, 2026-10-29: looks fine)
 - [ ] macOS, Apple Silicon (Metal)
 - [ ] Linux native, discrete GPU (Vulkan)
 - [ ] WSL2 with a `dzn` ICD (Mesa ≥ 23 built with `-Dvulkan-drivers=microsoft-experimental`), to see if WSL2 can be a GUI dev box at all

@@ -60,6 +60,12 @@ cad = [
 cgns = [
     "h5py",
 ]
+gui = [
+    "PySide6-Essentials>=6.8",
+    "pygfx>=0.17,<0.18",
+    "wgpu>=0.32,<0.33",
+    "rendercanvas>=2.7",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
