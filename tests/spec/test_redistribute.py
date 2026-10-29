@@ -152,7 +152,6 @@ LAWS = [
 
 
 class TestOneBlock:
-    @PENDING
     @pytest.mark.parametrize(("law", "params"), LAWS)
     def test_d1_laws(self, law, params):
         from shore.mesh.spacing import Spacing1D
@@ -165,7 +164,6 @@ class TestOneBlock:
         if law == "pinned":
             assert abs((x[1] - x[0]) - 0.05) <= 1e-12 and abs((x[-1] - x[-2]) - 0.4) <= 1e-12
 
-    @PENDING
     def test_d2_curved_lines(self, sphere_stl, naca0012_stl):
         from shore.mesh.spacing import Spacing1D
 
@@ -186,7 +184,6 @@ class TestOneBlock:
                     arc_params(lines_new[j, k], lines_old[j, k]), t, rtol=0.0, atol=1e-12
                 )
 
-    @PENDING
     def test_d3_faces_across_unchanged(self):
         p = box()
         before = p.mesh.blocks[0].nodes.copy()
@@ -204,7 +201,6 @@ class TestOneBlock:
 
 
 class TestSeams:
-    @PENDING
     def test_d4_cubed_sphere(self, sphere_stl, naca0012_stl):
         from shore.mesh.spacing import Spacing1D
 
@@ -228,7 +224,6 @@ class TestSeams:
             assert np.array_equal(blocks[label].nodes, before[label])
         assert seam_gap(p.mesh.blocks) == 0.0
 
-    @PENDING
     def test_d5_flipped_wake_cut(self, sphere_stl, naca0012_stl):
         p = marched("cgrid", sphere_stl, naca0012_stl)
         built = seam_gap(p.mesh.blocks)
@@ -244,7 +239,6 @@ class TestSeams:
         )
         assert seam_gap(p.mesh.blocks) <= built
 
-    @PENDING
     def test_d8_loaded_without_replay(self, sphere_stl, naca0012_stl, tmp_path):
         from shore.project import Project
 
@@ -260,7 +254,6 @@ class TestSeams:
 
 
 class TestRefusals:
-    @PENDING
     @pytest.mark.parametrize(
         "args",
         [
@@ -278,7 +271,6 @@ class TestRefusals:
             p.redistribute(*args[0], **args[1])
         assert p.journal() == journal and np.array_equal(p.mesh.blocks[0].nodes, before)
 
-    @PENDING
     def test_d6_shared_face(self, sphere_stl, naca0012_stl):
         p = marched("ch", sphere_stl, naca0012_stl)
         before = [b.nodes.copy() for b in p.mesh.blocks]
@@ -290,7 +282,6 @@ class TestRefusals:
 
 
 class TestUndo:
-    @PENDING
     def test_d7_undo_and_journal(self, sphere_stl, naca0012_stl):
         p = marched("cubed_sphere", sphere_stl, naca0012_stl)
         before = [b.nodes.copy() for b in p.mesh.blocks]

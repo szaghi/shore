@@ -537,6 +537,55 @@ def _block_entity(block: Any, name: str) -> tuple[Any, str]:
 
 
 @dataclass(frozen=True)
+class Redistribute(Command):
+    """Redistribute the nodes along a block edge's axis (ADR 0041).
+
+    The spacing law (``uniform``, ``tanh``, ``tanh2`` with *beta* and
+    *cluster_at*, ``pinned`` with *first_step* / *last_step* lengths and an
+    *interior* law) is taken over the arc length of *edge* of *block* (current
+    component) and applied, as arc-length fractions, to every grid line of the
+    block along that axis, and through SHARED / DIRICHLET seams to the blocks
+    sharing a face that contains the axis. Nodes stay on their lines' old
+    polylines; line ends do not move. Associated nodes are not re-snapped:
+    run ``snap`` after.
+    """
+
+    method: ClassVar[str] = "redistribute"
+    positional: ClassVar[tuple[str, ...]] = ("block", "edge", "law")
+
+    block: str
+    edge: str
+    law: str = "uniform"
+    beta: float = 3.0
+    cluster_at: float | None = None
+    first_step: float | None = None
+    last_step: float | None = None
+    interior: str = "uniform"
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.redistribute import redistribute
+        from shore.mesh.spacing import Spacing1D
+
+        mesh, _ = project.require_mesh()
+        spacing = Spacing1D(
+            self.law,  # type: ignore[arg-type]
+            beta=self.beta,
+            cluster_at=self.cluster_at,
+            first_step=self.first_step,
+            last_step=self.last_step,
+            interior=self.interior,  # type: ignore[arg-type]
+        )
+        restore = project.undo_cache.snapshot(mesh)
+        try:
+            with _seams_written_through(mesh.blocks):
+                redistribute(mesh.blocks, self.block, self.edge, spacing)
+        except BaseException:
+            restore()
+            raise
+        return Undo(restore)
+
+
+@dataclass(frozen=True)
 class FillFace(Command):
     """Rebuild one block face from its boundary on a CAD surface (ADR 0007).
 

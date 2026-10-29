@@ -59,6 +59,7 @@ Every change goes through a command:
 |---|---|
 | Build a mesh | `LoadGeometry`, `BuildTopology`, `March`, `Snap`, `BuildPrimitive`, `BuildTipCap`, `LoadBlocks` |
 | Associate with geometry | `Associate` (`p.associate(block, entity, geometry, kind, indices)`, ADR 0039), then `Snap` |
+| Change the spacing | `Redistribute` (`p.redistribute(block, edge, law, ...)`, ADR 0041) |
 | Transform it | `Split` |
 | Write outputs | `WriteGeo`, `WriteAdjacency`, `WriteGrd`, `WriteCcPar`, `WriteProcInput` |
 
@@ -112,3 +113,23 @@ or the body; an edge: also curves; a vertex: also points). Associations are
 stored as entity fingerprints, so they are found again after the CAD file
 is re-imported, and they are saved with the project. `snap` resolves every
 geometry of the project by name; `"body"` is the mesh's own body.
+
+## Redistributing an edge
+
+`redistribute` applies a spacing law along a block edge's axis
+([ADR 0041](../adr/0041-redistribute-edge.md)):
+
+```python
+p.redistribute("sub0", "j_lo_k_lo", "tanh2", beta=2.0)          # cluster at both ends
+p.redistribute("box", "j_lo_k_lo", "pinned", first_step=0.01, last_step=0.2)
+```
+
+The law (`uniform`, `tanh`, `tanh2` with `beta` and `cluster_at`, `pinned`
+with `first_step` / `last_step` lengths and an `interior` law) is taken over
+the edge's arc length. Every grid line of the block along that axis is
+resampled at the same arc-length fractions of its own length, and so is
+every block that shares a face containing the axis through a SHARED or
+DIRICHLET seam (reversed across a flipped seam). Nodes stay on their old
+lines, line ends do not move, and seams stay closed. A face shared with
+several blocks (CH's body) or a periodic face on the way is refused.
+Associated nodes are not re-snapped: run `snap` after.

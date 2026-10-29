@@ -1,6 +1,6 @@
 # 0041 — Redistributing the nodes along a block edge (GUI spacing editor)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -108,3 +108,19 @@ for the builder's own axes.
 | D7 | undo, journal line |
 | D8 | a project loaded without replay: seams closed |
 | P1–P4 (× 5) | the GUI's edge info, redistribution, refusals and panel |
+
+## Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, plus:
+- unit tests (`tests/test_redistribute_unit.py`): edge axes, fractions and
+  their refusals, resampling (ends kept, collapsed lines kept, positions
+  on a bent line);
+- `docs/reference/run.md` (Redistributing an edge) and
+  `docs/reference/gui.md` (Spacing).
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_redistribute.py`: **15 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_spacing.py`: **5 passed, 0 skipped, 0
+  xfailed**.
+
+All `@PENDING` lines are removed.

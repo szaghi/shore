@@ -63,6 +63,7 @@ from shore.project.commands import (
     LoadGeometry,
     March,
     ProgressFn,
+    Redistribute,
     Snap,
     Split,
     Undo,
@@ -280,6 +281,24 @@ class Project:
     def snap(self, exact: bool = False) -> None:
         """Project associated nodes onto their geometry (any project geometry, ADR 0039)."""
         self.execute(Snap(exact))
+
+    def redistribute(
+        self,
+        block: str,
+        edge: str,
+        law: str = "uniform",
+        *,
+        beta: float = 3.0,
+        cluster_at: float | None = None,
+        first_step: float | None = None,
+        last_step: float | None = None,
+        interior: str = "uniform",
+    ) -> None:
+        """Apply a spacing law along *edge* of *block* to the lines of its axis,
+        through the seams (``Redistribute``, ADR 0041); then ``snap`` if needed."""
+        self.execute(
+            Redistribute(block, edge, law, beta, cluster_at, first_step, last_step, interior)
+        )
 
     def associate(
         self,

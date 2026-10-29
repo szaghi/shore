@@ -66,7 +66,6 @@ def window(qapp, mode="edge"):
 
 
 class TestSpacing:
-    @PENDING
     def test_p1_edge_info(self, qapp):
         w, key, _ = window(qapp)
         info = w.edge_info()
@@ -78,7 +77,6 @@ class TestSpacing:
         assert info["first"] == pytest.approx(0.25, abs=1e-12)
         assert info["last"] == pytest.approx(0.25, abs=1e-12)
 
-    @PENDING
     def test_p2_redistribute(self, qapp):
         from shore.mesh.spacing import Spacing1D
 
@@ -90,7 +88,6 @@ class TestSpacing:
         np.testing.assert_allclose(x, Spacing1D("tanh", beta=3.0).build(9, 0.0, 2.0), atol=1e-12)
         assert w.edge_info()["first"] == pytest.approx(x[1] - x[0], abs=1e-12)
 
-    @PENDING
     def test_p3_no_edge(self, qapp):
         w, _, _ = window(qapp, mode="face")
         lines = w.session.journal_lines()
@@ -99,7 +96,6 @@ class TestSpacing:
         assert w.last_error is not None and "Error" in w.log.toPlainText()
         assert w.session.journal_lines() == lines
 
-    @PENDING
     def test_p3_bad_number(self, qapp):
         w, _, _ = window(qapp)
         lines = w.session.journal_lines()
@@ -108,7 +104,6 @@ class TestSpacing:
         w._redistribute_from_panel()
         assert w.last_error is not None and w.session.journal_lines() == lines
 
-    @PENDING
     def test_p4_panel(self, qapp):
         w, _, _ = window(qapp)
         w.spacing_law.setCurrentText("tanh2")

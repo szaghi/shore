@@ -116,6 +116,7 @@ class MainWindow(QMainWindow):
         self._build_tree()
         self._build_display()
         self._build_association()
+        self._build_spacing()
         self._build_forms()
         self._build_console()
         self._build_actions()
@@ -168,6 +169,106 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self.selected_block: tuple[BlockKey, str] | None = None
         self.selected_geometry: tuple[str, str, list[int]] | None = None
+
+    def _build_spacing(self) -> None:
+        """Redistribute the nodes along a picked block edge (ADR 0041)."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.addWidget(QLabel("Select a block edge (Association: select edge)."))
+        self.spacing_edge_label = QLabel("-")
+        form = QFormLayout()
+        form.addRow("edge", self.spacing_edge_label)
+        self.spacing_law = QComboBox()
+        self.spacing_law.addItems(["uniform", "tanh", "tanh2", "pinned"])
+        self.spacing_beta = QLineEdit("3.0")
+        self.spacing_cluster = QLineEdit("")
+        self.spacing_first = QLineEdit("")
+        self.spacing_last = QLineEdit("")
+        self.spacing_interior = QComboBox()
+        self.spacing_interior.addItems(["uniform", "tanh", "tanh2"])
+        form.addRow("law", self.spacing_law)
+        form.addRow("beta", self.spacing_beta)
+        form.addRow("cluster at", self.spacing_cluster)
+        form.addRow("first step", self.spacing_first)
+        form.addRow("last step", self.spacing_last)
+        form.addRow("interior", self.spacing_interior)
+        layout.addLayout(form)
+        button = QPushButton("Redistribute")
+        button.clicked.connect(self._redistribute_from_panel)
+        layout.addWidget(button)
+        layout.addStretch(1)
+        dock = QDockWidget("Spacing", self)
+        dock.setObjectName("spacing")
+        dock.setWidget(panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    def edge_info(self) -> dict[str, Any] | None:
+        """The selected edge: block, edge, axis, nodes, length, first and last cell."""
+        from shore.gui.viewport import EDGE_NAMES, edge_nodes
+        from shore.mesh.redistribute import edge_axis
+
+        if self.selected_block is None or self.selected_block[1] not in EDGE_NAMES:
+            return None
+        key, edge = self.selected_block
+        block = self.session.block(key)
+        if block is None:
+            return None
+        pts = edge_nodes(block.nodes, edge)
+        cells = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        return {
+            "key": key,
+            "edge": edge,
+            "axis": edge_axis(edge),
+            "nodes": len(pts),
+            "length": float(cells.sum()),
+            "first": float(cells[0]),
+            "last": float(cells[-1]),
+        }
+
+    def _show_edge_info(self) -> None:
+        info = self.edge_info()
+        if info is None:
+            self.spacing_edge_label.setText("-")
+            return
+        key = info["key"]
+        self.spacing_edge_label.setText(
+            f"{key.component}/{key.label} {info['edge']} ({info['axis']}, {info['nodes']} nodes, "
+            f"length {info['length']:.6g}, first {info['first']:.3g}, last {info['last']:.3g})"
+        )
+
+    def redistribute_selection(self, law: str = "uniform", **params: Any) -> None:
+        """Run ``Project.redistribute`` on the selected edge (making its
+        component current first if needed)."""
+        info = self.edge_info()
+        if info is None:
+            self._report(ValueError("select a block edge first (selection mode: edge)"))
+            return
+        key = info["key"]
+
+        def work() -> None:
+            if self.session.project.current_component != key.component:
+                self.session.run("use_component", key.component)
+            self.session.run("redistribute", key.label, info["edge"], law, **params)
+
+        self._guard(work)
+        self._show_edge_info()
+
+    def _redistribute_from_panel(self) -> None:
+        params: dict[str, Any] = {}
+        try:
+            params["beta"] = float(self.spacing_beta.text())
+            for name, edit in (
+                ("cluster_at", self.spacing_cluster),
+                ("first_step", self.spacing_first),
+                ("last_step", self.spacing_last),
+            ):
+                if edit.text().strip():
+                    params[name] = float(edit.text())
+        except ValueError as exc:
+            self._report(exc)
+            return
+        params["interior"] = self.spacing_interior.currentText()
+        self.redistribute_selection(self.spacing_law.currentText(), **params)
 
     def _build_display(self) -> None:
         """Visibility toggles and slice planes: view state, not commands (ADR 0038)."""
@@ -639,6 +740,7 @@ class MainWindow(QMainWindow):
             entity = face
         self.selected_block = (key, entity)
         self.block_selection_label.setText(f"{key.component}/{key.label} {entity}")
+        self._show_edge_info()
 
     def _select_geometry(self, name: str, kind: str, index: int, add: bool) -> None:
         current = self.selected_geometry
