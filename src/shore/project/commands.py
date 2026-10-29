@@ -859,8 +859,8 @@ class WriteXall(Command):
     numerical_beach: float = -1.0
 
     def apply(self, project: Project, ctx: Context) -> None:
-        from shore.io.cc_par import merge_cc_par
-        from shore.io.grd import merge_grd
+        from shore.io.cc_par import _merge_cc_par
+        from shore.io.grd import _merge_grd
         from shore.io.proc_input import write_proc_input
 
         meshes = project.components
@@ -905,8 +905,9 @@ class WriteXall(Command):
                 cc_pars.append(d / "cc.par")
         finally:
             project.select_component(current)
-        merge_grd(grds, out / self.grd)
-        merge_cc_par(cc_pars, out / "cc.par", grd_filename=self.grd)
+        # one component is merged with itself: the same files as the merge of several
+        _merge_grd(grds, out / self.grd)
+        _merge_cc_par(cc_pars, out / "cc.par", grd_filename=self.grd)
         project.last_result = write_proc_input(
             out / self.grd,
             out / "proc.input",

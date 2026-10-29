@@ -815,7 +815,11 @@ def merge_cc_par(
     """
     if len(inputs) < 2:
         raise ValueError(f"merge_cc_par: need at least 2 input files, got {len(inputs)}")
+    return _merge_cc_par(inputs, out, grd_filename=grd_filename)
 
+
+def _merge_cc_par(inputs: list[str | Path], out: str | Path, *, grd_filename: str) -> Path:
+    """:func:`merge_cc_par` for one or more inputs (``write_xall`` of one component)."""
     out_path = Path(out)
     paths = [Path(p) for p in inputs]
     parsed = [_parse_cc_par_for_merge(p) for p in paths]

@@ -207,7 +207,11 @@ def merge_grd(inputs: list[str | Path], out: str | Path) -> Path:
     """
     if len(inputs) < 2:
         raise ValueError(f"merge_grd: need at least 2 input files, got {len(inputs)}")
+    return _merge_grd(inputs, out)
 
+
+def _merge_grd(inputs: list[str | Path], out: str | Path) -> Path:
+    """:func:`merge_grd` for one or more inputs (``write_xall`` of one component)."""
     out_path = Path(out)
     if out_path.suffix.lower() != ".grd":
         out_path = out_path.with_suffix(".grd")

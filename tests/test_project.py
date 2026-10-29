@@ -345,6 +345,17 @@ class TestComponentsAndInputs:
             p.write_xall(tmp_path / "run", components={"main": {"proc_meta": {label: {"rank": 1}}}})
         assert not (tmp_path / "run").exists()
 
+    def test_write_xall_of_one_component(self, sphere_stl, tmp_path):
+        # merge_grd / merge_cc_par refuse a single input; write_xall must not
+        p = _sphere_project(sphere_stl)
+        p.write_xall(tmp_path / "run")
+        run = tmp_path / "run"
+        assert (run / "mesh.grd").read_bytes() == (run / "main" / "main.grd").read_bytes()
+        merged, own = (run / "cc.par").read_text(), (run / "main" / "cc.par").read_text()
+        assert merged.splitlines()[0].startswith("'mesh.grd'")
+        assert merged.split("patches number")[1] == own.split("patches number")[1]
+        assert (run / "proc.input").is_file()
+
 
 class TestResaveNames:
     """Re-saving a loaded project keeps the input copies' names (no stacked indices)."""
