@@ -49,6 +49,7 @@ from shore.exceptions import MeshInputError, ParameterError
 from shore.mesh.body import Body
 from shore.mesh.mesh import BLEND_ZERO, Mesh
 from shore.project.commands import (
+    Associate,
     BuildCollar,
     BuildPrimitive,
     BuildState,
@@ -277,8 +278,21 @@ class Project:
         )
 
     def snap(self, exact: bool = False) -> None:
-        """Project associated nodes onto their geometry."""
+        """Project associated nodes onto their geometry (any project geometry, ADR 0039)."""
         self.execute(Snap(exact))
+
+    def associate(
+        self,
+        block: str,
+        entity: str,
+        geometry: str = "body",
+        kind: str = "body",
+        indices: Sequence[int] = (),
+    ) -> None:
+        """Associate face, edge or vertex *entity* of *block* (current component)
+        with entities *indices* of kind *kind* of geometry *geometry*, or clear
+        it (``kind="none"``); see ``Associate`` (ADR 0003, 0039)."""
+        self.execute(Associate(block, entity, geometry, kind, tuple(int(i) for i in indices)))
 
     def surface_grid(
         self,

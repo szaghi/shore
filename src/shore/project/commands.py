@@ -369,10 +369,136 @@ class Snap(Command):
     exact: bool = False
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        mesh, _ = project.require_mesh()
+        from shore.mesh.association import AssociationResolver, snap_block
+
+        mesh, build = project.require_mesh()
+        resolver = AssociationResolver(
+            _association_geometries(project, mesh, build), exact=self.exact
+        )
         restore = project.undo_cache.snapshot(mesh)
-        mesh.snap(exact=self.exact)
+        try:
+            for block in mesh.blocks:
+                snap_block(block, resolver)
+        except BaseException:
+            restore()
+            raise
         return Undo(restore)
+
+
+def _association_geometries(project: Project, mesh: Mesh, build: BuildState) -> dict[str, Any]:
+    """The geometries associations name (ADR 0039): the project's, by name.
+
+    ``"body"`` (``BODY_GEOMETRY``) keeps meaning the mesh's own body: its
+    ``Body`` when it has one, else the single geometry its component was
+    built on (a mesh loaded without replay, ADR 0033).
+    """
+    from shore.mesh.association import BODY_GEOMETRY
+
+    out = {name: body.geometry for name, body in project.geometries.items()}
+    if mesh.body is not None:
+        out[BODY_GEOMETRY] = mesh.body.geometry
+    elif len(build.geometries) == 1 and build.geometries[0] in out:
+        out[BODY_GEOMETRY] = out[build.geometries[0]]
+    return out
+
+
+_KIND_DIM = {"point": 0, "curve": 1, "surface": 2, "body": 2}
+_ENTITY_DIM = {"vertex": 0, "edge": 1, "face": 2}
+
+
+@dataclass(frozen=True)
+class Associate(Command):
+    """Associate a block face, edge or vertex with geometry (ADR 0003, 0039).
+
+    *entity* is a face (``"k_lo"``), an edge (``"i_lo_k_lo"``) or a vertex
+    (``"v0"`` .. ``"v7"``, ``HexBlock.vertices()`` order) of block *block* of
+    the current component. *kind* is ``"body"``, ``"surface"``, ``"curve"``
+    or ``"point"`` with entity *indices* of geometry *geometry* (none for
+    ``"body"``), or ``"none"`` to clear. An entity may be associated with
+    geometry of its own dimension or higher: a face with surfaces or the
+    body, an edge also with curves, a vertex also with a point. Nodes move
+    only on ``snap``.
+    """
+
+    method: ClassVar[str] = "associate"
+    positional: ClassVar[tuple[str, ...]] = ("block", "entity", "geometry", "kind", "indices")
+
+    block: str
+    entity: str
+    geometry: str = "body"
+    kind: str = "body"
+    indices: tuple[int, ...] = ()
+
+    def to_source(self) -> str:
+        source = super().to_source()
+        return source.replace(", ())", ")") if not self.indices else source
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.geometry.base import EntityKind, EntityRef
+        from shore.mesh.association import Association
+
+        mesh, _ = project.require_mesh()
+        block = next((b for b in mesh.blocks if b.label == self.block), None)
+        if block is None:
+            raise ParameterError(
+                f"associate: no block {self.block!r} in component {project.current_component!r}."
+            )
+        target, what = _block_entity(block, self.entity)
+        if self.kind == "none":
+            association = None
+        else:
+            if self.kind not in _KIND_DIM:
+                raise ParameterError(
+                    f"associate: kind must be one of {sorted(_KIND_DIM)} or 'none', "
+                    f"got {self.kind!r}."
+                )
+            if _KIND_DIM[self.kind] < _ENTITY_DIM[what]:
+                raise ParameterError(
+                    f"associate: a {what} cannot be associated with a {self.kind} "
+                    "(only with geometry of its dimension or higher)."
+                )
+            body = project.geometries.get(self.geometry)
+            if body is None:
+                raise ParameterError(
+                    f"associate: no geometry {self.geometry!r}; "
+                    f"geometries: {sorted(project.geometries)}."
+                )
+            kind = EntityKind(self.kind)
+            if kind is EntityKind.BODY:
+                if self.indices:
+                    raise ParameterError("associate: a body association takes no indices.")
+                association = Association.body(self.geometry)
+            else:
+                available = len(body.geometry.entities(kind))
+                if not self.indices or any(not 0 <= i < available for i in self.indices):
+                    raise ParameterError(
+                        f"associate: {self.kind} indices {self.indices} outside "
+                        f"0..{available - 1} of geometry {self.geometry!r}."
+                    )
+                refs = [EntityRef(kind, int(i)) for i in self.indices]
+                association = Association.of(self.geometry, body.geometry, refs)
+        previous = target.association
+        target.association = association
+
+        def restore() -> None:
+            target.association = previous
+
+        return Undo(restore)
+
+
+def _block_entity(block: Any, name: str) -> tuple[Any, str]:
+    """The face, edge or vertex *name* of *block*, and which it is."""
+    faces = {f.name: f for f in block.faces()}
+    if name in faces:
+        return faces[name], "face"
+    edges = {e.name: e for e in block.edges()}
+    if name in edges:
+        return edges[name], "edge"
+    if name.startswith("v") and name[1:].isdigit() and int(name[1:]) < len(block.vertices()):
+        return block.vertices()[int(name[1:])], "vertex"
+    raise ParameterError(
+        f"associate: {name!r} is not a face, edge or vertex (v0..v7) of block {block.label!r}."
+    )
 
 
 @dataclass(frozen=True)

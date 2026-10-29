@@ -357,6 +357,25 @@ class TestComponentsAndInputs:
         assert (run / "proc.input").is_file()
 
 
+class TestAssociate:
+    """``Project.associate`` without CAD (ADR 0039): body associations and the journal."""
+
+    def test_body_association_journal_and_clear(self, sphere_stl):
+        p = _sphere_project(sphere_stl)
+        face = p.mesh.blocks[0].face("i_lo")
+        assert face.association is None
+        p.associate(p.mesh.blocks[0].label, "i_lo")
+        assert (
+            p.journal().splitlines()[-1]
+            == f"p.associate({p.mesh.blocks[0].label!r}, 'i_lo', 'body', 'body')"
+        )
+        assert face.association is not None and face.association.geometry == "body"
+        p.associate(p.mesh.blocks[0].label, "i_lo", kind="none")
+        assert face.association is None
+        p.undo()
+        assert face.association is not None
+
+
 class TestResaveNames:
     """Re-saving a loaded project keeps the input copies' names (no stacked indices)."""
 

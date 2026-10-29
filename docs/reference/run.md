@@ -58,6 +58,7 @@ Every change goes through a command:
 | Group | Commands |
 |---|---|
 | Build a mesh | `LoadGeometry`, `BuildTopology`, `March`, `Snap`, `BuildPrimitive`, `BuildTipCap`, `LoadBlocks` |
+| Associate with geometry | `Associate` (`p.associate(block, entity, geometry, kind, indices)`, ADR 0039), then `Snap` |
 | Transform it | `Split` |
 | Write outputs | `WriteGeo`, `WriteAdjacency`, `WriteGrd`, `WriteCcPar`, `WriteProcInput` |
 
@@ -87,3 +88,27 @@ p.write_proc_input("out/wall.grd", "out/wall.proc.input", np=4)
 commands are file tools outside the project. `undo` reverts the last
 state-changing command and drops any outputs written after it. A failed or
 cancelled `march` leaves the grid as it was before the call.
+
+## Associations
+
+A block face (`"k_lo"`), edge (`"i_lo_k_lo"`) or vertex (`"v0"` .. `"v7"`)
+is linked to geometry with `associate`; `snap` then projects its nodes
+onto it, vertices before edges before faces winning at shared nodes
+([ADR 0003](../adr/0003-association.md),
+[ADR 0039](../adr/0039-association-editing.md)):
+
+```python
+p.load_geometry("part.step", name="part")
+p.build_primitive("box", vmin=(-0.8, -0.4, 0.55), vmax=(0.8, 0.4, 0.9), ni=5, nj=4, nk=3)
+p.associate("box", "k_lo", "part", "surface", (2,))    # a face with CAD surfaces
+p.associate("box", "j_lo_k_lo", "part", "curve", (5,))  # an edge with a curve
+p.associate("box", "v0", "part", "point", (1,))         # a vertex with a point
+p.snap()
+p.associate("box", "k_lo", kind="none")                 # clear
+```
+
+An entity takes geometry of its own dimension or higher (a face: surfaces
+or the body; an edge: also curves; a vertex: also points). Associations are
+stored as entity fingerprints, so they are found again after the CAD file
+is re-imported, and they are saved with the project. `snap` resolves every
+geometry of the project by name; `"body"` is the mesh's own body.

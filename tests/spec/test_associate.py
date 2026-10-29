@@ -138,7 +138,6 @@ def ref_distance(p, nodes, kind, index) -> float:
 
 
 class TestAssociate:
-    @PENDING
     @pytest.mark.parametrize("entity", ["face", "edge", "vertex"])
     def test_a1_associate_and_snap(self, part, entity):
         from shore.geometry.base import EntityKind, EntityRef
@@ -164,7 +163,6 @@ class TestAssociate:
         p.snap()
         assert ref_distance(p, view(block.nodes), kind, index) <= 1e-9
 
-    @PENDING
     def test_a2_priority(self, part):
         p = setup(part)
         top, edge, corner = entities(p)
@@ -177,7 +175,6 @@ class TestAssociate:
         assert np.allclose(n[:, 0, 0, 1:], (-0.5, 0.5), atol=1e-12)  # the edge over the face
         assert np.allclose(n[:, 1:, 0, 2], 0.5, atol=1e-12)  # the face elsewhere
 
-    @PENDING
     def test_a3_undo_redo_clear(self, part):
         p = setup(part)
         top, _, _ = entities(p)
@@ -195,7 +192,6 @@ class TestAssociate:
 
 
 class TestRefusals:
-    @PENDING
     @pytest.mark.parametrize(
         "args",
         [
@@ -217,7 +213,6 @@ class TestRefusals:
         assert p.journal() == journal
         assert [f.association for f in p.mesh.blocks[0].faces()] == before
 
-    @PENDING
     def test_a4_dimensions(self, part):
         p = setup(part)
         top, edge, corner = entities(p)
@@ -238,7 +233,6 @@ class TestRefusals:
 
 
 class TestPersistence:
-    @PENDING
     @pytest.mark.parametrize("replay", [True, False])
     def test_a5_save_load(self, part, tmp_path, replay):
         from shore.project import Project
@@ -258,7 +252,6 @@ class TestPersistence:
         q.snap()
         assert np.array_equal(p.mesh.blocks[0].nodes, q.mesh.blocks[0].nodes)
 
-    @PENDING
     def test_a6_snap_after_load_without_replay(self, tmp_path):
         import trimesh
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from shore.project.commands import (
+    Associate,
     BuildCollar,
     BuildPrimitive,
     BuildTipCap,
@@ -29,6 +30,7 @@ from shore.project.commands import (
 from shore.project.project import Project, run_journal
 
 __all__ = [
+    "Associate",
     "BuildCollar",
     "BuildPrimitive",
     "BuildTipCap",
