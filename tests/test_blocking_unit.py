@@ -127,3 +127,71 @@ def test_polylines():
     assert len(lines) == 20
     *_, pts = next(x for x in lines if x[:2] == ("b1", "j_lo_k_lo"))
     np.testing.assert_allclose(pts[:, 0], np.linspace(1, 2, 5))
+
+
+def test_ogrid_one_block_layers():
+    b = bk.box((-1, -1, -1), (1, 1, 1), 5, 5, 5)
+    o = bk.ogrid(b, ["b0"], factor=0.25, nodes=3)
+    np.testing.assert_allclose(o.points[list(o.block("b0"))], 0.25 * b.points[:8], atol=1e-15)
+    assert o.labels() == ["b0", "b1", "b2", "b3", "b4", "b5", "b6"]
+    assert all(o.shape(label)[0] == 3 for label in ("b1", "b2"))
+    blocks = bk.premesh(o, None)
+    assert min(float(scaled_jacobian(x.nodes).min()) for x in blocks) > 0.5
+    assert b.labels() == ["b0"]  # the input is not modified
+
+
+def test_ogrid_layer_handedness_and_seams():
+    from shore.mesh.seams import seams
+
+    o = bk.ogrid(bk.box((0, 0, 0), (2, 1, 1), 5, 4, 3), factor=0.6, nodes=3)
+    blocks = bk.premesh(o, None)
+    assert min(float(scaled_jacobian(x.nodes).min()) for x in blocks) > 0.0
+    assert sum(len(v) for v in seams(blocks, 1e-12).values()) == 36
+
+
+def test_ogrid_open_face_keeps_plane():
+    b = bk.box((0, 0, 0), (1, 1, 1), 5, 5, 5)
+    o = bk.ogrid(b, exclude=[("b0", "k_lo")], factor=0.5, nodes=3)
+    core = o.points[list(o.block("b0"))]
+    np.testing.assert_array_equal(core[0::2, 2], 0.0)
+    assert len(o.labels()) == 6
+
+
+def _cut(b, axis, x):
+    """Split the first block spanning coordinate *x* along *axis*."""
+    d = "ijk".index(axis)
+    for label, v in b.blocks:
+        lo, hi = b.points[v[0]][d], b.points[v[bk._BIT[axis]]][d]
+        if lo < x < hi:
+            return bk.split(b, label, axis, (x - lo) / (hi - lo))
+    raise AssertionError(x)
+
+
+def test_ogrid_hole_moves_away_from_it():
+    b = bk.box((-3, -3, -3), (3, 3, 3), 7, 7, 7)
+    for axis in "ijk":
+        b = _cut(_cut(b, axis, -1.0), axis, 1.0)
+    centre = next(lab for lab, v in b.blocks if np.allclose(b.points[list(v)].mean(axis=0), 0))
+    hole = {b.entity(centre, f)[0] for f in bk.FACES}
+    b = bk.delete(b, [centre])
+    faces = [(lab, f) for lab, _ in b.blocks for f in bk.FACES if b.entity(lab, f)[0] in hole]
+    assert len(faces) == 6
+    o = bk.ogrid(b, faces=faces, factor=0.5, nodes=3)
+    assert len(o.labels()) == 32
+    moved = o.points[len(b.points) :]
+    assert len(moved) == 8
+    # (1, 1, 1) moves by (1 - 0.5) * ((2, 0, 0) + (0, 2, 0) + (0, 0, 2)) / 2
+    assert any(np.allclose(p, [1.5, 1.5, 1.5]) for p in moved)
+
+
+def test_ogrid_refusals():
+    b = bk.split(bk.box((0, 0, 0), (2, 1, 1), 5, 3, 3), "b0", "i", 0.5)
+    for kwargs in (
+        {"factor": 0.0},
+        {"nodes": 1},
+        {"labels": ["b0"], "exclude": [("b0", "i_hi")]},
+        {"labels": ["b0", "b1"], "faces": [("b0", "i_hi")]},
+        {"labels": ["b0"], "exclude": [("b0", f) for f in bk.FACES]},
+    ):
+        with pytest.raises(ParameterError):
+            bk.ogrid(b, **kwargs)

@@ -49,7 +49,6 @@ def window(qapp):
 
 
 class TestOgridForm:
-    @PENDING
     def test_w1_ogrid(self, qapp):
         w = window(qapp)
         w.run_form("ogrid", {"blocks": "['b0']", "factor": "0.6", "nodes": "4"})
@@ -58,7 +57,6 @@ class TestOgridForm:
         assert w.session.journal_lines()[-1] == "p.ogrid(('b0',), factor=0.6, nodes=4)"
         assert len(w.viewport.skeleton_keys) == 32
 
-    @PENDING
     def test_w2_half(self, qapp):
         w = window(qapp)
         w.run_form("ogrid", {"blocks": "['b0']", "exclude": "[('b0', 'k_lo')]"})
@@ -67,7 +65,6 @@ class TestOgridForm:
         assert w.session.journal_lines()[-1] == "p.ogrid(('b0',), exclude=(('b0', 'k_lo'),))"
         assert len(w.viewport.skeleton_keys) == 32
 
-    @PENDING
     def test_w3_refused(self, qapp):
         w = window(qapp)
         lines = w.session.journal_lines()

@@ -152,6 +152,17 @@ FORMS: tuple[Form, ...] = (
         (Field("blocks", "literal", (), label="labels, e.g. ['b13']", keyword=False),),
     ),
     Form(
+        "ogrid",
+        "O-grid",
+        (
+            Field("blocks", "literal", (), label="labels, e.g. ['b0'] (empty: all)", keyword=False),
+            Field("faces", "literal", (), label="layered faces, e.g. [('b0', 'i_lo')]"),
+            Field("exclude", "literal", (), label="open faces, e.g. [('b0', 'k_lo')]"),
+            Field("factor", "float", 0.5),
+            Field("nodes", "int", 5),
+        ),
+    ),
+    Form(
         "associate_blocking",
         "Associate blocking entity",
         (

@@ -50,7 +50,7 @@ by a later record that supersedes it.
 | [0040](./0040-seams-kept-closed.md) | Seams kept closed by in-place edits | Accepted |
 | [0041](./0041-redistribute-edge.md) | Redistributing the nodes along a block edge (GUI spacing editor) | Accepted |
 | [0042](./0042-blocking-skeleton-premesh.md) | Blocking: a block skeleton, split and premeshed (phase 7, slice 1) | Accepted |
-| [0043](./0043-ogrid-insertion.md) | O-grid insertion in a blocking (phase 7, slice 2) | Proposed |
+| [0043](./0043-ogrid-insertion.md) | O-grid insertion in a blocking (phase 7, slice 2) | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

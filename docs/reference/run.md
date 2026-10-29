@@ -174,3 +174,37 @@ p.premesh()
 
 Replaying the journal with an edited geometry re-projects the blocking. A
 project loaded without replay has its mesh but no blocking.
+
+### O-grids
+
+`ogrid` inserts a layer of blocks on faces of a block set
+([ADR 0043](../adr/0043-ogrid-insertion.md)):
+
+```python
+p.ogrid(["b13"], factor=0.5, nodes=5)                 # a core and a ring of 6 blocks
+p.ogrid(["b0"], exclude=[("b0", "k_lo")])             # half-O: open on k_lo
+p.ogrid(faces=[("b4", "k_hi"), ("b22", "k_lo"), ...])  # a layer on the faces of a hole
+```
+
+- The block set is `blocks`, or every block when empty. The layered faces
+  are `faces` (`(block, face)` pairs), or every face on the set's boundary
+  less `exclude`.
+- Every vertex of a layered face gets an inner copy, moved into the set by
+  `(1 - factor)` times half the sum of its edges that leave the layered
+  faces into the set. Inside one block, the core is the block scaled by
+  `factor` about its centre.
+- The set's blocks take the copies and keep their labels. Each layered face
+  gets a block between it and its copy, with `nodes` nodes across; these are
+  labelled `b<n>` in block and face order.
+- The set's other boundary faces stay open: the O-grid passes through them,
+  and copies on them stay in their plane. An open face may not be shared
+  with a block outside the set (add that block to the set, or layer the
+  face).
+- Associations:
+  - a layered face keeps its own, on the layer's outer face;
+  - a replaced face or edge passes its association on;
+  - an open face also passes it to the layer faces lying on it.
+
+Around a body, layer the faces of the hole (or O-grid the centre block
+before deleting its core): the grid lines then leave the wall nearly normal
+to it (within 6 degrees around a sphere, against 41 for the plain lattice).

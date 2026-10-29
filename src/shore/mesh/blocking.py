@@ -281,6 +281,154 @@ def split(blocking: Blocking, label: str, axis: str, fraction: float) -> Blockin
     return out
 
 
+def ogrid(
+    blocking: Blocking,
+    labels: list[str] | tuple[str, ...] = (),
+    faces: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
+    exclude: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
+    factor: float = 0.5,
+    nodes: int = 5,
+) -> Blocking:
+    """Insert an O-grid: a layer of blocks on faces of the block set *labels*.
+
+    The layered faces are *faces* (``(block, face)`` pairs), or every face on
+    the boundary of the set, less *exclude*; they all lie on the set's
+    boundary. Boundary faces of the set that are not layered stay open: the
+    O-grid passes through them, and they must be faces of the blocking's
+    boundary. Every vertex of a layered face gets an inner copy, moved into
+    the set by ``(1 - factor)`` times half the sum of its edges that leave
+    the layered faces into the set (inside one block: the block scaled by
+    *factor* about its centre). The set's blocks take the inner copies; each
+    layered face gets a block between it and its copy, with *nodes* nodes
+    across. Labels: the set's blocks keep theirs, the layer blocks are new
+    ``b<n>`` in block and face order. With no *labels*, the set is every
+    block.
+    """
+    if not 0.0 < factor < 1.0:
+        raise ParameterError(f"ogrid: factor must be in (0, 1), got {factor}.")
+    if int(nodes) != nodes or nodes < 2:
+        raise ParameterError(f"ogrid: nodes must be an integer >= 2, got {nodes}.")
+    index = {name: n for n, (name, _) in enumerate(blocking.blocks)}
+    for label in labels:
+        blocking.block(label)
+    chosen = {index[label] for label in labels} if labels else set(range(len(blocking.blocks)))
+    owners = blocking.faces()
+    key_of: dict[tuple[int, str], tuple[int, ...]] = {}
+    boundary: list[tuple[int, str]] = []
+    for key, own in owners.items():
+        for b, name in own:
+            key_of[(b, name)] = key
+        inside = [o for o in own if o[0] in chosen]
+        if len(inside) == 1:
+            boundary.append(inside[0])
+    boundary.sort(key=lambda o: (o[0], FACES.index(o[1])))
+
+    def refs(pairs: Any, what: str) -> list[tuple[int, str]]:
+        out = []
+        for label, face in pairs:
+            blocking.block(label)
+            ref = (index[label], face)
+            if ref not in boundary:
+                raise ParameterError(
+                    f"ogrid: {what} {label}.{face} is not on the boundary of the block set."
+                )
+            out.append(ref)
+        return out
+
+    layered = refs(faces, "face") if faces else list(boundary)
+    excluded = set(refs(exclude, "excluded face"))
+    layered = [f for f in boundary if f in set(layered) and f not in excluded]
+    if not layered:
+        raise ParameterError("ogrid: no face to put a layer on.")
+    layered_keys = {key_of[f] for f in layered}
+    moved = sorted({v for f in layered for v in key_of[f]})
+    moved_set = set(moved)
+    # faces of the set touching a moved vertex: inside the set, layered, or open
+    # on the blocking's boundary (the O-grid passes through it)
+    for b in chosen:
+        for name in FACES:
+            key = key_of[(b, name)]
+            if key in layered_keys or not moved_set.intersection(key):
+                continue
+            if any(o[0] not in chosen for o in owners[key]):
+                label = blocking.blocks[b][0]
+                raise ParameterError(
+                    f"ogrid: {label}.{name} touches the layer but is shared with a block "
+                    "outside the set; add that block to the set or put a layer on the face."
+                )
+    across: dict[int, set[int]] = {v: set() for v in moved}
+    for b, name in layered:
+        verts = blocking.blocks[b][1]
+        bit = _BIT[name[0]]
+        for c in face_corners(name).ravel():
+            across[verts[c]].add(verts[c ^ bit])
+    points = [blocking.points]
+    copy: dict[int, int] = {}
+    for n, v in enumerate(moved, start=len(blocking.points)):
+        shift = 0.5 * sum((blocking.points[w] - blocking.points[v] for w in across[v]), np.zeros(3))
+        if not np.linalg.norm(shift) > 0.0:
+            raise ParameterError(f"ogrid: the layer has no thickness at vertex {v}.")
+        points.append((blocking.points[v] + (1.0 - factor) * shift)[None])
+        copy[v] = n
+    out = blocking.copy()
+    out.points = np.concatenate(points)
+
+    def inner(v: int) -> int:
+        return copy.get(v, v)
+
+    blocks = []
+    for b, (label, verts) in enumerate(blocking.blocks):
+        blocks.append((label, tuple(inner(v) for v in verts) if b in chosen else verts))
+    for b, name in layered:
+        verts = blocking.blocks[b][1]
+        bit = _BIT[name[0]]
+        hi = name.endswith("hi")
+        layer = []
+        for v in range(8):
+            corner = verts[v | bit] if hi else verts[v & ~bit]
+            on_face = bool(v & bit) == hi
+            layer.append(corner if on_face else copy[corner])
+        blocks.append((f"b{out.next_label}", tuple(layer)))
+        out.next_label += 1
+    # node counts: the set's edges keep theirs; across the layer, *nodes*
+    for b in chosen:
+        verts = blocking.blocks[b][1]
+        for _, lo, hi in EDGES.values():
+            a, c = inner(verts[lo]), inner(verts[hi])
+            out.nodes[(min(a, c), max(a, c))] = blocking.edge_count(verts[lo], verts[hi])
+    for v in moved:
+        out.nodes[(v, copy[v])] = int(nodes)
+    # associations: a face or edge of the set that the copies replace passes its
+    # association on; an open face also to the layer faces lying on it
+    out.blocks = blocks
+    new_faces = out.faces()
+    new_edges = out.edges()
+    for b in chosen:
+        verts = blocking.blocks[b][1]
+        for name in FACES:
+            old = key_of[(b, name)]
+            assoc = blocking.associations.get(("f", *old))
+            new = tuple(sorted(inner(v) for v in old))
+            if assoc is None or old in new_faces:
+                continue  # unchanged, or a layered face: the layer keeps it
+            out.associations[("f", *new)] = assoc
+            for p_, q_ in (e for e in new_edges if e[0] in old and e[1] in old):
+                if p_ in moved_set and q_ in moved_set:
+                    key = tuple(sorted((p_, q_, copy[p_], copy[q_])))
+                    if key in new_faces:
+                        out.associations[("f", *key)] = assoc
+            out.associations.pop(("f", *old), None)
+        for _, lo, hi in EDGES.values():
+            a, c = sorted((verts[lo], verts[hi]))
+            assoc = blocking.associations.get(("e", a, c))
+            na, nc = sorted((inner(a), inner(c)))
+            if assoc is None or (a, c) in new_edges:
+                continue
+            out.associations[("e", na, nc)] = assoc
+            out.associations.pop(("e", a, c), None)
+    return out
+
+
 def delete(blocking: Blocking, labels: list[str] | tuple[str, ...]) -> Blocking:
     """Remove blocks *labels*; their faces left alone become boundary faces."""
     for label in labels:

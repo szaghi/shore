@@ -66,6 +66,7 @@ from shore.project.commands import (
     LoadBlocks,
     LoadGeometry,
     March,
+    Ogrid,
     Premesh,
     ProgressFn,
     Redistribute,
@@ -363,6 +364,24 @@ class Project:
     def delete_blocks(self, blocks: Sequence[str]) -> None:
         """Remove blocking blocks *blocks* (``DeleteBlocks``)."""
         self.execute(DeleteBlocks(tuple(blocks)))
+
+    def ogrid(
+        self,
+        blocks: Sequence[str] = (),
+        *,
+        faces: Sequence[Sequence[str]] = (),
+        exclude: Sequence[Sequence[str]] = (),
+        factor: float = 0.5,
+        nodes: int = 5,
+    ) -> None:
+        """Insert an O-grid on the faces of blocking blocks *blocks* (all when
+        empty): *faces*, or the set's boundary less *exclude* (``(block, face)``
+        pairs), sized by *factor*, *nodes* across (``Ogrid``, ADR 0043)."""
+
+        def pairs(items: Sequence[Sequence[str]]) -> tuple[tuple[str, str], ...]:
+            return tuple((str(b), str(f)) for b, f in items)
+
+        self.execute(Ogrid(tuple(blocks), pairs(faces), pairs(exclude), float(factor), int(nodes)))
 
     def associate_blocking(
         self,

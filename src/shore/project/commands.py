@@ -722,6 +722,32 @@ class DeleteBlocks(Command):
 
 
 @dataclass(frozen=True)
+class Ogrid(Command):
+    """Insert an O-grid in the blocking (ADR 0043): a layer of blocks on the
+    faces of the block set *blocks* (every block when empty), *faces* or all
+    the set's boundary faces less *exclude* (``(block, face)`` pairs); see
+    ``shore.mesh.blocking.ogrid``. *factor* sizes it, *nodes* across."""
+
+    method: ClassVar[str] = "ogrid"
+    positional: ClassVar[tuple[str, ...]] = ("blocks",)
+
+    blocks: tuple[str, ...] = ()
+    faces: tuple[tuple[str, str], ...] = ()
+    exclude: tuple[tuple[str, str], ...] = ()
+    factor: float = 0.5
+    nodes: int = 5
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.blocking import ogrid
+
+        blocking = project.require_blocking("ogrid")
+        return _replace_blocking(
+            project,
+            ogrid(blocking, self.blocks, self.faces, self.exclude, self.factor, self.nodes),
+        )
+
+
+@dataclass(frozen=True)
 class AssociateBlocking(Command):
     """Associate a face, edge or vertex of a blocking block with geometry
     (ADR 0042): as ``associate`` (ADR 0039), on the blocking. Entities without

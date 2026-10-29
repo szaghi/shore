@@ -1,6 +1,6 @@
 # 0043 — O-grid insertion in a blocking (phase 7, slice 2)
 
-- **Status:** Proposed (spec frozen 2026-10-29)
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -144,3 +144,21 @@ grid segment and the sphere's normal):**
 | O7 | journal line, replay bit for bit, undo |
 | O8 (× 6) | refusals, project and journal unchanged |
 | W1–W3 | the GUI form: an O-grid, a half-O, a refusal |
+
+## Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, plus:
+- unit tests (`tests/test_blocking_unit.py`):
+  - one block at another factor;
+  - a layer's handedness and its seams;
+  - an open face's plane;
+  - the hole's corner moving away from it;
+  - refusals;
+- `docs/reference/run.md` (O-grids) and the GUI form (`docs/reference/gui.md`).
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_ogrid.py`: **13 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_ogrid.py`: **3 passed, 0 skipped, 0 xfailed**.
+
+All `@PENDING` lines are removed. Full suites: main 1914 passed, GUI 75
+passed.

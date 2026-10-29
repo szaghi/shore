@@ -184,7 +184,6 @@ def hole_faces(p, centre):
 
 
 class TestOgrid:
-    @PENDING
     def test_o1_one_block(self):
         p = box()
         p.ogrid(["b0"], factor=0.5, nodes=4)
@@ -204,7 +203,6 @@ class TestOgrid:
         bcs = [f.bc.name for x in blocks for f in x.faces()]
         assert bcs.count("FREE") == 6 and bcs.count("SHARED") == 36
 
-    @PENDING
     def test_o2_open_face(self, tmp_path):
         floor = trimesh.creation.box(extents=(10.0, 10.0, 1.0))
         floor.apply_translation((0.0, 0.0, -1.5))  # its top face: the plane z = -1
@@ -227,7 +225,6 @@ class TestOgrid:
         walls = [(x.label, f.name) for x in p.mesh.blocks for f in x.faces() if f.bc.name == "WALL"]
         assert sorted(walls) == [(label, "k_lo") for label in ("b0", "b1", "b2", "b3", "b4")]
 
-    @PENDING
     def test_o3_two_blocks(self):
         p = box(17, lo=(-2, -1, -1), hi=(2, 1, 1))
         p.split_blocking("b0", "i", 0.5)
@@ -242,7 +239,6 @@ class TestOgrid:
         p.premesh()
         assert seam_gap(p.mesh.blocks) == 0.0 and min_jacobian(p.mesh.blocks) > 0.5
 
-    @PENDING
     def test_o4_hole(self, sphere_stl):
         p, centre = sphere_lattice(sphere_stl, 3.0, 1.0)
         for face in FACES:
@@ -264,7 +260,6 @@ class TestOgrid:
         assert seam_gap(blocks) == 0.0 and min_jacobian(blocks) > 0.3
         assert without > 30.0 and wall_angle(blocks) < 10.0
 
-    @PENDING
     def test_o5_centre_block(self, sphere_stl):
         p, centre = sphere_lattice(sphere_stl, 4.0, 2.0)
         p.ogrid([centre], factor=0.5, nodes=5)
@@ -276,7 +271,6 @@ class TestOgrid:
         assert len(blocks) == 32 and seam_gap(blocks) == 0.0 and min_jacobian(blocks) > 0.3
         assert wall_angle(blocks) < 10.0
 
-    @PENDING
     def test_o6_layered_face_association(self, sphere_stl):
         p = box()
         p.load_geometry(sphere_stl)
@@ -288,7 +282,6 @@ class TestOgrid:
         assert face_key(p, "b0", "i_hi") not in b.associations  # the core's face
         assert face_key(p, "b2", "i_lo") == face_key(p, "b0", "i_hi")
 
-    @PENDING
     def test_o7_journal_replay_undo(self, tmp_path):
         from shore.project.project import run_journal
 
@@ -309,7 +302,6 @@ class TestOgrid:
 
 
 class TestRefusals:
-    @PENDING
     @pytest.mark.parametrize(
         "kwargs",
         [
