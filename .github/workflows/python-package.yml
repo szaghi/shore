@@ -52,7 +52,7 @@ jobs:
       - name: Format check
         if: ${{ !cancelled() }}
         run: ruff format --check src/ tests/
-      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0042)
+      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0043)
         if: ${{ !cancelled() }}
         run: python scripts/check_spec.py
 
