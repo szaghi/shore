@@ -1,6 +1,6 @@
 # 0006 — GUI: PySide6 + pygfx/wgpu, desktop, Python + numpy only
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-29: Windows native and WSL2 evidence; macOS and native Linux open)
 - **Date:** 2026-10-25
 
 ## Context
@@ -212,3 +212,20 @@ Status on 2026-10-25:
   headless. The drift-error model `eps32 * D` matches the measured pick
   failures, and a user-style zoom stays exact with the trigger on and fails
   with it off. Checking it by eye on a native GPU is still open.
+
+### Native Windows (2026-10-29, user decision: accept on Windows + WSL evidence)
+
+Windows 11, native Python 3.14.3, RTX 4070: wgpu runs through Vulkan.
+Measured with the spike scripts run from WSL through `py.exe`:
+- (2) 10⁷ nodes: upload to first frame 1.15 s; orbit 6.1 ms mean, 8.9 ms
+  p95, offscreen including readback. Both **pass** the budgets.
+- (3) `rebase` holds 18/18 picks for `ds/extent` 1e-7 to 1e-10, at both
+  extents; a rebase costs about 1.1 ms; the app's zoom to a 2.85e-7 wall
+  cell picks exactly.
+- (4) UI lateness during a 20 s numpy march: 14.9 ms max.
+- (1) The offscreen smoke run passes. The on-screen window is still to be
+  checked by eye.
+
+**Decision.** The ADR is accepted on this evidence (user decision of
+2026-10-29). Before a release with the GUI, the stack must still be checked
+on macOS (Metal) and on native Linux (Vulkan).

@@ -55,9 +55,28 @@ wgpu did not find the GPU, and the frame times are meaningless for the budget.
 | 4. numpy march in worker, UI lateness | max 1.8 ms (budget 100 ms): **PASS** |
 | 4. one long GIL-holding C call in worker | max 705 ms: **FAIL**. The same call in a subprocess: max 1.9 ms, **PASS** |
 
+### adam: Windows 11 native Python 3.14.3, RTX 4070 (wgpu via Vulkan), 2026-10-29
+
+Run from WSL through `py.exe` on a copy of this directory (`results/adam-NVIDIA-GeForce-RTX-4070-DiscreteGPU-via-Vulkan.json`).
+
+| Item | Result |
+|---|---|
+| wgpu adapter | **NVIDIA GeForce RTX 4070 (DiscreteGPU) via Vulkan** (high-performance and low-power alike) |
+| 1. Window, docks, theme | offscreen QPA smoke run passes; **on-screen look still to be checked by eye** |
+| 2. 10⁷ nodes (749k surface nodes), upload + first frame | 1.15 s (budget 2 s): **PASS** |
+| 2. Orbit frame time, 10⁷ nodes, offscreen incl. readback | mean 6.1 ms, p95 8.9 ms, max 11.3 ms (budget 16 ms): **PASS** |
+| 2. Orbit frame time, app smoke (98k nodes, Qt widget offscreen) | mean 5.2 ms, p95 7.1 ms: **PASS** |
+| 3. Float32 trap | `absolute` FAIL, `block` FAIL, `floating` PASS (as on WSL) |
+| 3. Sweep `ds/extent` 1e-7 to 1e-10, extents 2.85 and 285 | **`rebase` 18/18 everywhere**, draw 8-14 ms, rebase 1.0-1.2 ms; `floating` 2-12/18 below 1e-8; `tiled` up to 7012 meshes, 410 ms draws |
+| 3. Rebase trigger (factor 100) | 3/3 picks, 3 rebases; trigger off 0/3 |
+| 3. App zoom to a wall cell (2.85e-7) | 1 rebase, pick error 0: **PASS** |
+| 4. numpy march in worker, UI lateness | max 14.9 ms (budget 100 ms): **PASS** |
+| 4. GIL-holding call in a subprocess | **PASS** |
+
 ### Still to run
 
-- [ ] Windows 11 native Python, RTX 4070 (D3D12 / Vulkan)
+- [x] Windows 11 native Python, RTX 4070 (Vulkan), 2026-10-29: above
+- [ ] Windows: the on-screen window (docks, theme, HiDPI) checked by eye: `python app.py --nodes 10000000`
 - [ ] macOS, Apple Silicon (Metal)
 - [ ] Linux native, discrete GPU (Vulkan)
 - [ ] WSL2 with a `dzn` ICD (Mesa ≥ 23 built with `-Dvulkan-drivers=microsoft-experimental`), to see if WSL2 can be a GUI dev box at all
