@@ -133,3 +133,44 @@ DIRICHLET seam (reversed across a flipped seam). Nodes stay on their old
 lines, line ends do not move, and seams stay closed. A face shared with
 several blocks (CH's body) or a periodic face on the way is refused.
 Associated nodes are not re-snapped: run `snap` after.
+
+## Blocking
+
+A blocking is a block topology made by hand, ICEM-style: a skeleton of hex
+blocks with a node count on every edge, edited by commands and premeshed
+into ordinary blocks ([ADR 0042](../adr/0042-blocking-skeleton-premesh.md)).
+Twenty-six blocks around a body:
+
+```python
+p = Project()
+p.load_geometry("sphere.stl")
+p.create_blocking(13, 13, 13, vmin=(-3, -3, -3), vmax=(3, 3, 3))  # or margin=1.0
+p.split_blocking("b0", "i", 1 / 3)       # cut at node round(fraction * (n - 1))
+p.split_blocking("b1", "i", 0.5)
+...                                      # the same along j and k
+for face in ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi"):
+    p.associate_blocking("b13", face)    # the centre block's faces on the body
+p.delete_blocks(["b13"])                 # the hole
+p.premesh()
+```
+
+- `create_blocking(ni, nj, nk, *, geometry="body", margin=0.0, vmin=None,
+  vmax=None)`: one block `b0`, the geometry's bounding box grown by
+  `margin` times its extent on each side, or the box between the corners.
+- `split_blocking(block, axis, fraction)`: cuts at the nearest node, and
+  every block sharing a cut edge with it. The low part keeps its label; the
+  high part of each cut block is `b<n>`, counting up in block order.
+- `delete_blocks(labels)`: the faces left alone become boundary faces.
+- `associate_blocking(block, entity, geometry, kind, indices)`: as
+  `associate`, on the blocking. An entity without an association of its
+  own takes the one its faces agree on (an edge), or its edges or faces
+  (a vertex). An edge between faces associated with different geometry
+  stays straight until it gets one of its own.
+- `premesh(exact=False)`: replaces the component's mesh. Edges are equally
+  spaced and projected; faces and blocks are filled by transfinite
+  interpolation, faces projected. Shared faces become SHARED seams,
+  associated boundary faces WALL, the others FREE, and the blocks keep the
+  associations, so `snap` and `redistribute` work on them.
+
+Replaying the journal with an edited geometry re-projects the blocking. A
+project loaded without replay has its mesh but no blocking.

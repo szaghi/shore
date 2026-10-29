@@ -46,10 +46,12 @@ from typing import Any
 import numpy as np
 
 from shore.exceptions import MeshInputError, ParameterError
+from shore.mesh.blocking import Blocking
 from shore.mesh.body import Body
 from shore.mesh.mesh import BLEND_ZERO, Mesh
 from shore.project.commands import (
     Associate,
+    AssociateBlocking,
     BuildCollar,
     BuildPrimitive,
     BuildState,
@@ -58,14 +60,18 @@ from shore.project.commands import (
     CancelToken,
     Command,
     Context,
+    CreateBlocking,
+    DeleteBlocks,
     FillFace,
     LoadBlocks,
     LoadGeometry,
     March,
+    Premesh,
     ProgressFn,
     Redistribute,
     Snap,
     Split,
+    SplitBlocking,
     Undo,
     UndoCache,
     UseComponent,
@@ -95,6 +101,7 @@ JOURNAL_HEADER = (
 class _Component:
     mesh: Mesh | None = None
     build: BuildState | None = None
+    blocking: Blocking | None = None
 
 
 class Project:
@@ -131,6 +138,25 @@ class Project:
     @build.setter
     def build(self, value: BuildState | None) -> None:
         self._components[self._current].build = value
+
+    @property
+    def blocking(self) -> Blocking | None:
+        """The current component's blocking (ADR 0042)."""
+        return self._components[self._current].blocking
+
+    @blocking.setter
+    def blocking(self, value: Blocking | None) -> None:
+        self._components[self._current].blocking = value
+
+    @property
+    def blockings(self) -> dict[str, Blocking | None]:
+        """Each component's blocking (``None`` without one), in creation order."""
+        return {name: c.blocking for name, c in self._components.items()}
+
+    def require_blocking(self, command: str) -> Blocking:
+        if self.blocking is None:
+            raise ParameterError(f"{command}: no blocking: call create_blocking first.")
+        return self.blocking
 
     @property
     def body(self) -> Body | None:
@@ -312,6 +338,49 @@ class Project:
         with entities *indices* of kind *kind* of geometry *geometry*, or clear
         it (``kind="none"``); see ``Associate`` (ADR 0003, 0039)."""
         self.execute(Associate(block, entity, geometry, kind, tuple(int(i) for i in indices)))
+
+    def create_blocking(
+        self,
+        ni: int,
+        nj: int,
+        nk: int,
+        *,
+        geometry: str = "body",
+        margin: float = 0.0,
+        vmin: Sequence[float] | None = None,
+        vmax: Sequence[float] | None = None,
+    ) -> None:
+        """Start the blocking with one block of *ni* x *nj* x *nk* nodes around
+        *geometry* (bounding box grown by *margin* x its extent per side) or
+        between *vmin* and *vmax* (``CreateBlocking``, ADR 0042)."""
+        corners = [None if c is None else tuple(float(x) for x in c) for c in (vmin, vmax)]
+        self.execute(CreateBlocking(int(ni), int(nj), int(nk), geometry, float(margin), *corners))
+
+    def split_blocking(self, block: str, axis: str, fraction: float) -> None:
+        """Cut *block* across *axis* at *fraction*, through its sheet (``SplitBlocking``)."""
+        self.execute(SplitBlocking(block, axis, float(fraction)))
+
+    def delete_blocks(self, blocks: Sequence[str]) -> None:
+        """Remove blocking blocks *blocks* (``DeleteBlocks``)."""
+        self.execute(DeleteBlocks(tuple(blocks)))
+
+    def associate_blocking(
+        self,
+        block: str,
+        entity: str,
+        geometry: str = "body",
+        kind: str = "body",
+        indices: Sequence[int] = (),
+    ) -> None:
+        """Associate face, edge or vertex *entity* of blocking block *block* with
+        geometry, as ``associate`` does for mesh blocks (``AssociateBlocking``)."""
+        self.execute(
+            AssociateBlocking(block, entity, geometry, kind, tuple(int(i) for i in indices))
+        )
+
+    def premesh(self, exact: bool = False) -> None:
+        """Make the component's mesh from its blocking (``Premesh``, ADR 0042)."""
+        self.execute(Premesh(exact))
 
     def surface_grid(
         self,

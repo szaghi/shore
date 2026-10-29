@@ -1,6 +1,6 @@
 # 0042 — Blocking: a block skeleton, split and premeshed (phase 7, slice 1)
 
-- **Status:** Proposed (spec frozen 2026-10-29)
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -195,3 +195,27 @@ carried through the sheet (6 fail).
 | G3 (× 2) | refusals: nothing picked; an end node |
 | G4 | premesh drawn; the skeleton picked over the blocks; hidden |
 | G5 | the delete and associate forms |
+
+## Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, plus:
+- unit tests (`tests/test_blocking_unit.py`):
+  - edge and face tables;
+  - entity keys;
+  - split counts and associations;
+  - refusals;
+  - TFI of a face and of a sheared volume;
+  - the axis map of a rotated neighbour, checked against its nodes;
+  - inheritance;
+  - polylines;
+- `docs/reference/run.md` (Blocking) and `docs/reference/gui.md` (the
+  Blocking dock).
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_blocking.py`: **17 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_blocking.py`: **6 passed, 0 skipped, 0
+  xfailed**.
+
+All `@PENDING` lines are removed. Full suites: main 1896 passed, GUI 72
+passed.
+

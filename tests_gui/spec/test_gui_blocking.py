@@ -72,7 +72,6 @@ def pick_node(w, block, edge, node):
 
 
 class TestBlocking:
-    @PENDING
     def test_g1_skeleton(self, qapp):
         w = window(qapp)
         assert w.last_error is None
@@ -88,7 +87,6 @@ class TestBlocking:
         np.testing.assert_allclose(uploaded[np.isfinite(uploaded).all(axis=1)], expected,
                                    atol=1e-6)  # fmt: skip
 
-    @PENDING
     def test_g2_split_at_pick(self, qapp):
         from shore.gui.viewport import SkeletonPick
 
@@ -101,7 +99,6 @@ class TestBlocking:
         assert w.session.journal_lines()[-1] == "p.split_blocking('b0', 'i', 0.25)"
         assert len(w.viewport.skeleton_keys) == 20
 
-    @PENDING
     def test_g3_nothing_picked(self, qapp):
         w = window(qapp)
         lines = w.session.journal_lines()
@@ -109,7 +106,6 @@ class TestBlocking:
         assert w.last_error is not None and "Error" in w.log.toPlainText()
         assert w.session.journal_lines() == lines
 
-    @PENDING
     def test_g3_end_node(self, qapp):
         w = window(qapp)
         lines = w.session.journal_lines()
@@ -118,7 +114,6 @@ class TestBlocking:
         w.split_selection()
         assert w.last_error is not None and w.session.journal_lines() == lines
 
-    @PENDING
     def test_g4_premesh(self, qapp):
         from shore.gui.viewport import PickResult, SkeletonPick
 
@@ -135,7 +130,6 @@ class TestBlocking:
         _, pick = pick_node(w, "b1", "j_lo_k_hi", 2)
         assert isinstance(pick, PickResult) and pick.key.label == "b1"
 
-    @PENDING
     def test_g5_forms(self, qapp, sphere_stl):
         w = window(qapp)
         w.run_form("load_geometry", {"path": str(sphere_stl)})

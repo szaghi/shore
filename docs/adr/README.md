@@ -49,7 +49,7 @@ by a later record that supersedes it.
 | [0039](./0039-association-editing.md) | Association editing (GUI slice 3) | Accepted |
 | [0040](./0040-seams-kept-closed.md) | Seams kept closed by in-place edits | Accepted |
 | [0041](./0041-redistribute-edge.md) | Redistributing the nodes along a block edge (GUI spacing editor) | Accepted |
-| [0042](./0042-blocking-skeleton-premesh.md) | Blocking: a block skeleton, split and premeshed (phase 7, slice 1) | Proposed |
+| [0042](./0042-blocking-skeleton-premesh.md) | Blocking: a block skeleton, split and premeshed (phase 7, slice 1) | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

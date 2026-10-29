@@ -43,8 +43,15 @@ from PySide6.QtWidgets import (
 )
 
 from shore.gui.forms import FORMS, Field, Form, form
-from shore.gui.session import BlockKey, Session
-from shore.gui.viewport import GeometryPick, PickResult, SliceKey, boundary_values, slice_values
+from shore.gui.session import BlockKey, Session, SkeletonKey
+from shore.gui.viewport import (
+    GeometryPick,
+    PickResult,
+    SkeletonPick,
+    SliceKey,
+    boundary_values,
+    slice_values,
+)
 from shore.project.commands import CancelToken
 
 AskPath = Callable[[str, str], str | None]  # (kind: "file" | "dir" | "save", title) -> path
@@ -117,6 +124,7 @@ class MainWindow(QMainWindow):
         self._build_display()
         self._build_association()
         self._build_spacing()
+        self._build_blocking()
         self._build_forms()
         self._build_console()
         self._build_actions()
@@ -202,6 +210,50 @@ class MainWindow(QMainWindow):
         dock.setWidget(panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
+    def _build_blocking(self) -> None:
+        """Split the blocking at a picked skeleton node (ADR 0042)."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.addWidget(QLabel("Double click a blocking edge (orange) at a node."))
+        self.skeleton_selection_label = QLabel("-")
+        form = QFormLayout()
+        form.addRow("edge", self.skeleton_selection_label)
+        layout.addLayout(form)
+        button = QPushButton("Split here")
+        button.clicked.connect(self.split_selection)
+        layout.addWidget(button)
+        layout.addStretch(1)
+        dock = QDockWidget("Blocking", self)
+        dock.setObjectName("blocking")
+        dock.setWidget(panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        self.selected_skeleton: SkeletonPick | None = None
+        self._skeleton_box: tuple[float, ...] | None = None
+
+    def split_selection(self) -> None:
+        """Run ``Project.split_blocking`` through the selected skeleton node:
+        the picked edge's block, its axis and the node's fraction along it
+        (making the edge's component current first if needed)."""
+        from shore.mesh.blocking import EDGES
+
+        pick = self.selected_skeleton
+        if pick is None:
+            self._report(ValueError("pick a blocking edge first"))
+            return
+        key: SkeletonKey = pick.key
+        axis = EDGES[key.edge][0]
+        fraction = pick.node / (pick.nodes - 1)
+
+        def work() -> None:
+            if self.session.project.current_component != key.component:
+                self.session.run("use_component", key.component)
+            self.session.run("split_blocking", key.block, axis, fraction)
+
+        self._guard(work)
+        if self.last_error is None:
+            self.selected_skeleton = None
+            self.skeleton_selection_label.setText("-")
+
     def edge_info(self) -> dict[str, Any] | None:
         """The selected edge: block, edge, axis, nodes, length, first and last cell."""
         from shore.gui.viewport import EDGE_NAMES, edge_nodes
@@ -275,7 +327,12 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         self.visibility: dict[str, QCheckBox] = {}
-        for kind, label in (("block", "Blocks"), ("geometry", "Geometry"), ("slice", "Slices")):
+        for kind, label in (
+            ("block", "Blocks"),
+            ("geometry", "Geometry"),
+            ("slice", "Slices"),
+            ("skeleton", "Blocking"),
+        ):
             box = QCheckBox(label)
             box.setChecked(True)
             box.toggled.connect(lambda on, k=kind: self.set_visible(k, on))
@@ -463,9 +520,17 @@ class MainWindow(QMainWindow):
                 else:
                     text = f"{len(d.triangles)} triangles"
                 self.geometry_tree.addTopLevelItem(QTreeWidgetItem([name, text]))
-        if keys != self._shown:  # frame the view when the set of blocks changes
+        skeleton = self.session.skeleton()
+        self.viewport.set_skeleton(skeleton)
+        box = None
+        if skeleton:
+            pts = np.concatenate([pts for _, pts in skeleton])
+            box = (*pts.min(axis=0), *pts.max(axis=0))
+        # frame the view when the set of blocks or the blocking's extent changes
+        if keys != self._shown or (box is not None and box != self._skeleton_box):
             self._shown = keys
             self.viewport.show_all()
+        self._skeleton_box = box
         self._refresh_slices()
         if self.quality_action.isChecked():
             self.refresh_quality()
@@ -693,13 +758,22 @@ class MainWindow(QMainWindow):
         self._picked(result, add)
         return result
 
-    def _picked(self, result: PickResult | GeometryPick | None, add: bool = False) -> None:
+    def _picked(
+        self, result: PickResult | GeometryPick | SkeletonPick | None, add: bool = False
+    ) -> None:
         self.last_pick = result
         if result is None:
             self.statusBar().clearMessage()
             return
         x, y, z = (float(v) for v in result.xyz)
         where = f"xyz ({x:.9g}, {y:.9g}, {z:.9g})"
+        if isinstance(result, SkeletonPick):
+            k = result.key
+            self.selected_skeleton = result
+            text = f"{k.component}/{k.block} {k.edge}  node {result.node} of {result.nodes}"
+            self.skeleton_selection_label.setText(text)
+            self.statusBar().showMessage(f"blocking {text}  {where}")
+            return
         if isinstance(result, GeometryPick):
             e = result.entity
             self._select_geometry(result.geometry, e.kind.value, e.index, add)

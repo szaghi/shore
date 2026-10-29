@@ -469,9 +469,6 @@ class Associate(Command):
         return source.replace(", ())", ")") if not self.indices else source
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        from shore.geometry.base import EntityKind, EntityRef
-        from shore.mesh.association import Association
-
         mesh, _ = project.require_mesh()
         block = next((b for b in mesh.blocks if b.label == self.block), None)
         if block is None:
@@ -479,39 +476,9 @@ class Associate(Command):
                 f"associate: no block {self.block!r} in component {project.current_component!r}."
             )
         target, what = _block_entity(block, self.entity)
-        if self.kind == "none":
-            association = None
-        else:
-            if self.kind not in _KIND_DIM:
-                raise ParameterError(
-                    f"associate: kind must be one of {sorted(_KIND_DIM)} or 'none', "
-                    f"got {self.kind!r}."
-                )
-            if _KIND_DIM[self.kind] < _ENTITY_DIM[what]:
-                raise ParameterError(
-                    f"associate: a {what} cannot be associated with a {self.kind} "
-                    "(only with geometry of its dimension or higher)."
-                )
-            body = project.geometries.get(self.geometry)
-            if body is None:
-                raise ParameterError(
-                    f"associate: no geometry {self.geometry!r}; "
-                    f"geometries: {sorted(project.geometries)}."
-                )
-            kind = EntityKind(self.kind)
-            if kind is EntityKind.BODY:
-                if self.indices:
-                    raise ParameterError("associate: a body association takes no indices.")
-                association = Association.body(self.geometry)
-            else:
-                available = len(body.geometry.entities(kind))
-                if not self.indices or any(not 0 <= i < available for i in self.indices):
-                    raise ParameterError(
-                        f"associate: {self.kind} indices {self.indices} outside "
-                        f"0..{available - 1} of geometry {self.geometry!r}."
-                    )
-                refs = [EntityRef(kind, int(i)) for i in self.indices]
-                association = Association.of(self.geometry, body.geometry, refs)
+        association = _association(
+            project, "associate", what, self.geometry, self.kind, self.indices
+        )
         previous = target.association
         target.association = association
 
@@ -519,6 +486,45 @@ class Associate(Command):
             target.association = previous
 
         return Undo(restore)
+
+
+def _association(
+    project: Project, command: str, what: str, geometry: str, kind: str, indices: tuple[int, ...]
+) -> Any:
+    """The ``Association`` of a *what* (face, edge, vertex) with entities
+    *indices* of kind *kind* of project geometry *geometry*; None for ``"none"``."""
+    from shore.geometry.base import EntityKind, EntityRef
+    from shore.mesh.association import Association
+
+    if kind == "none":
+        return None
+    if kind not in _KIND_DIM:
+        raise ParameterError(
+            f"{command}: kind must be one of {sorted(_KIND_DIM)} or 'none', got {kind!r}."
+        )
+    if _KIND_DIM[kind] < _ENTITY_DIM[what]:
+        raise ParameterError(
+            f"{command}: a {what} cannot be associated with a {kind} "
+            "(only with geometry of its dimension or higher)."
+        )
+    body = project.geometries.get(geometry)
+    if body is None:
+        raise ParameterError(
+            f"{command}: no geometry {geometry!r}; geometries: {sorted(project.geometries)}."
+        )
+    entity_kind = EntityKind(kind)
+    if entity_kind is EntityKind.BODY:
+        if indices:
+            raise ParameterError(f"{command}: a body association takes no indices.")
+        return Association.body(geometry)
+    available = len(body.geometry.entities(entity_kind))
+    if not indices or any(not 0 <= i < available for i in indices):
+        raise ParameterError(
+            f"{command}: {kind} indices {indices} outside "
+            f"0..{available - 1} of geometry {geometry!r}."
+        )
+    refs = [EntityRef(entity_kind, int(i)) for i in indices]
+    return Association.of(geometry, body.geometry, refs)
 
 
 def _block_entity(block: Any, name: str) -> tuple[Any, str]:
@@ -627,6 +633,151 @@ class FillFace(Command):
         restore = project.undo_cache.snapshot(mesh)
         with _seams_written_through(mesh.blocks):
             view[...] = grid.points
+        return Undo(restore)
+
+
+@dataclass(frozen=True)
+class CreateBlocking(Command):
+    """Start the current component's blocking with one block (ADR 0042).
+
+    The block is the bounding box of geometry *geometry*, each side moved out
+    by *margin* times the box's extent along that axis, or the box between
+    *vmin* and *vmax*; it has *ni* x *nj* x *nk* nodes. Replaces the
+    component's blocking; its mesh changes only on ``premesh``.
+    """
+
+    method: ClassVar[str] = "create_blocking"
+    positional: ClassVar[tuple[str, ...]] = ("ni", "nj", "nk")
+
+    ni: int
+    nj: int
+    nk: int
+    geometry: str = "body"
+    margin: float = 0.0
+    vmin: tuple[float, float, float] | None = None
+    vmax: tuple[float, float, float] | None = None
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.blocking import box
+
+        if (self.vmin is None) != (self.vmax is None):
+            raise ParameterError("create_blocking: give both vmin and vmax, or neither.")
+        if self.vmin is None:
+            if not self.margin >= 0.0:
+                raise ParameterError(f"create_blocking: margin must be >= 0, got {self.margin}.")
+            bounds = project.require_geometry(self.geometry, "create_blocking").geometry.bounds
+            extent = bounds[1] - bounds[0]
+            lo, hi = bounds[0] - self.margin * extent, bounds[1] + self.margin * extent
+        else:
+            lo, hi = np.asarray(self.vmin, float), np.asarray(self.vmax, float)
+        blocking = box(lo, hi, self.ni, self.nj, self.nk)
+        return _replace_blocking(project, blocking)
+
+
+def _replace_blocking(project: Project, blocking: Any) -> Undo:
+    previous = project.blocking
+    project.blocking = blocking
+
+    def restore() -> None:
+        project.blocking = previous
+
+    return Undo(restore)
+
+
+@dataclass(frozen=True)
+class SplitBlocking(Command):
+    """Cut block *block* of the blocking across *axis* at the node nearest
+    *fraction* of it, and every block sharing a cut edge with it (ADR 0042).
+    The low part keeps the label; the high part is ``b<n>``, *n* counting up."""
+
+    method: ClassVar[str] = "split_blocking"
+    positional: ClassVar[tuple[str, ...]] = ("block", "axis", "fraction")
+
+    block: str
+    axis: str
+    fraction: float
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.blocking import split
+
+        blocking = project.require_blocking("split_blocking")
+        return _replace_blocking(project, split(blocking, self.block, self.axis, self.fraction))
+
+
+@dataclass(frozen=True)
+class DeleteBlocks(Command):
+    """Remove blocks *blocks* from the blocking; the faces they leave become
+    boundary faces (ADR 0042)."""
+
+    method: ClassVar[str] = "delete_blocks"
+    positional: ClassVar[tuple[str, ...]] = ("blocks",)
+
+    blocks: tuple[str, ...]
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.blocking import delete
+
+        blocking = project.require_blocking("delete_blocks")
+        return _replace_blocking(project, delete(blocking, self.blocks))
+
+
+@dataclass(frozen=True)
+class AssociateBlocking(Command):
+    """Associate a face, edge or vertex of a blocking block with geometry
+    (ADR 0042): as ``associate`` (ADR 0039), on the blocking. Entities without
+    an association of their own inherit one on ``premesh``."""
+
+    method: ClassVar[str] = "associate_blocking"
+    positional: ClassVar[tuple[str, ...]] = ("block", "entity", "geometry", "kind", "indices")
+
+    block: str
+    entity: str
+    geometry: str = "body"
+    kind: str = "body"
+    indices: tuple[int, ...] = ()
+
+    def to_source(self) -> str:
+        source = super().to_source()
+        return source.replace(", ())", ")") if not self.indices else source
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.blocking import associate
+
+        blocking = project.require_blocking("associate_blocking")
+        _, what = blocking.entity(self.block, self.entity)
+        association = _association(
+            project, "associate_blocking", what, self.geometry, self.kind, self.indices
+        )
+        return _replace_blocking(project, associate(blocking, self.block, self.entity, association))
+
+
+@dataclass(frozen=True)
+class Premesh(Command):
+    """Make the current component's mesh from its blocking (ADR 0042):
+    edges, faces and blocks by TFI, projected onto their associations
+    (*exact*: tier-2 CAD projection). Replaces the mesh."""
+
+    method: ClassVar[str] = "premesh"
+
+    exact: bool = False
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.association import AssociationResolver
+        from shore.mesh.blocking import premesh
+
+        blocking = project.require_blocking("premesh")
+        geometries = {name: body.geometry for name, body in project.geometries.items()}
+        blocks = premesh(blocking, AssociationResolver(geometries, exact=self.exact))
+        named = tuple(sorted({a.geometry for a in blocking.associations.values()}))
+        prev = (project.mesh, project.build)
+        project.mesh = Mesh(body=None, blocks=blocks, topology=None)  # type: ignore[arg-type]
+        project.build = BuildState(
+            "blocking", int(blocks[0].nodes.shape[2]), marchable=False, geometries=named
+        )
+
+        def restore() -> None:
+            project.mesh, project.build = prev
+
         return Undo(restore)
 
 

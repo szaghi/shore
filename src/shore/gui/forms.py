@@ -125,6 +125,51 @@ FORMS: tuple[Form, ...] = (
     ),
     Form("snap", "Snap to geometry", (Field("exact", "bool", False),)),
     Form(
+        "create_blocking",
+        "Create blocking",
+        (
+            Field("ni", "int", 11, keyword=False),
+            Field("nj", "int", 11, keyword=False),
+            Field("nk", "int", 11, keyword=False),
+            Field("geometry", "text", "body"),
+            Field("margin", "float", 0.0),
+            Field("vmin", "literal", None, label="(x, y, z), with vmax instead of a geometry"),
+            Field("vmax", "literal", None),
+        ),
+    ),
+    Form(
+        "split_blocking",
+        "Split blocking",
+        (
+            Field("block", "text", "b0", keyword=False),
+            Field("axis", "choice", "i", ("i", "j", "k"), keyword=False),
+            Field("fraction", "float", 0.5, keyword=False),
+        ),
+    ),
+    Form(
+        "delete_blocks",
+        "Delete blocking blocks",
+        (Field("blocks", "literal", (), label="labels, e.g. ['b13']", keyword=False),),
+    ),
+    Form(
+        "associate_blocking",
+        "Associate blocking entity",
+        (
+            Field("block", "text", "b0", keyword=False),
+            Field("entity", "text", "k_lo", label="face, edge or v0..v7", keyword=False),
+            Field("geometry", "text", "body", keyword=False),
+            Field(
+                "kind",
+                "choice",
+                "body",
+                ("body", "surface", "curve", "point", "none"),
+                keyword=False,
+            ),
+            Field("indices", "literal", (), label="entity indices, e.g. [3, 4]", keyword=False),
+        ),
+    ),
+    Form("premesh", "Premesh blocking", (Field("exact", "bool", False),), long=True),
+    Form(
         "write_xall", "Write Xall run", (Field("directory", "dir", "", keyword=False),), long=True
     ),
     Form("write_cgns", "Write CGNS", (Field("path", "file", "", keyword=False),)),

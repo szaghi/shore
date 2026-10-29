@@ -32,6 +32,15 @@ class BlockKey:
     label: str
 
 
+@dataclass(frozen=True)
+class SkeletonKey:
+    """A blocking edge of a component: ``edge`` of blocking block ``block`` (ADR 0042)."""
+
+    component: str
+    block: str
+    edge: str
+
+
 class Session:
     """One project, its saved location and the GUI's change listeners."""
 
@@ -124,6 +133,18 @@ class Session:
             if mesh is None:
                 continue
             out.extend((BlockKey(name, b.label), b) for b in mesh.blocks)
+        return out
+
+    def skeleton(self) -> list[tuple[SkeletonKey, Any]]:
+        """Every blocking edge of every component, with its nodes on the
+        straight line between its skeleton vertices (``Blocking.polylines``)."""
+        out = []
+        for name, blocking in self.project.blockings.items():
+            if blocking is not None:
+                out.extend(
+                    (SkeletonKey(name, block, edge), pts)
+                    for block, edge, pts in blocking.polylines()
+                )
         return out
 
     def tree(

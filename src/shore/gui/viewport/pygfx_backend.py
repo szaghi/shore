@@ -25,6 +25,7 @@ from shore.gui.viewport import (
     FACES,
     GeometryPick,
     PickResult,
+    SkeletonPick,
     SliceKey,
     colormap,
     edge_segments,
@@ -107,7 +108,7 @@ class PygfxViewport:
         self.camera = gfx.PerspectiveCamera(45, 4 / 3)
         self.camera.add(gfx.DirectionalLight(intensity=2.0))
         self.scene.add(self.camera)
-        self.groups = {kind: gfx.Group() for kind in ("block", "slice", "geometry")}
+        self.groups = {kind: gfx.Group() for kind in ("block", "slice", "geometry", "skeleton")}
         self.content = gfx.Group()
         self.content.add(*self.groups.values())
         self.scene.add(self.content)
@@ -213,8 +214,35 @@ class PygfxViewport:
             self._add(item)
         self.request_draw()
 
+    def set_skeleton(self, edges: Sequence[tuple[Any, np.ndarray]]) -> None:
+        """Replace the blocking skeleton (ADR 0042): ``(key, edge nodes (n, 3))``,
+        drawn over the blocks so it stays pickable."""
+        self._remove("skeleton")
+        if not edges:
+            self.request_draw()
+            return
+        chunks, starts = [], [0]
+        for _, pts in edges:
+            chunks.append(np.vstack([pts, np.full((1, 3), np.nan)]))
+            starts.append(starts[-1] + len(pts) + 1)
+        lines64 = np.concatenate(chunks).astype(np.float64)
+        line = gfx.Line(
+            gfx.Geometry(positions=lines64.astype(np.float32)),
+            gfx.LineMaterial(thickness=3.0, color="#e67e22", pick_write=True, depth_test=False),
+        )
+        item = _Item("skeleton", "skeleton", [line], [lines64])
+        item.curve_offsets = np.asarray(starts, np.int64)
+        item.display = [key for key, _ in edges]
+        self._add(item)
+        self.request_draw()
+
+    @property
+    def skeleton_keys(self) -> list[Any]:
+        item = next((i for i in self._items if i.kind == "skeleton"), None)
+        return [] if item is None else list(item.display)
+
     def show(self, kind: str, visible: bool) -> None:
-        """Show or hide every ``"block"``, ``"slice"`` or ``"geometry"`` object."""
+        """Show or hide every ``"block"``, ``"slice"``, ``"geometry"`` or ``"skeleton"`` object."""
         self.groups[kind].visible = visible
         self.request_draw()
 
@@ -226,7 +254,7 @@ class PygfxViewport:
     ) -> None:
         """Colour block and slice quads by value (keys: block keys, ``SliceKey``), or clear."""
         for item in self._items:
-            if item.kind == "geometry":
+            if item.kind in ("geometry", "skeleton"):
                 continue
             colours = item.objects[0].geometry.colors
             v = None if values is None else values.get(item.key)
@@ -342,7 +370,7 @@ class PygfxViewport:
 
     # -- picking -------------------------------------------------------------------
 
-    def pick(self, x: float, y: float) -> PickResult | GeometryPick | None:
+    def pick(self, x: float, y: float) -> PickResult | GeometryPick | SkeletonPick | None:
         info = self.renderer.get_pick_info((x, y))
         wo = info.get("world_object")
         item = self._by_object.get(id(wo)) if wo is not None else None
@@ -352,6 +380,8 @@ class PygfxViewport:
             return None
         if item.kind == "geometry":
             return self._pick_geometry(item, wo, info)
+        if item.kind == "skeleton":
+            return self._pick_skeleton(item, info)
         if "face_index" not in info:
             return None
         quad = int(info["face_index"])
@@ -390,6 +420,15 @@ class PygfxViewport:
         curve = d.curves[c]
         local = min(v - int(item.curve_offsets[c]), len(curve) - 1)
         return GeometryPick(item.key, EntityRef(EntityKind.CURVE, c), curve[local].copy())
+
+    def _pick_skeleton(self, item: _Item, info: dict) -> SkeletonPick:
+        v = int(info["vertex_index"])  # the vertex nearest the pick
+        e = int(np.searchsorted(item.curve_offsets, v, side="right") - 1)
+        start, end = int(item.curve_offsets[e]), int(item.curve_offsets[e + 1]) - 1
+        pts = item.pos64[0][start:end]
+        node = min(v - start, len(pts) - 1)
+        self.highlight_polyline(pts)
+        return SkeletonPick(item.display[e], node, len(pts), pts[node].copy())
 
     def _outline(self, grid: np.ndarray, cell: tuple[int, int, int], face: str) -> None:
         f = FACES.index(face)

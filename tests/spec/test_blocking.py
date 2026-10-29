@@ -161,7 +161,6 @@ def walls(blocks):
 
 
 class TestCreateSplit:
-    @PENDING
     def test_b1_around_geometry(self, sphere_stl):
         from shore.project import Project
 
@@ -177,7 +176,6 @@ class TestCreateSplit:
         np.testing.assert_allclose(corners, expected, atol=1e-12)
         assert p.mesh is None  # the mesh is made by premesh only
 
-    @PENDING
     def test_b2_between_corners(self):
         from shore.project import Project
 
@@ -190,7 +188,6 @@ class TestCreateSplit:
         np.testing.assert_array_equal(corners[7], [2.0, 1.0, 1.0])
         np.testing.assert_array_equal(corners[4], [2.0, 0.0, 0.0])
 
-    @PENDING
     def test_b3_split(self):
         from shore.project import Project
 
@@ -204,7 +201,6 @@ class TestCreateSplit:
         hi = p.blocking.points[list(p.blocking.block("b1"))]
         assert np.all(lo[4:, 0] == 1.0) and np.all(hi[:4, 0] == 1.0) and np.all(hi[4:, 0] == 2.0)
 
-    @PENDING
     def test_b3_rounds_to_a_node(self):
         from shore.project import Project
 
@@ -215,7 +211,6 @@ class TestCreateSplit:
         hi = p.blocking.points[list(p.blocking.block("b1"))]
         np.testing.assert_allclose(hi[:4, 0], 0.5, atol=1e-15)
 
-    @PENDING
     def test_b4_sheet(self):
         from shore.project import Project
 
@@ -235,7 +230,6 @@ class TestCreateSplit:
 
 
 class TestPremesh:
-    @PENDING
     def test_b5_cartesian(self):
         from shore.project import Project
 
@@ -258,7 +252,6 @@ class TestPremesh:
         bcs = sorted(f.bc.name for b in p.mesh.blocks for f in b.faces())
         assert bcs.count("SHARED") == 8 and bcs.count("FREE") == 16 and "WALL" not in bcs
 
-    @PENDING
     def test_b6_sphere(self, sphere_stl):
         p, centre = sphere_project(sphere_stl)
         blocks = p.mesh.blocks
@@ -270,7 +263,6 @@ class TestPremesh:
         assert min_jacobian(blocks) > 0.5
         assert seam_gap(blocks) == 0.0
 
-    @PENDING
     def test_b7_snap_keeps_nodes(self, sphere_stl):
         p, _ = sphere_project(sphere_stl)
         before = [b.nodes.copy() for b in p.mesh.blocks]
@@ -279,7 +271,6 @@ class TestPremesh:
                                                                      strict=True))  # fmt: skip
         assert moved < 1e-12
 
-    @PENDING
     def test_b8_replay_and_load(self, sphere_stl, tmp_path):
         from shore.io.grd import read_grd_metadata
         from shore.project import Project
@@ -296,7 +287,6 @@ class TestPremesh:
         p.write_xall(tmp_path / "xall")
         assert len(read_grd_metadata(tmp_path / "xall" / "mesh.grd")) == 26
 
-    @PENDING
     def test_b9_edited_body(self, sphere_stl, tmp_path):
         from shore.project.project import run_journal
 
@@ -315,7 +305,6 @@ class TestPremesh:
         assert min_jacobian(blocks) > 0.3
         assert seam_gap(blocks) == 0.0
 
-    @PENDING
     def test_b10_inheritance(self, sphere_stl, tmp_path):
         from shore.project import Project
 
@@ -350,7 +339,6 @@ class TestPremesh:
 
 
 class TestRefusals:
-    @PENDING
     @pytest.mark.parametrize(
         "call",
         [
@@ -375,7 +363,6 @@ class TestRefusals:
         with pytest.raises(ParameterError):
             Project().premesh()  # no blocking
 
-    @PENDING
     def test_b12_undo(self):
         from shore.project import Project
 

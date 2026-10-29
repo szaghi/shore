@@ -37,6 +37,17 @@ class GeometryPick:
 
 
 @dataclass(frozen=True)
+class SkeletonPick:
+    """A picked blocking edge (ADR 0042): its key, the node nearest the pick
+    (of ``nodes``, counted along the drawn polyline) and that node's point."""
+
+    key: Any  # the skeleton key the viewport was given
+    node: int
+    nodes: int
+    xyz: np.ndarray
+
+
+@dataclass(frozen=True)
 class PickResult:
     """A picked boundary cell face: its block, face and cell, and its centre."""
 
