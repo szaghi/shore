@@ -48,6 +48,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "pyvista",
+    "h5py",
     "pycgns",  # ADR 0035: an independent CGNS reader for the export specs
 ]
 vis = [
@@ -55,6 +56,9 @@ vis = [
 ]
 cad = [
     "build123d>=0.13",
+]
+cgns = [
+    "h5py",
 ]
 
 [tool.setuptools.packages.find]

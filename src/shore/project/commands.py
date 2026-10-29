@@ -472,6 +472,59 @@ class WriteAdjacency(Command):
         write_adjacency_json(mesh.blocks, out)
 
 
+def _export_blocks(project: Project, components: tuple[str, ...], what: str) -> dict[str, list]:
+    """``{component: blocks}`` of *components* (all with a mesh when empty), in order."""
+    meshes = project.components
+    names = list(components) or [name for name, mesh in meshes.items() if mesh is not None]
+    for name in names:
+        if name not in meshes:
+            raise ParameterError(f"{what}: no component {name!r}.")
+        if meshes[name] is None:
+            raise ParameterError(f"{what}: component {name!r} has no mesh.")
+    if not names:
+        raise ParameterError(f"{what}: no component has a mesh.")
+    return {name: list(meshes[name].blocks) for name in names}  # type: ignore[union-attr]
+
+
+@dataclass(frozen=True)
+class WriteCgns(Command):
+    """Write a CGNS file: a base per component, a zone per block (ADR 0035; output only)."""
+
+    method: ClassVar[str] = "write_cgns"
+    positional: ClassVar[tuple[str, ...]] = ("path",)
+    mutates: ClassVar[bool] = False
+
+    path: str
+    components: tuple[str, ...] = ()
+
+    def apply(self, project: Project, ctx: Context) -> None:
+        from shore.io.cgns import write_cgns
+
+        out = Path(self.path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        write_cgns(_export_blocks(project, self.components, "write_cgns"), out)
+
+
+@dataclass(frozen=True)
+class WritePlot3d(Command):
+    """Write a multi-block Plot3D grid file of the components' blocks (ADR 0035; output only)."""
+
+    method: ClassVar[str] = "write_plot3d"
+    positional: ClassVar[tuple[str, ...]] = ("path",)
+    mutates: ClassVar[bool] = False
+
+    path: str
+    components: tuple[str, ...] = ()
+
+    def apply(self, project: Project, ctx: Context) -> None:
+        from shore.io.plot3d import write_plot3d
+
+        out = Path(self.path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        blocks = _export_blocks(project, self.components, "write_plot3d")
+        write_plot3d([b for group in blocks.values() for b in group], out)
+
+
 @dataclass(frozen=True)
 class BuildPrimitive(Command):
     """Build a parametric primitive (``shore primitive``); replaces the mesh."""

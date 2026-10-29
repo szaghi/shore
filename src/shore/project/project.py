@@ -38,7 +38,7 @@ import runpy
 import shutil
 import tomllib
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -69,8 +69,10 @@ from shore.project.commands import (
     UseComponent,
     WriteAdjacency,
     WriteCcPar,
+    WriteCgns,
     WriteGeo,
     WriteGrd,
+    WritePlot3d,
     WriteProcInput,
     WriteXall,
     input_root,
@@ -391,6 +393,17 @@ class Project:
     def write_adjacency(self, path: str | Path) -> None:
         """Write the ``.adjacency.json`` sidecar."""
         self.execute(WriteAdjacency(str(path)))
+
+    def write_cgns(self, path: str | Path, components: Sequence[str] = ()) -> None:
+        """Write a CGNS file of *components* (all with a mesh when empty): a base
+        per component, a zone per block, 1-to-1 connections and BCs from the
+        face graph (ADR 0035). Needs ``h5py`` (``shore-mesh[cgns]``)."""
+        self.execute(WriteCgns(str(path), tuple(components)))
+
+    def write_plot3d(self, path: str | Path, components: Sequence[str] = ()) -> None:
+        """Write the blocks of *components* (all with a mesh when empty) as one
+        multi-block Plot3D grid file (ADR 0035)."""
+        self.execute(WritePlot3d(str(path), tuple(components)))
 
     def write_xall(
         self,

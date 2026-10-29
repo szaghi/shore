@@ -389,7 +389,6 @@ BC_TYPE = {"WALL": "BCWall", "SYMMETRY": "BCSymmetryPlane", "FREE": "BCTypeUserD
 
 
 class TestBlockSets:
-    @PENDING
     @pytest.mark.parametrize("name", CASES)
     def test_x1_vtk_reads_cgns(self, written, name):
         blocks, cgns, _ = files(written, name)
@@ -400,14 +399,12 @@ class TestBlockSets:
         for pts, block in zip(points, blocks, strict=True):
             assert np.array_equal(pts, block.nodes.reshape(-1, 3, order="F"))
 
-    @PENDING
     @pytest.mark.parametrize("name", CASES)
     def test_x2_sids(self, written, name):
         blocks, cgns, _ = files(written, name)
         assert list(sids(cgns)[name]) == [b.label for b in blocks]
         assert sids_errors(cgns, 1e-12 * diagonal(blocks)) == []
 
-    @PENDING
     @pytest.mark.parametrize("name", CASES)
     def test_x3_face_graph(self, written, name):
         blocks, cgns, _ = files(written, name)
@@ -434,13 +431,11 @@ class TestBlockSets:
                 else:
                     assert donors.get(f.name) == wired[(b.label, f.name)], (b.label, f.name)
 
-    @PENDING
     @pytest.mark.parametrize("name", CASES)
     def test_x4_pycgns_default_grammar(self, written, name):
         _, cgns, _ = files(written, name)
         assert default_grammar_errors(cgns) == []
 
-    @PENDING
     @pytest.mark.parametrize("name", CASES)
     def test_x5_vtk_reads_plot3d(self, written, name):
         blocks, _, xyz = files(written, name)
@@ -472,7 +467,6 @@ def load(directory: Path, replay: bool = True):
 
 
 class TestProject:
-    @PENDING
     def test_x6_bases_per_component(self, saved, tmp_path):
         p = load(saved)
         p.write_cgns(tmp_path / "all.cgns")
@@ -490,7 +484,6 @@ class TestProject:
         for (_, pts), block in zip(read, blocks, strict=True):
             assert np.array_equal(pts, block.nodes.reshape(-1, 3, order="F"))
 
-    @PENDING
     def test_x6_journal(self, saved, tmp_path):
         p = load(saved)
         before = p.journal()
@@ -500,7 +493,6 @@ class TestProject:
         assert lines[0].startswith("p.write_cgns(") and "components=('collar',)" in lines[0]
         assert lines[1].startswith("p.write_plot3d(")
 
-    @PENDING
     def test_x6_errors(self, saved, tmp_path):
         from shore.project import Project
 
@@ -514,7 +506,6 @@ class TestProject:
 
 
 class TestCli:
-    @PENDING
     @pytest.mark.parametrize("fmt", ["cgns", "plot3d"])
     def test_x7_cli_equals_api(self, saved, tmp_path, fmt):
         from shore.cli import app
@@ -528,7 +519,6 @@ class TestCli:
         assert filecmp.cmp(tmp_path / "api", tmp_path / "cli", shallow=False)
         assert filecmp.cmp(tmp_path / "api", tmp_path / "fast", shallow=False)
 
-    @PENDING
     @pytest.mark.parametrize("fmt", ["cgns", "plot3d"])
     def test_x7_cli_component(self, saved, tmp_path, fmt):
         from shore.cli import app
@@ -545,7 +535,6 @@ class TestCli:
 
 
 class TestRefusals:
-    @PENDING
     def test_x8_unmatched_nodes(self, written, tmp_path):
         from shore.io.cgns import write_cgns
 
@@ -558,7 +547,6 @@ class TestRefusals:
         with pytest.raises(ParameterError):
             write_cgns({"c": [moved, *blocks[1:]]}, tmp_path / "x.cgns")
 
-    @PENDING
     def test_x8_long_zone_name(self, written, tmp_path):
         from shore.io.cgns import write_cgns
 
@@ -571,7 +559,6 @@ class TestRefusals:
 
 
 class TestDeterminism:
-    @PENDING
     def test_x9_cgns_twice(self, written, tmp_path):
         from shore.io.cgns import write_cgns
 
@@ -580,7 +567,6 @@ class TestDeterminism:
         write_cgns({"ch": blocks}, tmp_path / "b.cgns")
         assert filecmp.cmp(tmp_path / "a.cgns", tmp_path / "b.cgns", shallow=False)
 
-    @PENDING
     def test_x9_plot3d_twice(self, written, tmp_path):
         from shore.io.plot3d import write_plot3d
 

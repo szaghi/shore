@@ -1,6 +1,6 @@
 # 0035 — CGNS and Plot3D exports
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 
 ## Context
@@ -166,6 +166,27 @@ Results:
 The ten block sets: cubed sphere, O-grid, sharp and blunt C-grids, CH, OH,
 a cubed sphere split along k, flat caps, a split collar (a lens's two sharp
 corners), and a half collar.
+
+### Acceptance (2026-10-28): export spec met
+
+**Implementation.** As decided:
+- `shore/io/cgns.py`: `write_cgns`; `_links` pairs the connected faces
+  and `_locate` places the smaller face inside the larger one;
+  `transform_vector`; the CGNS/HDF5 node writer.
+- `shore/io/plot3d.py`: `write_plot3d`.
+- `WriteCgns` / `WritePlot3d` and `Project.write_cgns` /
+  `Project.write_plot3d`; `shore cgns`, `shore plot3d`.
+- The `[cgns]` extra; `h5py` and `pycgns` in `dev`.
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_exports.py`: **61 passed, 0 skipped, 0 xfailed**. All
+  61 `@PENDING` lines are removed.
+- Unit tests (`tests/test_cgns_plot3d.py`, 12): Transform cases and its
+  inverse, the Plot3D record layout, and the errors (missing `h5py`, a
+  connection outside its base, repeated names).
+
+**Not verified:** a run in CI (minutes exhausted until November); CGNS
+files opened in ParaView's GUI or read by a CFD solver.
 
 ### Review questions (for the user)
 

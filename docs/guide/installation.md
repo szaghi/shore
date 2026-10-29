@@ -67,6 +67,8 @@ If you already have pipx and don't want a wrapper script:
 pipx install shore-mesh
 # or with the [vis] extras
 pipx install 'shore-mesh[vis]'
+# CGNS export (shore cgns, Project.write_cgns) needs the [cgns] extra (h5py)
+pipx install 'shore-mesh[cgns]'
 ```
 
 This is what the one-liner ends up running. Same isolation
@@ -105,7 +107,8 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-The `[dev]` extra adds `pytest`, `pytest-cov`, `ruff`, and `pyvista`.
+The `[dev]` extra adds `pytest`, `pytest-cov`, `ruff`, `pyvista`, `h5py` and
+`pycgns` (the independent CGNS reader of the export specs, ADR 0035).
 
 Run the test suite to confirm everything works:
 

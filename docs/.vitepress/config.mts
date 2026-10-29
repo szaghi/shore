@@ -166,6 +166,13 @@ export default defineConfig({
           ],
         },
         {
+          text: 'Exports',
+          items: [
+            { text: 'shore cgns',   link: '/reference/cgns' },
+            { text: 'shore plot3d', link: '/reference/plot3d' },
+          ],
+        },
+        {
           text: 'Inspection and visualisation',
           items: [
             { text: 'shore info',   link: '/reference/info' },
@@ -216,6 +223,7 @@ export default defineConfig({
             { text: 'shore.io.vtk',       link: '/reference/api-vtk' },
             { text: 'shore.io.adjacency',  link: '/reference/api-adjacency' },
             { text: 'shore.io.cc_par',     link: '/reference/api-cc-par' },
+            { text: 'shore.io.cgns & .plot3d', link: '/reference/api-exports' },
             { text: 'shore.io.proc_input', link: '/reference/api-proc-input' },
             { text: 'shore.io.boxes',      link: '/reference/api-boxes-io' },
             { text: 'shore.boxes',         link: '/reference/api-boxes' },

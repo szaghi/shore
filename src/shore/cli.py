@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import numpy as np
 import typer
@@ -1429,6 +1430,55 @@ def xall(
         raise typer.Exit(1) from None
     names = [n for n, m in proj.components.items() if m is not None]
     _console.print(f"[green]✓[/green] Wrote the Xall run of {names} to {_esc(str(out))}")
+
+
+_COMPONENTS = Annotated[
+    list[str] | None,
+    typer.Option("--component", "-c", help="Component to write (repeatable; default: all)."),
+]
+
+
+def _export_project(project_dir: Path, no_replay: bool, write: Callable[[Any], None]) -> None:
+    from shore.project import Project as _Project
+
+    try:
+        write(_Project.load(project_dir, replay=not no_replay))
+    except Exception as exc:
+        _err.print(f"[red]Error:[/red] {_esc(str(exc))}")
+        raise typer.Exit(1) from None
+
+
+@app.command(name="cgns")
+def cgns(
+    project_dir: Annotated[Path, typer.Argument(help="A saved SHORE project directory.")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="CGNS file to write.")],
+    component: _COMPONENTS = None,
+    no_replay: _NO_REPLAY = False,
+) -> None:
+    """Write a project as one CGNS/HDF5 file (ADR 0035).
+
+    One base per component, one structured zone per block, 1-to-1
+    connections and boundary conditions from the face graph. Needs h5py
+    (the cgns extra of shore-mesh).
+    """
+    _export_project(project_dir, no_replay, lambda p: p.write_cgns(output, component or ()))
+    _console.print(f"[green]✓[/green] Wrote {_esc(str(output))}")
+
+
+@app.command(name="plot3d")
+def plot3d(
+    project_dir: Annotated[Path, typer.Argument(help="A saved SHORE project directory.")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Plot3D grid file to write.")],
+    component: _COMPONENTS = None,
+    no_replay: _NO_REPLAY = False,
+) -> None:
+    """Write a project's blocks as one multi-block Plot3D grid file (ADR 0035).
+
+    Whole grid, no IBLANK, Fortran unformatted, double precision, little
+    endian; components in project order, blocks in component order.
+    """
+    _export_project(project_dir, no_replay, lambda p: p.write_plot3d(output, component or ()))
+    _console.print(f"[green]✓[/green] Wrote {_esc(str(output))}")
 
 
 # ---------------------------------------------------------------------------
