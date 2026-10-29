@@ -48,6 +48,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "pyvista",
+    "pycgns",  # ADR 0035: an independent CGNS reader for the export specs
 ]
 vis = [
     "pyvista",
