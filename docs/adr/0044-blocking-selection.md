@@ -1,6 +1,6 @@
 # 0044 — Selecting blocking faces and blocks in the GUI (phase 7, slice 3)
 
-- **Status:** Proposed (spec frozen 2026-10-29)
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -107,3 +107,13 @@ without the usual scope questions.
 | K4 | a lattice's hole: six faces selected, one O-grid, 32 blocks |
 | K5 | associate selected faces with the selected geometry; delete a picked block |
 | K6 (× 3) | refusals: nothing selected, faces given to delete, no geometry |
+
+## Acceptance (2026-10-29): spec met
+
+**Implementation.** As decided, plus a unit test of `Blocking.centres`
+(`tests/test_blocking_unit.py`) and the Blocking dock in
+`docs/reference/gui.md`.
+
+**Verdict** (T2 locally; `scripts/check_spec.py` reports all files ok):
+`tests_gui/spec/test_gui_blocking_select.py` gives **9 passed, 0 skipped,
+0 xfailed**. All `@PENDING` lines are removed.

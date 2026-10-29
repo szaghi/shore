@@ -46,6 +46,7 @@ from shore.gui.forms import FORMS, Field, Form, form
 from shore.gui.session import BlockKey, Session, SkeletonKey
 from shore.gui.viewport import (
     GeometryPick,
+    MarkerPick,
     PickResult,
     SkeletonPick,
     SliceKey,
@@ -211,24 +212,163 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
     def _build_blocking(self) -> None:
-        """Split the blocking at a picked skeleton node (ADR 0042)."""
+        """Select blocking edges, faces and blocks; split, O-grid, delete and
+        associate them (ADR 0042, 0044)."""
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.addWidget(QLabel("Double click a blocking edge (orange) at a node."))
+        layout.addWidget(QLabel("Double click a blocking edge (orange) or marker; shift adds."))
+        self.blocking_mode = QComboBox()
+        self.blocking_mode.addItems(["edge", "face", "block"])
+        self.blocking_mode.currentTextChanged.connect(lambda _: self._refresh_markers())
         self.skeleton_selection_label = QLabel("-")
+        self.blocking_selection_label = QLabel("-")
+        self.blocking_selection_label.setWordWrap(True)
+        self.ogrid_factor = QLineEdit("0.5")
+        self.ogrid_nodes = QLineEdit("5")
         form = QFormLayout()
+        form.addRow("select", self.blocking_mode)
         form.addRow("edge", self.skeleton_selection_label)
+        form.addRow("selection", self.blocking_selection_label)
+        form.addRow("O-grid factor", self.ogrid_factor)
+        form.addRow("O-grid nodes", self.ogrid_nodes)
         layout.addLayout(form)
-        button = QPushButton("Split here")
-        button.clicked.connect(self.split_selection)
-        layout.addWidget(button)
+        for text, slot in (
+            ("Split here", self.split_selection),
+            ("O-grid", self._ogrid_from_panel),
+            ("Delete blocks", self.delete_selection),
+            ("Associate with geometry", self.associate_blocking_selection),
+            ("Clear selection", self.clear_blocking_selection),
+        ):
+            button = QPushButton(text)
+            button.clicked.connect(slot)
+            layout.addWidget(button)
         layout.addStretch(1)
         dock = QDockWidget("Blocking", self)
         dock.setObjectName("blocking")
         dock.setWidget(panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self.selected_skeleton: SkeletonPick | None = None
+        self.blocking_selection: list[SkeletonKey] = []
         self._skeleton_box: tuple[float, ...] | None = None
+
+    def _refresh_markers(self) -> None:
+        mode = self.blocking_mode.currentText()
+        markers = self.session.skeleton_markers(mode) if mode in ("face", "block") else []
+        self.viewport.set_markers(markers)
+
+    def select_skeleton(self, key: SkeletonKey, *, add: bool = False) -> None:
+        """Select a blocking edge, face or block (``key.edge``: an edge or face
+        name, ``""`` for a block); *add* toggles it in the selection."""
+        if not add:
+            self.blocking_selection = [key]
+        elif key in self.blocking_selection:
+            self.blocking_selection.remove(key)
+        else:
+            self.blocking_selection.append(key)
+        self._show_blocking_selection()
+
+    def clear_blocking_selection(self) -> None:
+        self.blocking_selection = []
+        self.selected_skeleton = None
+        self.skeleton_selection_label.setText("-")
+        self._show_blocking_selection()
+
+    def _show_blocking_selection(self) -> None:
+        text = ", ".join(
+            f"{k.block}" + (f".{k.edge}" if k.edge else "") for k in self.blocking_selection
+        )
+        self.blocking_selection_label.setText(text or "-")
+
+    def _selection_component(self) -> str:
+        components = {k.component for k in self.blocking_selection}
+        if not components:
+            raise ValueError("select blocking faces, edges or blocks first")
+        if len(components) > 1:
+            raise ValueError("the selection spans several components")
+        return components.pop()
+
+    def _run_in(self, component: str, method: str, *args: Any, **kwargs: Any) -> None:
+        if self.session.project.current_component != component:
+            self.session.run("use_component", component)
+        self.session.run(method, *args, **kwargs)
+
+    def ogrid_selection(self, factor: float = 0.5, nodes: int = 5) -> None:
+        """Run ``Project.ogrid`` on the selection: the selected blocks are the
+        set (every block when none is selected), the selected faces the layered
+        faces (else the set's whole boundary), each named by its block in the
+        set."""
+
+        def work() -> None:
+            component = self._selection_component()
+            blocking = self.session.project.blockings[component]
+            blocks = [k.block for k in self.blocking_selection if not k.edge]
+            chosen = set(blocks) or set(blocking.labels())
+            owners = blocking.faces()
+            faces = []
+            for k in self.blocking_selection:
+                if not k.edge:
+                    continue
+                key, what = blocking.entity(k.block, k.edge)
+                if what != "face":
+                    raise ValueError(f"{k.block}.{k.edge} is not a face: select faces or blocks")
+                inside = [
+                    (blocking.blocks[b][0], name)
+                    for b, name in owners[key[1:]]
+                    if blocking.blocks[b][0] in chosen
+                ]
+                if len(inside) != 1:
+                    raise ValueError(f"{k.block}.{k.edge} is not on the boundary of the set")
+                faces.append(inside[0])
+            self._run_in(component, "ogrid", tuple(blocks), faces=faces, factor=factor, nodes=nodes)
+
+        self._guard(work)
+
+    def _ogrid_from_panel(self) -> None:
+        try:
+            factor, nodes = float(self.ogrid_factor.text()), int(self.ogrid_nodes.text())
+        except ValueError as exc:
+            self._report(exc)
+            return
+        self.ogrid_selection(factor, nodes)
+
+    def delete_selection(self) -> None:
+        """Run ``Project.delete_blocks`` on the selected blocks."""
+
+        def work() -> None:
+            component = self._selection_component()
+            blocks = [k.block for k in self.blocking_selection if not k.edge]
+            if not blocks:
+                raise ValueError("select blocks to delete (selection mode: block)")
+            self._run_in(component, "delete_blocks", blocks)
+            self.blocking_selection = []
+
+        self._guard(work)
+        self._show_blocking_selection()
+
+    def associate_blocking_selection(self) -> None:
+        """Associate each selected blocking face or edge with the geometry
+        selected in the Association dock (``Project.associate_blocking``)."""
+
+        def work() -> None:
+            component = self._selection_component()
+            if self.selected_geometry is None:
+                raise ValueError("select geometry first (double click it)")
+            entities = [k for k in self.blocking_selection if k.edge]
+            if not entities:
+                raise ValueError("select blocking faces or edges to associate")
+            name, kind, indices = self.selected_geometry
+            for k in entities:
+                self._run_in(
+                    component,
+                    "associate_blocking",
+                    k.block,
+                    k.edge,
+                    name,
+                    kind,
+                    () if kind == "body" else tuple(indices),
+                )
+
+        self._guard(work)
 
     def split_selection(self) -> None:
         """Run ``Project.split_blocking`` through the selected skeleton node:
@@ -522,6 +662,11 @@ class MainWindow(QMainWindow):
                 self.geometry_tree.addTopLevelItem(QTreeWidgetItem([name, text]))
         skeleton = self.session.skeleton()
         self.viewport.set_skeleton(skeleton)
+        self._refresh_markers()
+        valid = {k for k, _ in skeleton}
+        valid |= {k for kind in ("face", "block") for k, _ in self.session.skeleton_markers(kind)}
+        self.blocking_selection = [k for k in self.blocking_selection if k in valid]
+        self._show_blocking_selection()
         box = None
         if skeleton:
             pts = np.concatenate([pts for _, pts in skeleton])
@@ -539,8 +684,11 @@ class MainWindow(QMainWindow):
     # -- view state (ADR 0038): not commands, never journaled ---------------------------
 
     def set_visible(self, kind: str, visible: bool) -> None:
-        """Show or hide all blocks, geometries or slices."""
+        """Show or hide all blocks, geometries, slices or the blocking (its
+        skeleton and markers)."""
         self.viewport.show(kind, visible)
+        if kind == "skeleton":
+            self.viewport.show("marker", visible)
         box = self.visibility[kind]
         if box.isChecked() != visible:
             box.setChecked(visible)
@@ -759,7 +907,9 @@ class MainWindow(QMainWindow):
         return result
 
     def _picked(
-        self, result: PickResult | GeometryPick | SkeletonPick | None, add: bool = False
+        self,
+        result: PickResult | GeometryPick | SkeletonPick | MarkerPick | None,
+        add: bool = False,
     ) -> None:
         self.last_pick = result
         if result is None:
@@ -770,9 +920,19 @@ class MainWindow(QMainWindow):
         if isinstance(result, SkeletonPick):
             k = result.key
             self.selected_skeleton = result
+            self.select_skeleton(k, add=add)
             text = f"{k.component}/{k.block} {k.edge}  node {result.node} of {result.nodes}"
             self.skeleton_selection_label.setText(text)
             self.statusBar().showMessage(f"blocking {text}  {where}")
+            return
+        if isinstance(result, MarkerPick):
+            k = result.key
+            self.select_skeleton(k, add=add)
+            self.statusBar().showMessage(
+                f"blocking {k.component}/{k.block}"
+                + (f" {k.edge}" if k.edge else "")
+                + f"  {where}"
+            )
             return
         if isinstance(result, GeometryPick):
             e = result.entity

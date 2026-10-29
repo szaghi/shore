@@ -195,3 +195,15 @@ def test_ogrid_refusals():
     ):
         with pytest.raises(ParameterError):
             bk.ogrid(b, **kwargs)
+
+
+def test_centres():
+    b = bk.split(bk.box((0, 0, 0), (2, 1, 1), 5, 3, 3), "b0", "i", 0.5)
+    blocks = b.centres("block")
+    assert [(lab, f) for lab, f, _ in blocks] == [("b0", ""), ("b1", "")]
+    np.testing.assert_allclose(blocks[1][2], [1.5, 0.5, 0.5])
+    faces = b.centres("face")
+    assert len(faces) == 11
+    shared = [c for lab, f, c in faces if (lab, f) == ("b0", "i_hi")]
+    np.testing.assert_allclose(shared[0], [1.0, 0.5, 0.5])
+    assert ("b1", "i_lo") not in {(lab, f) for lab, f, _ in faces}  # once, by its first block

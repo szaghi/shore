@@ -24,6 +24,7 @@ import pygfx as gfx
 from shore.gui.viewport import (
     FACES,
     GeometryPick,
+    MarkerPick,
     PickResult,
     SkeletonPick,
     SliceKey,
@@ -108,7 +109,9 @@ class PygfxViewport:
         self.camera = gfx.PerspectiveCamera(45, 4 / 3)
         self.camera.add(gfx.DirectionalLight(intensity=2.0))
         self.scene.add(self.camera)
-        self.groups = {kind: gfx.Group() for kind in ("block", "slice", "geometry", "skeleton")}
+        self.groups = {
+            kind: gfx.Group() for kind in ("block", "slice", "geometry", "skeleton", "marker")
+        }
         self.content = gfx.Group()
         self.content.add(*self.groups.values())
         self.scene.add(self.content)
@@ -236,6 +239,26 @@ class PygfxViewport:
         self._add(item)
         self.request_draw()
 
+    def set_markers(self, markers: Sequence[tuple[Any, np.ndarray]]) -> None:
+        """Replace the blocking face or block markers (ADR 0044): ``(key, xyz)``,
+        points drawn over everything so each stays pickable."""
+        self._remove("marker")
+        if markers:
+            pts = np.array([xyz for _, xyz in markers], np.float64)
+            points = gfx.Points(
+                gfx.Geometry(positions=pts.astype(np.float32)),
+                gfx.PointsMaterial(size=11.0, color="#8e44ad", pick_write=True, depth_test=False),
+            )
+            item = _Item("marker", "marker", [points], [pts])
+            item.display = [key for key, _ in markers]
+            self._add(item)
+        self.request_draw()
+
+    @property
+    def marker_keys(self) -> list[Any]:
+        item = next((i for i in self._items if i.kind == "marker"), None)
+        return [] if item is None else list(item.display)
+
     @property
     def skeleton_keys(self) -> list[Any]:
         item = next((i for i in self._items if i.kind == "skeleton"), None)
@@ -254,7 +277,7 @@ class PygfxViewport:
     ) -> None:
         """Colour block and slice quads by value (keys: block keys, ``SliceKey``), or clear."""
         for item in self._items:
-            if item.kind in ("geometry", "skeleton"):
+            if item.kind in ("geometry", "skeleton", "marker"):
                 continue
             colours = item.objects[0].geometry.colors
             v = None if values is None else values.get(item.key)
@@ -370,7 +393,9 @@ class PygfxViewport:
 
     # -- picking -------------------------------------------------------------------
 
-    def pick(self, x: float, y: float) -> PickResult | GeometryPick | SkeletonPick | None:
+    def pick(
+        self, x: float, y: float
+    ) -> PickResult | GeometryPick | SkeletonPick | MarkerPick | None:
         info = self.renderer.get_pick_info((x, y))
         wo = info.get("world_object")
         item = self._by_object.get(id(wo)) if wo is not None else None
@@ -382,6 +407,10 @@ class PygfxViewport:
             return self._pick_geometry(item, wo, info)
         if item.kind == "skeleton":
             return self._pick_skeleton(item, info)
+        if item.kind == "marker":
+            m = int(info["vertex_index"])
+            self.highlight_polyline(item.pos64[0][m])
+            return MarkerPick(item.display[m], item.pos64[0][m].copy())
         if "face_index" not in info:
             return None
         quad = int(info["face_index"])

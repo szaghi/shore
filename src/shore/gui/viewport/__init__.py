@@ -48,6 +48,14 @@ class SkeletonPick:
 
 
 @dataclass(frozen=True)
+class MarkerPick:
+    """A picked blocking face or block marker (ADR 0044): its key and centre."""
+
+    key: Any  # SkeletonKey(component, block, face) or (component, block, "")
+    xyz: np.ndarray
+
+
+@dataclass(frozen=True)
 class PickResult:
     """A picked boundary cell face: its block, face and cell, and its centre."""
 

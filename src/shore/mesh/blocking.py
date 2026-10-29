@@ -148,6 +148,17 @@ class Blocking:
             )
         return out
 
+    def centres(self, kind: str) -> list[tuple[str, str, np.ndarray]]:
+        """Skeleton centres of every ``"face"`` (once, named by its first block)
+        or ``"block"``: ``(block, face or "", centre)``."""
+        if kind == "block":
+            return [(label, "", self.points[list(v)].mean(axis=0)) for label, v in self.blocks]
+        out = []
+        for key, owners in self.faces().items():
+            b, name = owners[0]
+            out.append((self.blocks[b][0], name, self.points[list(key)].mean(axis=0)))
+        return out
+
     def faces(self) -> dict[tuple[int, ...], list[tuple[int, str]]]:
         """Every face (sorted vertex ids) -> the (block index, face name) that have it."""
         out: dict[tuple[int, ...], list[tuple[int, str]]] = {}

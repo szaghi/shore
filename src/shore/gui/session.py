@@ -34,7 +34,8 @@ class BlockKey:
 
 @dataclass(frozen=True)
 class SkeletonKey:
-    """A blocking edge of a component: ``edge`` of blocking block ``block`` (ADR 0042)."""
+    """A blocking entity of a component (ADR 0042, 0044): ``edge`` is an edge
+    or face name of blocking block ``block``, or ``""`` for the block itself."""
 
     component: str
     block: str
@@ -144,6 +145,19 @@ class Session:
                 out.extend(
                     (SkeletonKey(name, block, edge), pts)
                     for block, edge, pts in blocking.polylines()
+                )
+        return out
+
+    def skeleton_markers(self, kind: str) -> list[tuple[SkeletonKey, Any]]:
+        """A marker per blocking face (``kind="face"``: ``SkeletonKey(component,
+        block, face)``, the face named by its first block) or block (``"block"``:
+        ``SkeletonKey(component, block, "")``), at its skeleton centre."""
+        out = []
+        for name, blocking in self.project.blockings.items():
+            if blocking is not None:
+                out.extend(
+                    (SkeletonKey(name, block, face), xyz)
+                    for block, face, xyz in blocking.centres(kind)
                 )
         return out
 

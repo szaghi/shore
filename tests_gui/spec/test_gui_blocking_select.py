@@ -88,7 +88,6 @@ def key(block, entity=""):
 
 
 class TestSelect:
-    @PENDING
     def test_k1_markers(self, qapp):
         w = window(qapp)
         assert w.viewport.marker_keys == []  # edge mode
@@ -106,7 +105,6 @@ class TestSelect:
         pick = w.pick_at(x, y)
         assert pick is None or type(pick).__name__ == "PickResult"
 
-    @PENDING
     def test_k2_pick_blocks(self, qapp):
         from shore.gui.viewport import MarkerPick
 
@@ -124,7 +122,6 @@ class TestSelect:
         w.clear_blocking_selection()
         assert w.blocking_selection == []
 
-    @PENDING
     def test_k2_pick_faces_and_edges(self, qapp):
         w = window(qapp)
         w.blocking_mode.setCurrentText("face")
@@ -138,7 +135,6 @@ class TestSelect:
         w.pick_at(x, y, add=True)
         assert w.blocking_selection == [key("b0", "i_lo"), edge]
 
-    @PENDING
     def test_k3_ogrid_block(self, qapp):
         w = window(qapp)
         w.blocking_mode.setCurrentText("block")
@@ -150,7 +146,6 @@ class TestSelect:
         assert w.session.journal_lines()[-1] == "p.ogrid(('b1',), factor=0.6, nodes=4)"
         assert len(w.session.project.blocking.labels()) == 8
 
-    @PENDING
     def test_k4_hole(self, qapp):
         from shore.gui.window import MainWindow
 
@@ -181,7 +176,6 @@ class TestSelect:
         assert line.startswith("p.ogrid((), faces=((") and line.count("_") == 6
         assert len(w.session.project.blocking.labels()) == 32
 
-    @PENDING
     def test_k5_delete_and_associate(self, qapp, sphere_stl):
         w = window(qapp)
         w.run_form("load_geometry", {"path": str(sphere_stl)})
@@ -203,7 +197,6 @@ class TestSelect:
         assert w.blocking_selection == []
         assert w.viewport.marker_keys == [key("b1")]
 
-    @PENDING
     @pytest.mark.parametrize("case", ["empty", "faces_to_delete", "no_geometry"])
     def test_k6_refused(self, qapp, case):
         w = window(qapp)
