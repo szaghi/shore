@@ -1,6 +1,6 @@
-# Running Examples and Tests
+# Examples and tests
 
-This guide covers how to run SHORE's example scripts and the full test suite.
+How to run the example scripts that ship with SHORE and its test suites.
 
 ## Prerequisites
 
@@ -10,12 +10,16 @@ Ensure SHORE is installed in development mode with all extras:
 git clone https://github.com/szaghi/shore.git
 cd shore
 python -m venv .venv && source .venv/bin/activate
-make dev    # pip install -e ".[dev,vis]"
+pip install -e ".[dev,cad,gui]"   # cad and gui only for their examples and tests
 ```
 
-## Running Examples
+## Example scripts
 
-SHORE ships a set of standalone example scripts and a Jupyter
+The tutorials and the cookbook include their code from `examples/tutorials/`
+and `examples/cookbook/`: each is a plain script that writes its outputs to
+the current directory, so `cd /tmp/try && python ~/shore/examples/tutorials/sphere.py`
+reproduces a tutorial. The numbered directories below hold older, more
+parametric scripts (command-line flags, viewers) and a Jupyter
 notebook that serve as both documentation and sanity checks.
 
 ### `examples/01-body-fitted/visualize_cubed_sphere.py` — cubed-sphere topology around a sphere
@@ -76,7 +80,7 @@ python examples/01-body-fitted/visualize_cubed_sphere.py --generate \
   --surface-j-spacing tanh2 --surface-j-beta 5.0
 ```
 
-See [Spacing laws](/algorithm/spacing-laws) for an explanation of each
+See [Spacing laws](/concepts/spacing-laws) for an explanation of each
 distribution and what physical region it clusters toward.
 
 Visualise an existing `.geo` or `.npz` file directly:
@@ -209,7 +213,7 @@ examples_out/
 The walkthrough — including the rationale for the parameter
 choices, ParaView inspection workflow, and the explicit boundary
 between what SHORE produces and what the downstream solver does —
-lives in [Assembly walkthrough](/guide/assembly).
+lives in [Assembly walkthrough](/tutorials/chimera-assembly).
 
 ### `examples/05-chimera-assembly/chimera_assembly.py` — assembly + Xall `cc.par` generation
 
@@ -320,86 +324,48 @@ import pyvista as pv
 pv.set_jupyter_backend("static")   # no display required
 ```
 
-## Running the Test Suite
+## Test suites
 
-### Full suite
+| Suite | Command | Needs | Size |
+|---|---|---|---|
+| main | `pytest` | `[dev]` | ~2000 tests, ~9 min, coverage report |
+| CAD | `pytest tests/test_geometry_occt.py tests/test_cad_pipeline.py tests/spec/test_wing_body.py ... --no-cov` | `[cad]` | the CAD cases skip in the main run without it |
+| GUI | `QT_QPA_PLATFORM=offscreen pytest tests_gui --no-cov` | `[gui]` and a Vulkan adapter (Mesa's lavapipe in CI) | ~100 tests, ~20 s |
+| docs examples | `pytest tests/test_docs_examples.py` | per script, `# requires: cad / cgns / vis` | every tutorial and recipe script |
+
+Run one file or one case as usual:
 
 ```bash
-make test
+pytest tests/test_project.py -q --no-cov
+pytest tests/test_project.py -k "TestJournal" -q --no-cov
 ```
 
-Or directly via pytest:
+### Frozen acceptance specs
+
+`tests/spec/` and `tests_gui/spec/` hold the acceptance specs, written
+before each algorithm and frozen (ADR 0005). Their hashes are in
+`tests/spec/SHA256SUMS`:
 
 ```bash
-source .venv/bin/activate
-python -m pytest tests/ -v
+python scripts/check_spec.py     # the spec files are unmodified
+pytest tests/spec -q --no-cov    # the verdicts
 ```
 
-### Running a specific test file
+Verdicts are reported as counts per module and job ("6 passed, 0 skipped, 0
+xfailed"); a case still being implemented is a strict xfail marked
+`@PENDING`.
+
+## Makefile targets
 
 ```bash
-python -m pytest tests/test_cap_gnomonic.py -v   # gnomonic cap construction + seam C1
-python -m pytest tests/test_jacobian.py -v       # Jacobian calculations
-python -m pytest tests/test_cli.py -v            # CLI commands
-python -m pytest tests/test_vtk.py -v            # VTK export
-```
-
-### Running a single test
-
-```bash
-python -m pytest tests/test_cli.py::TestMesh::test_exit_code_ok -v
-```
-
-### Test file descriptions
-
-| File | What it tests |
-|---|---|
-| `tests/conftest.py` | Shared fixtures (`sphere_stl`, `sphere_layer`) |
-| `tests/test_geo.py` | Geo file read/write round-trip fidelity |
-| `tests/test_grd.py` | Xall binary `.grd` writer — format structure, ordering, CLI |
-| `tests/test_vtk.py` | VTK XML export correctness |
-| `tests/test_vis.py` | PyVista conversion helpers |
-| `tests/test_jacobian.py` | Jacobian field calculations and inversion detection |
-| `tests/test_cap_gnomonic.py` | Gnomonic cap, seam C0/C1, volume seam continuity |
-| `tests/test_mesh.py` | OOP `Mesh` API, `CubedSphereTopology.build` |
-| `tests/test_anchor.py` / `test_load_stl_hygiene.py` | Mesh preconditioning |
-| `tests/test_projector.py` / `test_projector_validation.py` | Ray-cast Projector |
-| `tests/test_cli.py` | All CLI commands end-to-end |
-| `tests/test_spacing.py` | 1D spacing laws, domain builders, error cases |
-
-### Filtering tests by keyword
-
-```bash
-# Run only seam-related tests
-python -m pytest tests/ -k seam -v
-
-# Run only the gnomonic cap tests
-python -m pytest tests/test_cap_gnomonic.py -v
-```
-
-### Test parameters
-
-The test suite uses small default grids to keep execution fast. The
-full suite runs in under 5 seconds on a modern laptop.
-
-For coverage reporting:
-
-```bash
-python -m pytest tests/ --cov=shore --cov-report=html -v
-```
-
-HTML coverage report is written to `htmlcov/index.html`.
-
-## Makefile Targets
-
-All development tasks are available via `make`:
-
-```bash
-make dev    # install package in editable mode with dev + vis extras
-make test   # run test suite with pytest
-make lint   # ruff check + format check (read-only)
-make fmt    # ruff fix + format (destructive — auto-fixes issues)
-make clean  # remove build artefacts, .ruff_cache, .pytest_cache
+make dev           # editable install with the dev extras
+make test          # the main suite with coverage
+make lint          # ruff check + format check, API reference up to date
+make fmt           # ruff fix + format (rewrites files)
+make docs-api      # regenerate the Python API reference
+make docs-figures  # redraw the docs figures
+make docs-build    # build the docs site (fails on dead links)
+make clean         # remove build artefacts and caches
 ```
 
 ## Troubleshooting

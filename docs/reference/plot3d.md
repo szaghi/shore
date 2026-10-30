@@ -1,7 +1,7 @@
 # shore plot3d
 
 Write the blocks of a saved SHORE project as one multi-block Plot3D grid
-file ([ADR 0035](../adr/0035-cgns-plot3d-export.md)).
+file ([ADR 0035](/adr/0035-cgns-plot3d-export)).
 
 ## Synopsis
 
@@ -16,7 +16,7 @@ shore plot3d [OPTIONS] PROJECT_DIR
 | `PROJECT_DIR` | A saved project. |
 | `-o`, `--output FILE` | The Plot3D grid file to write (conventionally `.xyz` or `.x`). |
 | `-c`, `--component NAME` | A component to write; repeatable. Default: every component with a mesh, in project order. |
-| `--no-replay` | Load the project from its saved grids without replaying its journal ([ADR 0033](../adr/0033-load-without-replay.md)). |
+| `--no-replay` | Load the project from its saved grids without replaying its journal ([ADR 0033](/adr/0033-load-without-replay)). |
 
 ## Format
 

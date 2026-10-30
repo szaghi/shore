@@ -2,12 +2,13 @@
   "name": "shore-docs",
   "private": true,
   "scripts": {
-    "docs:dev":     "vitepress dev",
-    "docs:build":   "vitepress build",
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
     "docs:preview": "vitepress preview"
   },
   "devDependencies": {
     "markdown-it-mathjax3": "^4.3.2",
+    "mermaid": "11.17.2",
     "vitepress": "^2.0.0-alpha.17"
   },
   "overrides": {

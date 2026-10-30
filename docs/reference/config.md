@@ -1,9 +1,18 @@
 # Config files
 
 For complex meshing scenarios — many spacing laws active at once,
-non-default $\theta_{\text{cap}}$, custom blend-normals window — the
+non-default $\theta_{\text{cap}}$, a non-default marching scheme — the
 flat CLI surface becomes hard to read. SHORE supports an alternative
 **TOML input file** that you pass via `-c / --config` to `shore mesh`.
+
+Three config kinds share the same loader rules (closed schema, `version = 1`,
+paths relative to the file): the **mesh** config of this page (`kind =
+"mesh"`, the default), the **primitive** config of `shore primitive
+box|annulus|flat-caps -c` (`kind = "primitive"`, see
+[primitive TOML schema](primitive#toml-schema-primitive-configs)) and the
+**split** config of `shore split -c` (`kind = "split"`, see
+[split TOML schema](split#toml-schema-kind-split)). `shore config` handles
+the mesh kind only.
 
 The schema is intentionally small: every key maps 1:1 to an existing
 CLI flag. Nothing in the file is interpreted, expanded, or templated.
@@ -59,16 +68,17 @@ config's `input`.
 ```toml
 version = 1                          # required, integer
 
-input   = "body.stl"                 # required, path to the input STL
+kind    = "mesh"                     # optional; the default
+input   = "body.stl"                 # required, path to the input STL or CAD file
 output  = "body.geo"                 # optional, output stem for the 6 .geo files
 
 [grid]
 ni            = 40                   # latitude (equator meridional)
 nj            = 60                   # longitude (multiple of 4)
 nk            = 30                   # wall-normal layers
-theta_cap_deg = 30.0                 # polar exclusion (degrees)
+theta_cap_deg = 30.0                 # polar exclusion (degrees); default 0.05*pi rad (9 deg)
 # theta_cap   = 0.5236               # alternative: in radians (mutually exclusive)
-topology      = "cubed_sphere"       # 'cubed_sphere' (default), 'ogrid', 'cgrid', 'ch', or 'oh'
+topology      = "cubed_sphere"       # 'cubed_sphere' (default) or 'ogrid' only
 
 [march]
 ds              = 1.0e-3             # first-layer thickness (geometric)
@@ -76,6 +86,7 @@ growth          = 1.15               # geometric growth ratio
 smooth          = 0.2                # Laplacian blend strength [0–1]
 smooth_iters   = 2                   # Laplacian sweeps per layer
 smooth_mode    = "limited"           # limited | legacy
+march_scheme   = "algebraic"         # algebraic | hyperbolic
 
 [surface]
 i_spacing = "uniform"                # uniform | tanh | tanh2
@@ -118,11 +129,32 @@ resolve.
 
 | Action | Purpose |
 |---|---|
-| `template` | Write an annotated default config to stdout. Pipe to a file: `shore config template > shore.toml`. |
-| `validate <path>` | Parse and validate a config; print the resolved values. Useful in CI. |
+```
+shore config [OPTIONS] ACTION [PATH]
+```
 
-Both actions exit non-zero on any schema violation, with a single
-human-readable error message.
+| Argument | Description |
+|---|---|
+| `ACTION` | `template` or `validate` (required). |
+| `PATH` | The config to validate; required for `validate`, ignored for `template`. |
+
+| Action | Purpose |
+|---|---|
+| `template` | Write an annotated default mesh config to stdout. Pipe to a file: `shore config template > shore.toml`. |
+| `validate PATH` | Parse and validate a mesh config; print the resolved values. Useful in CI. |
+
+`validate` exits 1 on any schema violation, with a single human-readable
+error message; an unknown action also exits 1. For example, on the
+template with `input` pointing at an existing STL:
+
+```
+✓ shore.toml parses cleanly
+  input         = /home/me/cases/sphere.stl
+  grid          ni=40 nj=60 nk=30 topology='cubed_sphere'
+  march         ds=0.001 growth=1.15 smooth=0.2/2
+  surface       i=uniform(3.0) j=uniform(3.0)
+  volume        k=geometric(3.0) thickness=None
+```
 
 ## Field reference
 
@@ -139,12 +171,14 @@ just the alias map.
 | `grid.nk` | `--nk` |
 | `grid.theta_cap` | `--theta-cap` |
 | `grid.theta_cap_deg` | `--theta-cap-deg` |
-| `grid.topology` | `--topology` |
+| `grid.topology` | `--topology` (`cubed_sphere` or `ogrid`; the C-grid and hybrid topologies need CLI flags that have no config keys) |
 | `march.ds` | `--ds` |
 | `march.growth` | `--growth` |
 | `march.smooth` | `--smooth` |
 | `march.smooth_iters` | `--smooth-iters` |
 | `march.smooth_mode` | `--smooth-mode` |
+| `march.march_scheme` | `--march-scheme` |
+| `march.blend_normals_k` | `--blend-normals-k` (removed, [ADR 0034](/adr/0034-remove-normal-blending): only `0` is accepted, with a notice) |
 | `surface.i_spacing` | `--surface-i-spacing` |
 | `surface.i_beta` | `--surface-i-beta` |
 | `surface.j_spacing` | `--surface-j-spacing` |
@@ -201,9 +235,12 @@ A ready-to-run version of this file ships at
 
 ## Limitations
 
-- **Single body**. The schema is currently for one STL per file. A
-  `[[body]]` array of tables is reserved for the multi-body Chimera
-  workflow and will be added without breaking v1 configs.
+- **Single body, two topologies**. The schema holds one input file and
+  the `cubed_sphere` and `ogrid` topologies; `cgrid`, `ch` and `oh` are
+  CLI-only. Multi-component runs are built as projects
+  (`--project DIR --component C`, [`shore xall`](xall)).
+- **No project options.** `--project`, `--component`, `--journal` and
+  `--adjacency-json` have no config keys; pass them on the command line.
 - **No includes / inheritance / templating**. By design — share
   defaults via a Python script that emits TOML if you need it.
 - **No environment-variable interpolation.** Paths resolve against
@@ -214,4 +251,4 @@ A ready-to-run version of this file ships at
 
 - [`shore mesh`](mesh) — the command this config drives
 - [Quick start](/guide/quickstart) — the same workflow with bare CLI
-- [Spacing laws](/algorithm/spacing-laws) — what the spacing knobs do
+- [Spacing laws](/concepts/spacing-laws) — what the spacing knobs do

@@ -49,6 +49,7 @@ shore body cylinder -o FILE.stl [--radius FLOAT] [--height FLOAT] [--sections IN
 
 | Option | Default | Description |
 |---|---|---|
+| `-o` / `--output PATH` | — (required) | Output `.stl` file |
 | `--radius FLOAT` | 1.0 | Cylinder radius |
 | `--height FLOAT` | 1.0 | Total length along z |
 | `--sections INTEGER` | 32 | Segments around the circumference |
@@ -68,6 +69,7 @@ shore body torus -o FILE.stl [--r-major FLOAT] [--r-minor FLOAT] \
 
 | Option | Default | Description |
 |---|---|---|
+| `-o` / `--output PATH` | — (required) | Output `.stl` file |
 | `--r-major FLOAT` | 1.0 | Major radius (centre of tube to centre of torus) |
 | `--r-minor FLOAT` | 0.25 | Minor radius (tube radius). Must be smaller than `r-major`. |
 | `--major-sections INTEGER` | 32 | Segments around the major circle |
@@ -87,6 +89,7 @@ shore body box -o FILE.stl [--extents FLOAT FLOAT FLOAT]
 
 | Option | Default | Description |
 |---|---|---|
+| `-o` / `--output PATH` | — (required) | Output `.stl` file |
 | `--extents FLOAT FLOAT FLOAT` | `1 1 1` | Side lengths `(dx dy dz)` |
 
 ```bash
@@ -104,6 +107,7 @@ shore body capsule -o FILE.stl [--radius FLOAT] [--height FLOAT] [--sections INT
 
 | Option | Default | Description |
 |---|---|---|
+| `-o` / `--output PATH` | — (required) | Output `.stl` file |
 | `--radius FLOAT` | 0.5 | Cap and cylinder radius |
 | `--height FLOAT` | 1.0 | Cylindrical middle length (caps add `2 * radius` more) |
 | `--sections INTEGER` | 16 | Segments per circumferential / meridional axis |
@@ -130,7 +134,7 @@ shore body extrude --section FILE.dat -o FILE.stl [OPTIONS]
 | `--sweep-deg FLOAT` | 0.0 | Sweep angle of the leading edge in degrees (positive = sweepback) |
 | `--twist-deg FLOAT` | 0.0 | Geometric twist at the tip in degrees (linearly interpolated from 0 at root). Positive = nose-up. |
 | `--span-axis TEXT` | `z` | Span axis: `x`, `y`, or `z` |
-| `--end-caps` / `--open-ends` | `--open-ends` | Add centroid-fan caps at the span ends (watertight). Default is open ends — the [C-grid topology](/topologies/c-grid) needs them open. |
+| `--end-caps` / `--open-ends` | `--open-ends` | Add centroid-fan caps at the span ends (watertight). Default is open ends — the [C-grid topology](/concepts/topologies/c-grid) needs them open. |
 
 ### Examples
 
@@ -163,12 +167,12 @@ shore body extrude --section naca0012.dat --span-axis x --span 1.0 -o wing.stl
 - Twist rotates each station about its leading edge by an angle
   linearly interpolated from `0` at the root to `--twist-deg` at
   the tip.
-- For the [C-grid topology](/topologies/c-grid), default to
+- For the [C-grid topology](/concepts/topologies/c-grid), default to
   `--open-ends` so the per-station slicer doesn't trip over end-cap
   triangles.
 
 ## See also
 
 - [`shore profile`](profile) — generate 2D NACA sections.
-- [C-grid topology](/topologies/c-grid) — the natural meshing target for extruded wings.
-- [Cubed-sphere](/topologies/cubed-sphere) and [O-grid](/topologies/o-grid) — meshing targets for sphere / cylinder / torus / capsule bodies.
+- [C-grid topology](/concepts/topologies/c-grid) — the natural meshing target for extruded wings.
+- [Cubed-sphere](/concepts/topologies/cubed-sphere) and [O-grid](/concepts/topologies/o-grid) — meshing targets for sphere / cylinder / torus / capsule bodies.

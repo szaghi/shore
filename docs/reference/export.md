@@ -114,5 +114,5 @@ unambiguously). Convert the surface separately if you need both.
 
 - [`shore check`](check) — validate Jacobians without exporting
 - [`shore view`](view) — interactive PyVista viewer (no ParaView required)
-- [`shore.io.vtk`](api-vtk) — Python API for VTK export
-- [`shore.topology.sphere_cap`](api-sphere-cap) — 6-block polar cap topology
+- [`shore.io.vtk`](/reference/api/shore.io.vtk) — Python API for VTK export
+- [`shore.topology.sphere_cap`](/reference/api/shore.topology.sphere_cap) — 6-block polar cap topology

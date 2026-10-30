@@ -1,6 +1,6 @@
 # shore cgns
 
-Write a saved SHORE project as one CGNS/HDF5 file ([ADR 0035](../adr/0035-cgns-plot3d-export.md)):
+Write a saved SHORE project as one CGNS/HDF5 file ([ADR 0035](/adr/0035-cgns-plot3d-export)):
 one base per component, one structured zone per block, the 1-to-1
 connections and boundary conditions of the face graph.
 
@@ -19,7 +19,7 @@ shore cgns [OPTIONS] PROJECT_DIR
 | `PROJECT_DIR` | A saved project (`Project.save`, or `--project` of `shore mesh` / `shore collar` / `shore primitive`). |
 | `-o`, `--output FILE` | The CGNS file to write. |
 | `-c`, `--component NAME` | A component to write; repeatable. Default: every component with a mesh, in project order. |
-| `--no-replay` | Load the project from its saved grids without replaying its journal ([ADR 0033](../adr/0033-load-without-replay.md)). |
+| `--no-replay` | Load the project from its saved grids without replaying its journal ([ADR 0033](/adr/0033-load-without-replay)). |
 
 ## What the file holds
 

@@ -2,8 +2,8 @@
 
 Build the collar block around the junction of two bodies: a Chimera volume
 block whose wall lies on both bodies along their intersection curve
-(ADR 0010). With `--plane`, the half-collar of a half model on that
-symmetry plane (ADR 0013).
+([ADR 0010](/adr/0010-collar-block)). With `--plane`, the half-collar of a half model on that
+symmetry plane ([ADR 0013](/adr/0013-half-collar-block)). See [Collar blocks](/concepts/collars).
 
 ## Synopsis
 
@@ -35,15 +35,16 @@ shore collar [OPTIONS] BODY_A BODY_B
 | `--loop-law TEXT` | `uniform` | Node law along the junction curve: `uniform` or `tanh2` (`tanh` on a half-collar's open curve too). |
 | `--loop-beta FLOAT` | `3.0` | Clustering strength of `tanh` / `tanh2`. |
 | `--loop-cluster-at FLOAT` | | Where `tanh2` clusters, as a fraction of the curve in [0, 1] (from the seed round the loop, or from the first plane end). Default: both ends, i.e. at the seed on a loop. |
-| `--loop-curvature FLOAT` | `0.0` | Cluster nodes where the curve bends (ADR 0020). Try `1` for rounded sections. |
-| `--split` | off | Cut the collar at sharp corners (> 105 degrees) into blocks joined across wake sheets (ADR 0024). Closed loops only (not with `--plane`). |
+| `--loop-curvature FLOAT` | `0.0` | Cluster nodes where the curve bends ([ADR 0020](/adr/0020-junction-curve-spacing)). Try `1` for rounded sections. |
+| `--split` | off | Cut the collar at sharp corners (> 105 degrees) into blocks joined across wake sheets ([ADR 0024](/adr/0024-split-collar-at-sharp-corners)). Closed loops only (not with `--plane`). |
 | `--wake-length FLOAT` | collar width on A | With `--split`: length of the wake lines behind the sharp corners. |
-| `--collar-volume TEXT` | `smoothed` | Outer boundary of the volume: `smoothed` (station offsets smoothed along the loop near corners, ADR 0025-0026) or `stations` (per loop station, ADR 0010: grids of earlier versions). |
+| `--collar-volume TEXT` | `smoothed` | Outer boundary of the volume: `smoothed` (station offsets smoothed along the loop near corners, [ADR 0025](/adr/0025-collar-volume-at-corners), [0026](/adr/0026-smoothed-collar-volume-by-default)) or `stations` (per loop station, [ADR 0010](/adr/0010-collar-block): grids of earlier versions). |
 | `--name-a`, `--name-b TEXT` | file stems | Geometry names in the project. |
 | `-o, --output PATH` | | Output stem for the `.geo` file. |
 | `--adjacency-json PATH` | | Also write the `.adjacency.json` sidecar. |
 | `--project DIR` | | Add the collar to the project in `DIR` (created if missing) and save it. |
 | `--component TEXT` | `collar` | Component of `--project` to build. |
+| `--no-replay` | off | Open `--project` from its saved grids without replaying its journal ([ADR 0033](/adr/0033-load-without-replay)). |
 
 At least one of `-o` and `--project` is required.
 
@@ -72,13 +73,13 @@ Junction curves with corners (a sharp or blunt trailing edge through a
 plate, a prismatic strut) are traced: every corner, where the curve turns
 by 30 degrees or more, becomes a node, and each segment between corners
 (and the seed) gets cells in proportion to its length and the law by
-itself (ADR 0021). With `--loop-curvature`, one graded spacing runs over the
+itself ([ADR 0021](/adr/0021-junction-curves-with-corners)). With `--loop-curvature`, one graded spacing runs over the
 whole curve, so adjacent cells stay within 1.2x across the corners too
-(ADR 0022). The collar block is valid at convex corners of up to 90 degrees
+([ADR 0022](/adr/0022-collars-at-blunt-corners)). The collar block is valid at convex corners of up to 90 degrees
 only while it stays thin: up to about 4.7 junction spacings with a uniform
 loop, about 1.9 with `--loop-curvature 1`. Thicker collars and concave
 corners folded with the per-station outer boundary of earlier versions
-(`--collar-volume stations`). The default `smoothed` boundary (ADR 0025,
+(`--collar-volume stations`). The default `smoothed` boundary ([ADR 0025](/adr/0025-collar-volume-at-corners),
 0026) builds each station's outer line on
 its 3-D offset line and, near corners and bends tighter than the collar is
 thick, smooths the station offsets along the loop over half the collar's
@@ -93,7 +94,7 @@ Sharp corners, those turning by more than 105 degrees (a sharp trailing
 edge, the tips of a lens), fold even the collar's wall: the surface grid
 on the plate cannot turn round them. `--split` (Python:
 `shore.collar.split_collar`, `Project.build_collar(split=True)`) cuts the
-loop there (ADR 0024). A wake line runs
+loop there ([ADR 0024](/adr/0024-split-collar-at-sharp-corners)). A wake line runs
 on the plate behind each sharp corner, along its bisector, for
 `wake_length` (default: the collar's width on the plate), with cells
 growing by at most 1.2 from the corner spacing. Over the wake, the wall is
@@ -104,14 +105,15 @@ C-grid. Each piece of the loop between sharp corners becomes six blocks
 row). On a NACA 0012 wing with a sharp trailing edge, the single block
 folds 12 cells (5500 with `--loop-curvature 1`); the split collar's
 smallest scaled Jacobian is 0.155 (0.228). With curvature clustering at the
-corner the split collar must stay thin: about 10 corner spacings. Since ADR 0027 the surface grids themselves no longer fold at clustered corners (the march sub-steps where its step dwarfs the corner spacing, and untangles converging fronts); this can make strongly clustered loops (n_loop 384 with curvature) take minutes, and their collar volume still folds when it is 100 x thicker than the corner spacing (ADR 0028): keep the collar thinner than about 10 x the smallest loop spacing at corners, or cluster less there. In a concave notch the plate's surface grid collapses on the bisector when it is marched deeper than the notch allows (ADR 0030): keep the collar's width on that body small there. With
+corner the split collar must stay thin: about 10 corner spacings. Since [ADR 0027](/adr/0027-surface-marching-at-clustered-corners) the surface grids themselves no longer fold at clustered corners (the march sub-steps where its step dwarfs the corner spacing, and untangles converging fronts); this can make strongly clustered loops (n_loop 384 with curvature) take minutes, and their collar volume still folds when it is 100 x thicker than the corner spacing ([ADR 0028](/adr/0028-collar-volume-at-extreme-clustering)): keep the collar thinner than about 10 x the smallest loop spacing at corners, or cluster less there. In a concave notch the plate's surface grid collapses on the bisector when it is marched deeper than the notch allows ([ADR 0030](/adr/0030-concave-notches)): keep the collar's width on that body small there. With
 `-o` each block goes to `<stem>_<label>.geo`, labels
 `<label>_<piece>_<wake_lo|body|wake_hi>_<b|a>`; without sharp corners
 `--split` gives the single block.
 
 ## Projects
 
-With `--project`, the project is loaded (its journal replays), the collar
+With `--project`, the project is loaded (its journal replays, or with
+`--no-replay` its saved grids are read), the collar
 is built in `--component`, and the project is saved back. A geometry name
 already loaded from a file with the same content is reused, so earlier
 components built on it survive. A file whose stem matches a geometry

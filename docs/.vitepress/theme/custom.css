@@ -1,0 +1,132 @@
+/* SHORE palette: ocean, sea, sand, sunset, coral (docs/scripts/figures/theme.py
+   holds the same colours for the figures). */
+:root {
+  --shore-ocean: #1f6f8b;
+  --shore-sea: #2a9d8f;
+  --shore-sand: #e9c46a;
+  --shore-sunset: #f4a261;
+  --shore-coral: #e76f51;
+
+  --vp-c-brand-1: #1a6680;
+  --vp-c-brand-2: #1f7d9b;
+  --vp-c-brand-3: #2690b2;
+  --vp-c-brand-soft: rgba(31, 111, 139, 0.13);
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #1f6f8b 15%, #2a9d8f 55%, #e9c46a 95%);
+  --vp-home-hero-image-background-image: linear-gradient(135deg, rgba(42, 157, 143, 0.35) 30%, rgba(233, 196, 106, 0.35));
+  --vp-home-hero-image-filter: blur(56px);
+
+  --vp-custom-block-tip-border: transparent;
+  --vp-custom-block-tip-bg: rgba(42, 157, 143, 0.1);
+}
+
+.dark {
+  --vp-c-brand-1: #5cc0dc;
+  --vp-c-brand-2: #44a9c6;
+  --vp-c-brand-3: #2f93b0;
+  --vp-c-brand-soft: rgba(92, 192, 220, 0.16);
+  --vp-home-hero-name-background: linear-gradient(120deg, #5cc0dc 15%, #43c2b3 55%, #f0d283 95%);
+  --vp-custom-block-tip-bg: rgba(67, 194, 179, 0.1);
+}
+
+/* figures in two variants */
+.shore-figure {
+  margin: 1.6rem auto;
+  text-align: center;
+}
+.shore-figure img {
+  margin: 0 auto;
+  border-radius: 10px;
+}
+.shore-figure figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+html:not(.dark) .only-dark,
+html.dark .only-light {
+  display: none !important;
+}
+
+.shore-mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 1.4rem 0;
+  overflow-x: auto;
+}
+
+/* the generated API reference */
+.vp-doc a.api-source {
+  display: inline-block;
+  font-size: 0.78rem;
+  color: var(--vp-c-text-3);
+  text-decoration: none;
+  margin-top: -0.4rem;
+}
+.vp-doc a.api-source:hover {
+  color: var(--vp-c-brand-1);
+}
+.vp-doc h1 code,
+.vp-doc h2 code,
+.vp-doc h3 code {
+  font-size: 0.92em;
+  background: none;
+  padding: 0;
+  color: var(--vp-c-text-1);
+}
+
+/* cards on landing pages */
+.shore-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+  margin: 1.4rem 0;
+}
+.shore-cards a.shore-card {
+  display: block;
+  padding: 16px 18px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.shore-cards a.shore-card:hover {
+  border-color: var(--vp-c-brand-1);
+  transform: translateY(-2px);
+}
+.shore-cards .shore-card strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--vp-c-brand-1);
+}
+.shore-cards .shore-card span {
+  font-size: 0.875rem;
+  color: var(--vp-c-text-2);
+  line-height: 1.5;
+}
+
+/* a wider hero image: the grid needs room to read */
+@media (min-width: 960px) {
+  .VPHero .image-container {
+    width: 520px;
+    height: 440px;
+  }
+  .VPHero .image-src {
+    max-width: 520px;
+    max-height: 440px;
+  }
+}
+
+/* Mermaid measures labels before the web font is in: keep each label on the
+   lines it was measured with, and never clip it */
+.shore-mermaid .nodeLabel,
+.shore-mermaid .edgeLabel {
+  white-space: nowrap;
+}
+.shore-mermaid foreignObject {
+  overflow: visible;
+}

@@ -4,23 +4,23 @@ Full pipeline: STL or CAD (STEP/IGES/BREP) → structured volume → geo files.
 
 Five topologies are supported, selected via `--topology`:
 
-- **[`cubed_sphere`](/topologies/cubed-sphere)** (default): 6-block
+- **[`cubed_sphere`](/concepts/topologies/cubed-sphere)** (default): 6-block
   decomposition (4 equatorial sub-blocks + 2 polar caps), gnomonic
   flat-square cap k=0, C1 cap–equator seam pin, seam-aware normals.
   Writes six `<stem>_<label>.geo` files.
-- **[`ogrid`](/topologies/o-grid)**: single-block lat-lon grid,
+- **[`ogrid`](/concepts/topologies/o-grid)**: single-block lat-lon grid,
   j-periodic. Writes one `<stem>.geo` file. Polar singular axis at
   `i = 0` and `i = ni - 1`.
-- **[`cgrid`](/topologies/c-grid)**: 3-block (sharp TE) or 4-block
+- **[`cgrid`](/concepts/topologies/c-grid)**: 3-block (sharp TE) or 4-block
   (blunt TE) C-grid for airfoils / hydrofoils with downstream wake
   branches. Optional 1-block legacy layout via `--cgrid-blocks 1`.
   Writes one `<stem>_<label>.geo` per block (or one `<stem>.geo` for
   the legacy 1-block). Requires C-grid wrap flags (see below).
-- **[`ch`](/topologies/ch-hybrid)**: 12-block (sharp TE) or 14-block
+- **[`ch`](/concepts/topologies/ch-hybrid)**: 12-block (sharp TE) or 14-block
   (blunt TE) hybrid: C-grid wrap + H-channel out to a chord/normal-
   aligned far-field frame. Requires both C-grid wrap flags and frame
   extents (`--ch-chord-min/max`, `--ch-normal-min/max`).
-- **[`oh`](/topologies/oh-hybrid)**: 12-block hybrid: cubed-sphere
+- **[`oh`](/concepts/topologies/oh-hybrid)**: 12-block hybrid: cubed-sphere
   wrap + 6-block H-channel out to an axis-aligned far-field box.
   Requires the box extents (`--oh-box-{x,y,z}{min,max}`) and reuses
   the shared channel flags. Star-shaped bodies only; `--theta-cap` is
@@ -39,7 +39,7 @@ config-file values; config-file values override built-in defaults.
 
 | Argument | Description |
 |---|---|
-| `INPUT` | Path to the input `.stl` file (binary or ASCII). Optional when `--config` is given and the config provides `input`. |
+| `INPUT` | Body geometry: `.stl` (binary or ASCII) or CAD (`.step`/`.stp`, `.iges`/`.igs`, `.brep`/`.brp`, needs the `cad` extra). Optional when `--config` is given and the config provides `input`. |
 
 ## Options
 
@@ -55,14 +55,14 @@ is automatic.
 | Option | Default | Description |
 |---|---|---|
 | `--ni INTEGER` | 40 | Equator meridional **node count** (south seam → north seam). |
-| `--nj INTEGER` | 60 | Longitude **node count**; multiple of 4 (rounded down with a warning if not). |
+| `--nj INTEGER` | 60 | Longitude **node count**. `cubed_sphere`: the full equator-ring count, a multiple of 4 (rounded down with a warning if not), split into 4 sub-blocks of `nj // 4` cells; the caps are `nj // 4` cells per side. `ogrid`: the single block's j-node count. |
 | `--nk INTEGER` | 30 | Wall-normal **node count**, including the wall row at k=0. With `--nk 30` the marcher extrudes 29 cells from the wall. |
 
 ### Cap geometry
 
 | Option | Default | Description |
 |---|---|---|
-| `--theta-cap FLOAT` | $\pi/6$ | Polar exclusion angle in radians (cap corners sit at this colatitude) |
+| `--theta-cap FLOAT` | $0.05\pi$ (≈ 9°) | Polar exclusion angle in radians (cap corners sit at this colatitude) |
 | `--theta-cap-deg FLOAT` | — | Same as `--theta-cap` but in degrees (mutually exclusive) |
 
 ::: tip Cap / equator compatibility
@@ -92,14 +92,15 @@ back to its unpinned `i_spacing` law and emits a single `UserWarning`.
 | `--ds FLOAT` | 0.001 | First-layer thickness (geometric spacing) |
 | `--growth FLOAT` | 1.15 | Geometric growth ratio |
 
-### Smoothing & normals
+### Marching and smoothing
 
 | Option | Default | Description |
 |---|---|---|
+| `--march-scheme TEXT` | `algebraic` | `algebraic`: normal extrusion + smoothing. `hyperbolic`: Steger–Chaussee marching (orthogonal k-lines, prescribed cell volumes); see [ADR 0005](/adr/0005-marching-schemes). |
 | `--smooth FLOAT` | 0.2 | Laplacian blend strength per layer [0–1] |
 | `--smooth-iters INTEGER` | 2 | Laplacian sweeps applied after each layer |
 | `--smooth-mode TEXT` | `limited` | `limited`: per node, smoothing may pull the layer back by at most ¼ of the step and move it sideways by at most ¼ of the step, so small first steps cannot fold; nodes within those limits are smoothed exactly as before. `legacy`: unlimited (reproduces grids made before this option; folds thin first layers on curved walls). |
-| `--blend-normals-k INTEGER` | — | **Removed** ([ADR 0034](../adr/0034-remove-normal-blending.md)), hidden from `--help`: `0` prints a notice and runs, anything else exits 1. It blended body normals into the first layers ([ADR 0019](../adr/0019-deprecate-normal-blending.md)). |
+| `--blend-normals-k INTEGER` | — | **Removed** ([ADR 0034](/adr/0034-remove-normal-blending)), hidden from `--help`: `0` prints a notice and runs, anything else exits 1. It blended body normals into the first layers ([ADR 0019](/adr/0019-deprecate-normal-blending)). |
 
 ### Topology
 
@@ -123,7 +124,7 @@ configure the C-grid wrap geometry around an airfoil / hydrofoil.
 | `--te-dihedral-deg FLOAT` | 30.0 | Sharpness threshold for TE detection. |
 | `--cgrid-blocks INTEGER` | 3 | `cgrid` only: 3 (Xall-correct sharp-TE), 4 (Xall-correct blunt-TE), or 1 (legacy single-block). Ignored for `--topology ch`. |
 | `--cap-tips TEXT` | `none` | `cgrid` only: `none` / `jlo` / `jhi` / `both` — wing-tip cap blocks at the requested spanwise extreme(s). See [`shore cap-tip`](cap-tip) for a standalone CLI. |
-| `--cap-te-thickness*`, `--cap-le-frac`, `--cap-te-frac`, `--cap-tip-inset`, `--cap-n-cap-j`, `--cap-j-spacing-cgrid`, `--cap-j-beta-cgrid`, `--cap-nk` | various | `cgrid + caps` only — cap-block geometry. See [C-grid topology](/topologies/c-grid#tip-caps-closed-finite-wing). |
+| `--cap-te-thickness*`, `--cap-le-frac`, `--cap-te-frac`, `--cap-tip-inset`, `--cap-n-cap-j`, `--cap-j-spacing-cgrid`, `--cap-j-beta-cgrid`, `--cap-nk` | various | `cgrid + caps` only — cap-block geometry. See [C-grid topology](/concepts/topologies/c-grid#tip-caps-closed-finite-wing). |
 
 ### CH hybrid options (`--topology ch`)
 
@@ -169,12 +170,24 @@ wrap pins it to `pi/4`, emitting a `UserWarning` if set).
 | `-v` / `--verbose` | off | Show Rich progress bar with per-layer stats. |
 | `--help` | — | Show this help and exit. |
 
+### Project
+
+These options are shared by the grid commands (`mesh`, `collar`, `primitive *`); see
+[Projects and journals](/concepts/projects) and [ADR 0018](/adr/0018-cli-collars-and-projects).
+
+| Option | Default | Description |
+|---|---|---|
+| `--project PATH` | — | Add the result to the project in this directory (created if missing). The geometry is copied into `inputs/` and reused by SHA-256. |
+| `--component TEXT` | `main` | Component of `--project` to build. Needs `--project`. |
+| `--no-replay` | off | Open `--project` from its saved grids without replaying its journal ([ADR 0033](/adr/0033-load-without-replay)). |
+| `--geometry-name TEXT` | file stem | Geometry name in `--project`. A stem already taken by a different file is an error: give an explicit name. |
+
 ### Deprecated
 
 | Option | Status |
 |---|---|
-| `--cap-pull FLOAT` | Ignored. Cap interior is now built by gnomonic flat-square projection — square cells by construction. |
-| `--cap-squareness FLOAT` | Ignored. Same reason. |
+| `--cap-pull FLOAT` | Ignored, hidden from `--help`. Cap interior is now built by gnomonic flat-square projection — square cells by construction. |
+| `--cap-squareness FLOAT` | Ignored, hidden from `--help`. Same reason. |
 | `--j-cluster-lon FLOAT` | Ignored. The gnomonic cap has 4-fold symmetry; use `--surface-j-spacing tanh2` to cluster nodes near the cap-corner longitudes. |
 
 ## Exit codes
@@ -208,10 +221,10 @@ files: `<stem>_upper.geo`, `<stem>_body.geo`, `<stem>_lower.geo`.
 `--cgrid-blocks 4` (blunt-TE) adds `<stem>_wake_base.geo`.
 `--cgrid-blocks 1` (legacy) writes a single `<stem>.geo`. The
 `--cap-tips` option adds 5–6 cap blocks per requested tip (see
-[C-grid](/topologies/c-grid#tip-caps-closed-finite-wing)).
+[C-grid](/concepts/topologies/c-grid#tip-caps-closed-finite-wing)).
 
 **`ch`** — 12 `.geo` files (sharp TE) or 14 (blunt TE). See
-[CH hybrid block decomposition](/topologies/ch-hybrid#block-decomposition)
+[CH hybrid block decomposition](/concepts/topologies/ch-hybrid#block-decomposition)
 for the full list.
 
 **`oh`** — 12 `.geo` files: the 6 cubed-sphere wrap blocks
@@ -225,7 +238,25 @@ Minimal invocation — defaults for all grid parameters:
 
 ```bash
 shore mesh sphere.stl
-# → sphere_sub*.geo, sphere_cap_*.geo  (40 x 60 x 30, theta_cap = pi/6)
+# → sphere_sub*.geo, sphere_cap_*.geo  (ni 40, nj 60, nk 30, theta_cap = 0.05*pi)
+```
+
+With these defaults the cap radial step (~0.015 rad) is far from the
+equator's (~0.07 rad), so SHORE warns and drops the C1 seam pin (see the
+tip above). A warning-free set for a unit sphere:
+
+```bash
+shore body sphere -o sphere.stl
+shore mesh sphere.stl --ni 33 --nj 64 --nk 25 --ds 0.01 --growth 1.15 \
+  --theta-cap-deg 35 -o sphere --adjacency-json sphere.adjacency.json
+```
+
+Add the result to a project, and keep a replayable journal:
+
+```bash
+shore mesh sphere.stl --ni 33 --nj 64 --nk 25 --ds 0.01 --theta-cap-deg 35 \
+  --project proj --journal sphere_journal.py
+# → proj/project.toml, proj/journal.py, proj/inputs/00_sphere.stl, proj/grids/main/*.npz
 ```
 
 High-resolution boundary layer with verbose output:
@@ -324,14 +355,14 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
   equal sectors).
 - For `cgrid` / `ch`, the body STL must be a finite-span wing-like mesh
   with a detectable trailing-edge polyline (sharp or blunt). See
-  [C-grid construction](/algorithm/c-grid) for the TE-detection
+  [C-grid construction](/concepts/c-grid-construction) for the TE-detection
   algorithm.
 - For `ch`, the frame extents (`--ch-chord-min/max` /
   `--ch-normal-min/max`) must contain the marched wrap envelope.
   Validation runs at `fill_channel_blocks` time and raises a
   `ParameterError` on violation.
 - Use `shore check` to verify the per-block Jacobians.
-- See [Spacing laws](/algorithm/spacing-laws) for a detailed explanation of each
+- See [Spacing laws](/concepts/spacing-laws) for a detailed explanation of each
   distribution and when to use it.
 
 ## See also
@@ -341,11 +372,11 @@ shore mesh -c fuselage.toml --nk 80  # CLI --nk wins over fuselage.toml
   legacy `body.project` path; not the cubed-sphere topology)
 - [`shore check`](check) — validate Jacobians on existing `.geo` files
 - [`shore export`](export) — convert `.geo` to VTK MultiBlock for ParaView
-- [Cubed-sphere topology](/topologies/cubed-sphere) — block layout, cap construction,
+- [Cubed-sphere topology](/concepts/topologies/cubed-sphere) — block layout, cap construction,
   seam matching
-- [O-grid topology](/topologies/o-grid) — single-block alternative
-- [C-grid topology](/topologies/c-grid) — sharp-/blunt-TE wrap for airfoils
-- [CH hybrid topology](/topologies/ch-hybrid) — C-grid wrap + far-field channel
-- [OH hybrid topology](/topologies/oh-hybrid) — cubed-sphere wrap + 6-face H-channel (`--topology oh`)
-- [Spacing laws](/algorithm/spacing-laws) — clustering distributions
-- [Hyperbolic marching](/algorithm/hyperbolic-marching) — algorithm details
+- [O-grid topology](/concepts/topologies/o-grid) — single-block alternative
+- [C-grid topology](/concepts/topologies/c-grid) — sharp-/blunt-TE wrap for airfoils
+- [CH hybrid topology](/concepts/topologies/ch-hybrid) — C-grid wrap + far-field channel
+- [OH hybrid topology](/concepts/topologies/oh-hybrid) — cubed-sphere wrap + 6-face H-channel (`--topology oh`)
+- [Spacing laws](/concepts/spacing-laws) — clustering distributions
+- [Hyperbolic marching](/concepts/hyperbolic-marching) — algorithm details

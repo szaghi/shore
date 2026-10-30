@@ -3,7 +3,7 @@
 Write the Xall run of every component of a SHORE project: per component,
 its `.geo` files, adjacency sidecar, `.grd` and `cc.par`; then the merged
 `.grd` and `cc.par`, and one `proc.input` balanced over the whole run
-(ADR 0016-0018).
+([ADR 0016](/adr/0016-multi-component-projects), [ADR 0017](/adr/0017-xall-options-per-component), [ADR 0018](/adr/0018-cli-collars-and-projects)).
 
 ## Synopsis
 
@@ -16,8 +16,9 @@ shore xall [OPTIONS] PROJECT_DIR
 | Argument / option | Description |
 |---|---|
 | `PROJECT_DIR` | A saved project (`Project.save`, or `--project` of `shore mesh` / `shore collar` / `shore primitive`). |
-| `--out DIR` | Directory for the run files: `DIR/<component>/...`, then `DIR/<grd>`, `DIR/cc.par`, `DIR/proc.input`. |
+| `--out DIR` (required) | Directory for the run files: `DIR/<component>/...`, then `DIR/<grd>`, `DIR/cc.par`, `DIR/proc.input`. |
 | `--options FILE` | TOML file with the run and per-component options (below). |
+| `--no-replay` | Open the project from its saved grids without replaying its journal ([ADR 0033](/adr/0033-load-without-replay)). |
 
 ## Options file
 

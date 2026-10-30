@@ -20,8 +20,17 @@ flag for TOML-driven invocation and follow the same precedence rule as
 default**. The `h-grid-rect` and `h-grid-tube` commands are CLI-only
 (no `--config`).
 
-See [Primitives](/topologies/primitives) for the conceptual overview
+See [Primitives](/concepts/topologies/primitives) for the conceptual overview
 and use cases.
+
+All five commands also take the project options of the grid commands
+([ADR 0018](/adr/0018-cli-collars-and-projects)), not repeated in the tables below:
+
+| Option | Default | Description |
+|---|---|---|
+| `--project PATH` | — | Add the primitive to the project in this directory (created if missing) and save it. The `.geo` files are still written. |
+| `--component TEXT` | `main` | Component of `--project` to build. Needs `--project`. |
+| `--no-replay` | off | Open `--project` from its saved grids without replaying its journal ([ADR 0033](/adr/0033-load-without-replay)). |
 
 ## `shore primitive box`
 
@@ -182,7 +191,7 @@ shore primitive flat-caps --axis x --r-out 5.0 --z0 0 --z1 10 \
 Rectangular-duct H-grid: a single hex block filling a Cartesian box,
 default BCs streamwise=FREE / cross-section=WALL.  Use case:
 prismatic ducts, internal flow without an internal body.  See
-[H-grid topology](/topologies/h-grid) for the conceptual overview.
+[H-grid topology](/concepts/topologies/h-grid) for the conceptual overview.
 
 ### Synopsis
 
@@ -226,7 +235,7 @@ Circular-bore H-grid: a single hex block with a 2D polar
 cross-section (j-periodic circumferential + radial), default BCs
 streamwise=FREE / k_lo=k_hi=WALL.  Use case: straight cylindrical
 ducts, simple SRM chambers.  See
-[H-grid topology — circular tube](/topologies/h-grid#circular-tube)
+[H-grid topology — circular tube](/concepts/topologies/h-grid#circular-tube)
 for the polar singular axis caveat.
 
 ### Synopsis
@@ -343,7 +352,7 @@ box = BoxMesh.build(
 raises if any edge is supplied — its radial / tangential / axial
 distributions are all geometrically pinned and have no degree of
 freedom for per-edge control. See
-[Per-edge spacing](/algorithm/spacing-laws#per-edge-spacing) for the
+[Per-edge spacing](/concepts/spacing-laws#per-edge-spacing) for the
 support table and TFI mechanism.
 
 The CLI does not expose `edge_pins` today; per-edge spacing is a
@@ -351,6 +360,6 @@ Python-API feature.
 
 ## See also
 
-- [Primitives overview](/topologies/primitives)
+- [Primitives overview](/concepts/topologies/primitives)
 - [`shore mesh`](mesh) — body-fitted O-grid (the primary near-body workflow)
 - [Config files](/reference/config) — TOML schema and precedence rules

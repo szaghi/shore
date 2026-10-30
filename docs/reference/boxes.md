@@ -10,9 +10,9 @@ This page covers the box data model, the two CLI commands that
 generate (`boxes-from-stl`) and visualise (`boxes-export`) marker
 boxes, the `--boxes` flag on `shore cc-par`, and the underlying
 algorithm. The Python API surface lives in
-[`shore.io.boxes`](./api-boxes-io) (the `Box` dataclass) and
-[`shore.boxes`](./api-boxes) (`boxes_from_stl`); see
-[Algorithm — marker boxes](/algorithm/boxes) for the
+[`shore.io.boxes`](/reference/api/shore.io.boxes) (the `Box` dataclass) and
+[`shore.boxes`](/reference/api/shore.boxes) (`boxes_from_stl`); see
+[Algorithm — marker boxes](/concepts/marker-boxes) for the
 voxel-fill + greedy-merge derivation.
 
 ## Use case
@@ -71,7 +71,7 @@ near-body wall, that's typically one of the wall blocks themselves
 
 Hand-writing 8-vertex hexahedra for every body is tedious and
 error-prone. `shore boxes-from-stl` (and the underlying
-[`shore.boxes.boxes_from_stl`](./api-boxes)) take a body STL and
+[`shore.boxes.boxes_from_stl`](/reference/api/shore.boxes)) take a body STL and
 return a list of `Box` instances ready to feed into
 `write_cc_par(boxes=...)` or `shore cc-par --boxes`.
 
@@ -79,6 +79,15 @@ return a list of `Box` instances ready to feed into
 shore boxes-from-stl sphere.stl --block sub0 --max-outward-gap 0.30 \
                      -o sphere_boxes.json
 ```
+
+| Argument / Option | Default | Description |
+|---|---|---|
+| `STL` | *required* | Body STL. |
+| `-o` / `--output PATH` | *required* | Output JSON file in the `shore cc-par --boxes` schema. |
+| `--block TEXT` | *required* | Block label every box references; `shore cc-par` resolves it to a 1-based index. |
+| `--max-outward-gap FLOAT` | *required* | Largest distance (STL units) from a box-surface point to the body surface, measured outward only. Strictly positive; keep it below the near-body grid's wall-normal thickness. |
+| `--method TEXT` | `voxel-fill` | `voxel-fill`, `aabb` or `obb` (below). |
+| `--face-samples-per-axis INTEGER` | `4` | `aabb` / `obb` only: each box face is sampled on a k × k grid for the outward-gap check (8 corners + 6k² samples per box). Raise to 6–8 for sharply concave bodies. |
 
 ### Methods
 
@@ -107,7 +116,7 @@ out by `r * (sqrt(3) - 1)` past a circumscribed sphere of radius
 `r` — much further than typical near-mesh thicknesses.
 
 `voxel-fill` satisfies both by construction. See
-[Algorithm — marker boxes](/algorithm/boxes) for the full
+[Algorithm — marker boxes](/concepts/marker-boxes) for the full
 derivation; the short version:
 
 - **Coverage (1).** The seed grid admits every voxel whose centre is
@@ -254,6 +263,11 @@ ParaView pane next to the existing `assembly.vtm`:
 shore boxes-export sphere_boxes.json -o sphere_boxes.vtm
 ```
 
+| Argument / Option | Description |
+|---|---|
+| `BOXES_JSON` | Boxes JSON (from `boxes-from-stl`, or hand-written in the same schema). |
+| `-o` / `--output PATH` | Required. Output `.vtm` for ParaView. |
+
 ```python
 from shore.io.vtk import write_boxes_vtm
 
@@ -317,9 +331,9 @@ SHORE itself never emits them.
 - [`shore cc-par`](./cc-par) — the `cc.par` writer that consumes
   boxes via `--boxes`.
 - [`shore cc-par-merge`](./cc-par-merge) — multi-component merge.
-- [Algorithm — marker boxes](/algorithm/boxes) — voxel-fill +
+- [Algorithm — marker boxes](/concepts/marker-boxes) — voxel-fill +
   greedy-merge derivation.
-- [`shore.io.boxes`](./api-boxes-io) — the `Box` dataclass.
-- [`shore.boxes`](./api-boxes) — `boxes_from_stl`.
-- [cc.par + boxes pipeline](/guide/cc-par-pipeline) — end-to-end
+- [`shore.io.boxes`](/reference/api/shore.io.boxes) — the `Box` dataclass.
+- [`shore.boxes`](/reference/api/shore.boxes) — `boxes_from_stl`.
+- [cc.par + boxes pipeline](/tutorials/xall-bundle) — end-to-end
   walkthrough.

@@ -48,10 +48,13 @@ jobs:
       # reported even when the tests fail
       - name: Lint
         if: ${{ !cancelled() }}
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ examples/tutorials/ examples/cookbook/ docs/scripts/api_docs.py docs/scripts/figures/
       - name: Format check
         if: ${{ !cancelled() }}
-        run: ruff format --check src/ tests/
+        run: ruff format --check src/ tests/ examples/tutorials/ examples/cookbook/ docs/scripts/api_docs.py docs/scripts/figures/
+      - name: Python API reference up to date
+        if: ${{ !cancelled() }}
+        run: python docs/scripts/api_docs.py --check
       - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0051)
         if: ${{ !cancelled() }}
         run: python scripts/check_spec.py
@@ -70,7 +73,8 @@ jobs:
         run: pip install -e ".[dev,cad]"
       - name: Run geometry tests
         run: pytest tests/test_geometry.py tests/test_geometry_occt.py tests/test_cad_pipeline.py tests/spec/test_surface_tfi_cad.py
-          tests/spec/test_loop_corners_cad.py tests/spec/test_associate.py tests/test_association.py --no-cov
+          tests/spec/test_loop_corners_cad.py tests/spec/test_associate.py tests/test_association.py
+          tests/spec/test_wing_body.py tests/test_docs_examples.py --no-cov
 
   test-gui:
     # the GUI (shore[gui], ~90 MB of wheels; ADR 0037) headless: Qt's offscreen

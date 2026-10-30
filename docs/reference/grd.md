@@ -3,7 +3,7 @@
 Pack one or more `.geo` files into a single Xall binary `.grd` mesh file.
 
 ```bash
-shore grd GEO_FILES... --output MESH.grd
+shore grd INPUTS... --output MESH.grd
 ```
 
 ## Motivation
@@ -57,8 +57,8 @@ and the layout Xall's Fortran reader expects.
 
 | Argument / Option | Description |
 |---|---|
-| `GEO_FILES...` | One or more `.geo` input files. Block order in the `.grd` matches the order given here. |
-| `-o` / `--output PATH` | Output `.grd` file. The `.grd` extension is added automatically if absent. |
+| `INPUTS...` | One or more `.geo` input files. Block order in the `.grd` matches the order given here. |
+| `-o` / `--output PATH` | Required. Output `.grd` file. The `.grd` extension is added automatically if absent. |
 | `--journal PATH` | Also write the run as a replayable journal ([`shore run`](run)). |
 
 ## Examples

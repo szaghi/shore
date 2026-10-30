@@ -9,7 +9,7 @@ wrap as a **chimera component** via [`shore cc-par`](./cc-par) — the
 cap's `k_lo` face is `WALL` (the actual wing-tip closure), `k_hi` is
 `FREE` (chimera fringe receiving from the body wrap).
 
-See [C-grid topology — Tip caps](/topologies/c-grid#tip-caps-closed-finite-wing)
+See [C-grid topology — Tip caps](/concepts/topologies/c-grid#tip-caps-closed-finite-wing)
 for the geometric layout, the rationale for chimera-overlap (vs
 SHARED-face) cap-body coupling, and the H3 T-fill block decomposition.
 
@@ -93,7 +93,7 @@ Sharp-TE airfoils (i=0 and i=ni-1 of the cross-section coincide) are
 remains sharp.  The cap's cross-section gets its TE node split into
 two points spaced ``te_thickness`` apart so the H-fill has no singular
 axis.  When auto-rounding fires, a one-line note is printed to
-stderr.  See [C-grid topology — Auto-round on sharp TE](/topologies/c-grid#auto-round-on-sharp-te)
+stderr.  See [C-grid topology — Auto-round on sharp TE](/concepts/topologies/c-grid#auto-round-on-sharp-te)
 for the geometric details.
 
 To override the synthetic thickness:
@@ -145,8 +145,8 @@ The full pipeline lives in
 ## Python API
 
 For blunt TE or for finer control over the cap construction, drive
-the topology directly from Python via [`CGridTipCap`](./api-topology#cgridtipcap)
-and [`Mesh.from_array`](./api-mesh#meshfrom_array):
+the topology directly from Python via [`CGridTipCap`](/reference/api/shore.mesh.topology)
+and [`Mesh.from_array`](/reference/api/shore.mesh.mesh):
 
 ```python
 from shore.io.geo import read_geo
@@ -171,9 +171,9 @@ cap.write_geo("cap_jlo")            # 3 .geo files
 
 ## See also
 
-- [C-grid topology — Tip caps](/topologies/c-grid#tip-caps-closed-finite-wing)
-- [`CGridTipCap`](./api-topology#cgridtipcap) — Python API.
-- [`Mesh.from_array`](./api-mesh#meshfrom_array) — non-STL `Mesh` constructor.
+- [C-grid topology — Tip caps](/concepts/topologies/c-grid#tip-caps-closed-finite-wing)
+- [`CGridTipCap`](/reference/api/shore.mesh.topology) — Python API.
+- [`Mesh.from_array`](/reference/api/shore.mesh.mesh) — non-STL `Mesh` constructor.
 - [`shore cc-par`](./cc-par) — chimera assembly that composes the cap
   against the C-grid body wrap.
 - [`examples/06-c-grid/`](https://github.com/szaghi/shore/tree/main/examples/06-c-grid).

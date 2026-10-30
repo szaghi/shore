@@ -75,7 +75,8 @@ topology name is the cubed-sphere; "cap" inside it is a part.
 
 **`ogrid`** (single-block, `mesh/topology.py:OGridTopology`,
 `surface/remesh.py:sphere_latlon_directions`): single hexahedral
-block, j-periodic, with polar singular axis rows at i=0 and i=ni-1.
+block, j-periodic, covering colatitudes [theta_cap, pi - theta_cap]: the
+i=0 and i=ni-1 rows are rings, the polar regions are left uncovered.
 Marched by `Mesh._march_ogrid` using `_compute_normals(periodic=(False, True))`
 and the j-periodic `jacobian_field`. Writes one `<stem>.geo`.
 
@@ -207,7 +208,7 @@ only (centroid ray-cast, like `cubed_sphere`).
 | `mesh/edge.py` / `mesh/vertex.py` | `Edge` (axis, endpoint vertices, node count, `Spacing1D`, `body_projected`) and `Vertex` (corner index, ijk sign tuple, `body_projected`) — the rest of the block element model. |
 | `mesh/body.py` | `Body` dataclass — STL wrapper; an unresolvable anchor is kept in `anchor_error` and raised by `projector` (open half-model bodies serve collars, ADR 0018). `Body.normals` (the reference of ADR 0005's k-line angle metric; the marcher's `blend_normals_k` that read them is removed, ADR 0034: 0 warns, anything else raises `ParameterError`): `_stl_normals` vertex-normal blend for STL, exact normals for CAD (ADR 0015). `Body.from_stl(path, skip_hygiene=...)` loads + (optionally) repairs; `.projector` (lazy cached `Projector`), `.project(...)` (lat-lon k=0), `.project_caps(...)`, `.directions(...)`, `save_surface`/`load_surface` (`.npz` with key `"k0"`). |
 | `mesh/inspect.py` | File-level inspection/export backing the CLI: `info_geo`/`info_surface`, `check_geo`, `export_geo`/`export_surface`, `view_geo_file`/`view_surface_file`. |
-| `topology/cgrid_cap.py` | Wing-tip cap builder for the C-grid: `build_cap_blocks` (3/4 H-style blocks closing the airfoil section at a span extreme), `find_symmetric_le_cuts`, `detect_te_thickness`, `auto_round_sharp_te`. Backs `CGridTipCap` and the `shore cap-tip` CLI. |
+| `topology/cgrid_cap.py` | Wing-tip cap builder for the C-grid: `build_cap_blocks` (5 H-style blocks, plus a wake-base block at a blunt TE, closing the airfoil section at a span extreme), `find_symmetric_le_cuts`, `detect_te_thickness`, `auto_round_sharp_te`. Backs `CGridTipCap` and the `shore cap-tip` CLI. |
 | `primitive/` | Parametric structured-grid primitives (no STL). `base.py` (`PrimitiveMesh` ABC, `resolve_axis`/`axis_frame`/`coords_1d`), `box.py` (`BoxMesh`), `annulus.py` (`AnnularCylinderMesh`, optional periodic-j sector), `flat_caps.py` (`FlatCapsCylinder`, 5-block Chimera-free background), `h_grid_rect.py` (`HGridRectMesh`, rectangular duct), `h_grid_tube.py` (`HGridTubeMesh`, circular bore, j-periodic, k=0 polar singular axis). All expose `.build(...)` + `.blocks` + `write_geo`. |
 | `exceptions.py` | `ShoreError` base + `MeshInputError(ShoreError, ValueError)`, `ParameterError(ShoreError, ValueError)`, `MarchingError(ShoreError, RuntimeError)`. |
 | `volume/hyperbolic.py` | `_compute_normals(layer, periodic, ghost_rows=None)`: outward unit normals via cross of i- and j-tangents. When `ghost_rows` is supplied (dict with optional keys `'i_lo'` / `'i_hi'` / `'j_lo'` / `'j_hi'`), the corresponding boundary tangent uses a centred difference against the ghost row instead of one-sided. `_laplacian_smooth(layer, strength, periodic)`: per-iteration `strength * (laplacian - node)` blend; non-periodic boundary rows clamped, k=0 wall always clamped. `_stl_normals` (vertex-normal blend at the closest point; `Body.normals` on STL). |
@@ -227,7 +228,7 @@ only (centroid ray-cast, like `cubed_sphere`).
 | `io/grd.py` | Fortran-unformatted binary `.grd` pack of N `.geo` blocks: `write_grd`, `read_grd_metadata` (per-block cell-count triples — also the weight source for `balance`/`proc-input`), `merge_grd` (byte-passthrough concat for multi-component Xall runs). Backs `shore grd` / `grd-merge`. |
 | `io/vtk.py` | VTK XML export (optional `pyvista` dep): `write_vts`, `write_surface_vts`, `write_caps_vtm` (MultiBlock for multi-block topologies), `write_boxes_vtm` (marker boxes), `geo_to_pyvista` / `surface_to_pyvista` / `open_to_pyvista`. |
 | `io/adjacency.py` | JSON sidecar for block lists: `write_adjacency_json` / `read_adjacency_json` serialise the per-face BC + partner graph (FaceBC name, `{label, face}` partner reference, AxisMap). `summarise_adjacency` for a human summary. The bridge from the block model to `cc-par`. |
-| `io/cc_par.py` | Xnavis `cc.par` reader-aware writer/merger. `write_cc_par(adjacency_payload, path, *, grd_filename, ..., block_metadata, boxes)` translates `.adjacency.json` → Fortran ASCII: maps `WALL/FREE/SHARED/DIRICHLET/SYMMETRY` to Xnavis BC codes (SYMMETRY → natural-BC index 2), emits paired connection patches with 3-digit orientation codes derived from the `AxisMap` (`_orientation_code_from_axis_map`; the normal digit is odd for faces on opposite sides of their blocks and even for the same side, as Xall's overset pre-processor reads it, ADR 0036 — before it lo faces were reversed) and one patch per partner on a face shared with several (`patches` in the sidecar, CH's `body.k_hi`), and writes a marker-boxes section. `BlockMeta` = per-block level/group/priority/comment + `free_face_bc` (40 chimera vs negative natural BC). `merge_cc_par` shifts block/patch indices across components (parses inputs back in). |
+| `io/cc_par.py` | Xnavis `cc.par` reader-aware writer/merger. `write_cc_par(adjacency_payload, path, *, grd_filename, ..., block_metadata, boxes)` translates `.adjacency.json` → Fortran ASCII: maps `WALL/FREE/SHARED/DIRICHLET/SYMMETRY` to Xnavis BC codes (SYMMETRY → natural-BC index 2), emits paired connection patches with 3-digit orientation codes derived from the `AxisMap` (`_orientation_code_from_axis_map`; the normal digit is odd for faces on opposite sides of their blocks and even for the same side, as Xall's overset pre-processor reads it, ADR 0036 — before it lo faces were reversed) and one patch per partner on a face shared with several (`patches` in the sidecar, CH's `body.k_hi`), and writes a marker-boxes section. `BlockMeta` = per-block level/group/priority/comment + `free_face_bc` (40 chimera, or a natural BC code in 1..19). `merge_cc_par` shifts block/patch indices across components (parses inputs back in). |
 | `io/proc_input.py` | `proc.input` (MPI work distribution) writer/merger: `write_proc_input(grd, out, np, ...)` greedily weight-balances blocks across ranks (weights from the `.grd` cell counts), with per-block `proc`/`group`/`body` overrides; `merge_proc_input` concatenates components (no re-balancing). `BalanceSummary` reports per-rank load + imbalance. |
 | `io/boxes.py` | `Box` dataclass (8-vertex hexahedron, canonical i-fastest order) + `box_to_json` / `box_from_json`. The cc.par marker-box value type. |
 | `split.py` | `BlockSplit` dataclass + `split_blocks(blocks, splits)`: subdivides a list of `HexBlock`s along ijk vertex indices, wires internal SHARED seams between consecutive chunks (numpy-view aliased; bit-exact), rewires external SHARED partner pointers. Raises `ParameterError` on cross-block split mismatches (e.g. splitting `sub0` along k without paired splits on `sub1`/`sub2`/`sub3`). Used by `shore split` and by `balance`-generated plans. |
@@ -251,6 +252,23 @@ counts (e.g. "13 passed, 0 skipped, 0 xfailed"), not "it passes".
 Verdicts are per module and per CI job: `test_surface_tfi.py`,
 `test_surface_march.py`, `test_intersection.py`, `test_collar.py`, `test_open_curve.py`, `test_march_ends.py`, `test_half_collar.py`, `test_stl_normals.py`, `test_project_components.py`, `test_xall_options.py`, `test_cli_projects.py`, `test_blend_removal.py` (with its data `data/blend_removal_default.npz`, `data/blended_project.zip`), `test_loop_spacing.py` (with its golden `data/loop_default.npz`) `test_loop_corners.py` (golden `data/loop_bends_default.npz`) `test_corner_grading.py` and `test_march_creases.py` (golden `data/march_default.npz`) `test_split_collar.py` (golden `data/collar_default.npz`) `test_collar_volume.py`, `test_collar_default.py`, `test_march_corners.py`, `test_fast_load.py`, `test_exports.py` (needs `pycgns`, in `dev`), `test_cc_par_xall.py` (data `data/xall_before.zip`) , `test_seam_sync.py`, `test_redistribute.py`, `test_blocking.py`, `test_ogrid.py`, `test_move_vertex.py`, `test_orthogonalize.py`, `test_stl_curves.py` and `test_wall_layer.py` run in the main job, `tests_gui/spec/test_gui_shell.py`, `test_gui_inspect.py`, `test_gui_associate.py`, `test_gui_spacing.py`, `test_gui_blocking.py`, `test_gui_ogrid.py`, `test_gui_blocking_select.py`, `test_gui_move_vertex.py`, `test_gui_orthogonalize.py`, `test_gui_stl_curves.py`, `test_gui_wall_layer.py` and `test_gui_wing_body.py` (need `shore[gui]`, `test_gui_associate.py`, `test_gui_spacing.py` and `test_gui_wing_body.py` also `shore[cad]`; outside `testpaths`) in the GUI job, `tests/spec/test_associate.py` and `test_wing_body.py` (need `shore[cad]`) in the CAD job, `test_surface_tfi_cad.py` and `test_loop_corners_cad.py` (need
 `shore[cad]`) in the CAD job.
+
+### Documentation
+
+VitePress site in `docs/` (Diátaxis): `guide/` (get started), `tutorials/`,
+`cookbook/`, `concepts/` (+ `concepts/topologies/`), `reference/` (one page per
+CLI command, `run.md` = project scripts, `gui.md`, `formats.md`, `config.md`),
+`reference/api/` (**generated** from docstrings by `docs/scripts/api_docs.py`
+via `ast`, no imports; `--check` in `make lint` and CI: regenerate after a
+docstring or signature change, never edit by hand), `adr/` (sidebar built from
+the files). Tutorial and recipe code lives in `examples/tutorials/` and
+`examples/cookbook/` (regions `# #region name`, included with
+`<<< @/../examples/...#name`; `# requires: cad|cgns|vis` lines) and is run by
+`tests/test_docs_examples.py`. Figures: `docs/scripts/figures/make.py` (modules
+`schematics`, `charts`, `renders_classic`, `renders_cad`, `gui_shots`, one
+palette in `theme.py`) writes `docs/public/figures/{light,dark}/<name>.{svg,png}`,
+shown with `<Figure name=... />`; ```` ```mermaid ```` fences render in the
+palette. `make docs-build` fails on dead links.
 
 ### Test Suite
 

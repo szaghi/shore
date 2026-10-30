@@ -26,7 +26,7 @@ shore project [OPTIONS] INPUT
 
 | Argument | Description |
 |---|---|
-| `INPUT` | Path to the input `.stl` file |
+| `INPUT` | Input STL, or CAD (`.step`/`.stp`, `.iges`/`.igs`, `.brep`/`.brp`; needs the `cad` extra) |
 
 ## Options
 
@@ -35,14 +35,14 @@ shore project [OPTIONS] INPUT
 | Option | Default | Description |
 |---|---|---|
 | `--ni INTEGER` | 40 | Latitude **node count** (i-axis of the output `(ni, nj, 3)` array). |
-| `--nj INTEGER` | 60 | Longitude **node count** (j-axis). |
+| `--nj INTEGER` | 60 | Longitude **node count** (j-axis, periodic). |
 
 ### Topology
 
 | Option | Default | Description |
 |---|---|---|
-| `--theta-cap FLOAT` | — | Polar exclusion angle in radians |
-| `--theta-cap-deg FLOAT` | — | Same as `--theta-cap` but in degrees |
+| `--theta-cap FLOAT` | $0.05\pi$ (≈ 9°) | Polar exclusion angle in radians |
+| `--theta-cap-deg FLOAT` | — | Same as `--theta-cap` but in degrees (mutually exclusive) |
 
 ### Surface spacing
 
@@ -139,16 +139,16 @@ shore project nacelle.stl \
 
 ## Algorithm
 
-See [Pipeline overview — Stage 1](/guide/pipeline) for a full description of the sphere projection algorithm.
+See [Pipeline overview — Stage 1](/concepts/pipeline-limits) for a full description of the sphere projection algorithm.
 
 The projection uses trimesh's `RayMeshIntersector` with `multiple_hits=False` — only the first intersection along each ray (closest to the centroid) is recorded. Ray origins are all placed at the body centroid; directions are the unit vectors of a lat-lon sphere grid.
 
-When surface spacing is non-uniform, the lat-lon directions are redistributed using the selected spacing law before ray casting. See [Spacing laws](/algorithm/spacing-laws) for details.
+When surface spacing is non-uniform, the lat-lon directions are redistributed using the selected spacing law before ray casting. See [Spacing laws](/concepts/spacing-laws) for details.
 
 ## See also
 
 - [`shore mesh`](mesh) — full STL → 6-block cubed-sphere mesh pipeline
-- [Cubed-sphere topology](/topologies/cubed-sphere) — the 6-block topology that
+- [Cubed-sphere topology](/concepts/topologies/cubed-sphere) — the 6-block topology that
   `shore mesh` builds (does not consume `.npz` from `shore project`)
-- [Spacing laws](/algorithm/spacing-laws) — clustering distributions explained
-- [Pipeline overview](/guide/pipeline)
+- [Spacing laws](/concepts/spacing-laws) — clustering distributions explained
+- [Pipeline overview](/concepts/pipeline-limits)

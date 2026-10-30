@@ -6,6 +6,12 @@ Concatenate multiple `cc.par` files into one for an Xall multi-mesh run.
 shore cc-par-merge INPUT1.cc.par INPUT2.cc.par ... -o OUTPUT.cc.par --grd MESH.grd
 ```
 
+| Argument / option | Description |
+|---|---|
+| `INPUTS...` | The `cc.par` files, in the same order as the `.grd` merge. |
+| `-o` / `--output PATH` | Required. The merged `cc.par`. |
+| `--grd TEXT` | Required. Name of the merged `.grd`, written into header line 1 (overriding the first input's). |
+
 ## Motivation
 
 Several independent Chimera components in one Xall run (e.g. a
@@ -97,7 +103,7 @@ and prints the equivalent CLI commands.  Its bash sibling
 `examples/05-chimera-assembly/chimera_assembly.sh` runs the same
 pipeline through `shore` subcommands alone — useful as a
 copy-pasteable reference.  See the
-[cc.par + boxes pipeline](/guide/cc-par-pipeline) walkthrough for the
+[cc.par + boxes pipeline](/tutorials/xall-bundle) walkthrough for the
 end-to-end story.
 
 ## Python API

@@ -21,7 +21,7 @@ better is to subdivide blocks. `shore balance` plans that subdivision.
 
 The planner replaces an earlier bisection-of-heaviest design that either stalled
 (heavy blocks left whole) or over-fragmented (single-cell sheets) — see
-[Design decisions → multi-way partition](/guide/design-decisions#multi-way-equal-partition-not-bisection-issue-6)
+[Design decisions → multi-way partition](/concepts/load-balancing#multi-way-equal-partition-not-bisection-issue-6)
 for the motivation and evidence ([issue #6](https://github.com/szaghi/shore/issues/6)).
 
 The result is a *plan*, not an executed split: review it, run `shore split` (or
@@ -39,7 +39,7 @@ The result is a *plan*, not an executed split: review it, run `shore split` (or
 | `--min-coarse-cells INTEGER` | `8` | Minimum cells per axis on the coarsest (level-`ngr`) grid. Every chunk axis is kept `>= min-coarse-cells * 2^(ngr-1)` fine cells. |
 | `--tolerance FLOAT` | `0.05` | Target fractional imbalance `(max - min) / mean` for the *converged* report. The planner reports achieved imbalance regardless and never fails on an unreachable tolerance. |
 | `--adjacency PATH` | — | Path to a `.adjacency.json` sidecar. **Strongly recommended**: lets the planner floor-check against seam-*propagated* cuts (`shore split` mirrors cuts across SHARED / DIRICHLET seams). Without it the floor is only checked per block in isolation. |
-| `--format {toml,bsplit-par}` | `toml` | Output dialect. `toml` for the pre-overset [`shore split`](./split); `bsplit-par` for the post-overset external `bsplit` (see [After-overset splitting](/guide/after-overset-bsplit)). `bsplit-par` requires a **grd-only** plan (do not pass `--adjacency`). |
+| `--format {toml,bsplit-par}` | `toml` | Output dialect. `toml` for the pre-overset [`shore split`](./split); `bsplit-par` for the post-overset external `bsplit` (see [After-overset splitting](/cookbook/after-overset-split)). `bsplit-par` requires a **grd-only** plan (do not pass `--adjacency`). |
 
 ## Algorithm
 
@@ -51,7 +51,7 @@ The result is a *plan*, not an executed split: review it, run `shore split` (or
    Keying the count to the axis extent makes seam-linked blocks (which always have
    equal extent on the shared axis) choose **identical** cuts — conformal by
    construction.
-   See [Design decisions → per-axis cut counts](/guide/design-decisions#per-axis-cut-counts-not-per-block-volume).
+   See [Design decisions → per-axis cut counts](/concepts/load-balancing#per-axis-cut-counts-not-per-block-volume).
 3. Propagate the candidate cuts across SHARED / DIRICHLET seams (exactly as
    `shore split` will), then floor-check the **propagated** chunk set and back off
    any cut that would create a sub-floor sliver. Iterate to a fixpoint so the plan
@@ -99,7 +99,7 @@ shore proc-input wall.grd wall.proc.input --np 16
 
 When pre-overset splitting breaks the chimera donor search, emit a `bsplit.par`
 instead and split the overset outputs after the solver's donor search — see
-[After-overset splitting](/guide/after-overset-bsplit):
+[After-overset splitting](/cookbook/after-overset-split):
 
 ```bash
 shore balance raw.grd --np 16 --ngr 3 --min-coarse-cells 8 \
@@ -162,12 +162,12 @@ shore balance raw.grd --np 16 --ngr 3 --format bsplit-par -o bsplit.par
 
 ## Python API
 
-See [`shore.balance`](./api-balance) for `plan_balance(...)`, the `BalancePlan`
+See [`shore.balance`](/reference/api/shore.balance) for `plan_balance(...)`, the `BalancePlan`
 dataclass, and the `to_toml()` / `to_bsplit_par()` serializers.
 
 ## See also
 
 - [`shore split`](./split) — applies a `split.toml` plan (auto-propagates seam cuts).
 - [`shore proc-input`](./proc-input) — final cell-weighted rank assignment.
-- [After-overset splitting](/guide/after-overset-bsplit) — the `bsplit` workflow.
-- [Design decisions](/guide/design-decisions) — why the planner works this way.
+- [After-overset splitting](/cookbook/after-overset-split) — the `bsplit` workflow.
+- [Design decisions](/concepts/load-balancing) — why the planner works this way.

@@ -6,6 +6,11 @@ Concatenate multiple `.grd` files into one for an Xall multi-mesh run.
 shore grd-merge INPUT1.grd INPUT2.grd ... -o OUTPUT.grd
 ```
 
+| Argument / option | Description |
+|---|---|
+| `INPUTS...` | The `.grd` files, in component order. |
+| `-o` / `--output PATH` | Required. The merged `.grd`. |
+
 ## Motivation
 
 When an Xall job combines several independent Chimera components — for
@@ -47,7 +52,7 @@ The example at `examples/05-chimera-assembly/chimera_assembly.py`
 runs both halves in sequence; the bash sibling
 `examples/05-chimera-assembly/chimera_assembly.sh` does the same
 through `shore` CLI calls only.  See the
-[cc.par + boxes pipeline](/guide/cc-par-pipeline) walkthrough for the
+[cc.par + boxes pipeline](/tutorials/xall-bundle) walkthrough for the
 end-to-end flow.
 
 ## Python API

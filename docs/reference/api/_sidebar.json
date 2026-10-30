@@ -1,0 +1,376 @@
+[
+  {
+    "text": "Package",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "shore",
+        "link": "/reference/api/shore"
+      },
+      {
+        "text": "config",
+        "link": "/reference/api/shore.config"
+      },
+      {
+        "text": "exceptions",
+        "link": "/reference/api/shore.exceptions"
+      },
+      {
+        "text": "pipeline",
+        "link": "/reference/api/shore.pipeline"
+      },
+      {
+        "text": "quality",
+        "link": "/reference/api/shore.quality"
+      }
+    ]
+  },
+  {
+    "text": "Geometry",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "geometry",
+        "link": "/reference/api/shore.geometry"
+      },
+      {
+        "text": "geometry.base",
+        "link": "/reference/api/shore.geometry.base"
+      },
+      {
+        "text": "geometry.keys",
+        "link": "/reference/api/shore.geometry.keys"
+      },
+      {
+        "text": "geometry.occt",
+        "link": "/reference/api/shore.geometry.occt"
+      },
+      {
+        "text": "geometry.stl",
+        "link": "/reference/api/shore.geometry.stl"
+      },
+      {
+        "text": "profiles",
+        "link": "/reference/api/shore.profiles"
+      },
+      {
+        "text": "profiles.io",
+        "link": "/reference/api/shore.profiles.io"
+      },
+      {
+        "text": "shapes",
+        "link": "/reference/api/shore.shapes"
+      }
+    ]
+  },
+  {
+    "text": "Block model",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "mesh",
+        "link": "/reference/api/shore.mesh"
+      },
+      {
+        "text": "mesh.association",
+        "link": "/reference/api/shore.mesh.association"
+      },
+      {
+        "text": "mesh.block",
+        "link": "/reference/api/shore.mesh.block"
+      },
+      {
+        "text": "mesh.blocking",
+        "link": "/reference/api/shore.mesh.blocking"
+      },
+      {
+        "text": "mesh.body",
+        "link": "/reference/api/shore.mesh.body"
+      },
+      {
+        "text": "mesh.edge",
+        "link": "/reference/api/shore.mesh.edge"
+      },
+      {
+        "text": "mesh.face",
+        "link": "/reference/api/shore.mesh.face"
+      },
+      {
+        "text": "mesh.inspect",
+        "link": "/reference/api/shore.mesh.inspect"
+      },
+      {
+        "text": "mesh.mesh",
+        "link": "/reference/api/shore.mesh.mesh"
+      },
+      {
+        "text": "mesh.orthogonal",
+        "link": "/reference/api/shore.mesh.orthogonal"
+      },
+      {
+        "text": "mesh.redistribute",
+        "link": "/reference/api/shore.mesh.redistribute"
+      },
+      {
+        "text": "mesh.seams",
+        "link": "/reference/api/shore.mesh.seams"
+      },
+      {
+        "text": "mesh.spacing",
+        "link": "/reference/api/shore.mesh.spacing"
+      },
+      {
+        "text": "mesh.topology",
+        "link": "/reference/api/shore.mesh.topology"
+      },
+      {
+        "text": "mesh.vertex",
+        "link": "/reference/api/shore.mesh.vertex"
+      }
+    ]
+  },
+  {
+    "text": "Surface",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "surface",
+        "link": "/reference/api/shore.surface"
+      },
+      {
+        "text": "surface.anchor",
+        "link": "/reference/api/shore.surface.anchor"
+      },
+      {
+        "text": "surface.cap",
+        "link": "/reference/api/shore.surface.cap"
+      },
+      {
+        "text": "surface.cgrid",
+        "link": "/reference/api/shore.surface.cgrid"
+      },
+      {
+        "text": "surface.equator",
+        "link": "/reference/api/shore.surface.equator"
+      },
+      {
+        "text": "surface.intersect",
+        "link": "/reference/api/shore.surface.intersect"
+      },
+      {
+        "text": "surface.io",
+        "link": "/reference/api/shore.surface.io"
+      },
+      {
+        "text": "surface.march",
+        "link": "/reference/api/shore.surface.march"
+      },
+      {
+        "text": "surface.projector",
+        "link": "/reference/api/shore.surface.projector"
+      },
+      {
+        "text": "surface.remesh",
+        "link": "/reference/api/shore.surface.remesh"
+      },
+      {
+        "text": "surface.tfi",
+        "link": "/reference/api/shore.surface.tfi"
+      }
+    ]
+  },
+  {
+    "text": "Volume and topologies",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "primitive",
+        "link": "/reference/api/shore.primitive"
+      },
+      {
+        "text": "primitive.annulus",
+        "link": "/reference/api/shore.primitive.annulus"
+      },
+      {
+        "text": "primitive.base",
+        "link": "/reference/api/shore.primitive.base"
+      },
+      {
+        "text": "primitive.box",
+        "link": "/reference/api/shore.primitive.box"
+      },
+      {
+        "text": "primitive.flat_caps",
+        "link": "/reference/api/shore.primitive.flat_caps"
+      },
+      {
+        "text": "primitive.h_grid_rect",
+        "link": "/reference/api/shore.primitive.h_grid_rect"
+      },
+      {
+        "text": "primitive.h_grid_tube",
+        "link": "/reference/api/shore.primitive.h_grid_tube"
+      },
+      {
+        "text": "topology",
+        "link": "/reference/api/shore.topology"
+      },
+      {
+        "text": "topology.cgrid_cap",
+        "link": "/reference/api/shore.topology.cgrid_cap"
+      },
+      {
+        "text": "topology.ch_channel",
+        "link": "/reference/api/shore.topology.ch_channel"
+      },
+      {
+        "text": "topology.oh_channel",
+        "link": "/reference/api/shore.topology.oh_channel"
+      },
+      {
+        "text": "topology.sphere_cap",
+        "link": "/reference/api/shore.topology.sphere_cap"
+      },
+      {
+        "text": "volume",
+        "link": "/reference/api/shore.volume"
+      },
+      {
+        "text": "volume.hyperbolic",
+        "link": "/reference/api/shore.volume.hyperbolic"
+      },
+      {
+        "text": "volume.hyperbolic_scheme",
+        "link": "/reference/api/shore.volume.hyperbolic_scheme"
+      },
+      {
+        "text": "volume.jacobian",
+        "link": "/reference/api/shore.volume.jacobian"
+      },
+      {
+        "text": "volume.spacing",
+        "link": "/reference/api/shore.volume.spacing"
+      }
+    ]
+  },
+  {
+    "text": "Collars",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "collar",
+        "link": "/reference/api/shore.collar"
+      }
+    ]
+  },
+  {
+    "text": "Projects",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "project",
+        "link": "/reference/api/shore.project"
+      },
+      {
+        "text": "project.commands",
+        "link": "/reference/api/shore.project.commands"
+      },
+      {
+        "text": "project.project",
+        "link": "/reference/api/shore.project.project"
+      }
+    ]
+  },
+  {
+    "text": "Chimera and Xall",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "balance",
+        "link": "/reference/api/shore.balance"
+      },
+      {
+        "text": "boxes",
+        "link": "/reference/api/shore.boxes"
+      },
+      {
+        "text": "io",
+        "link": "/reference/api/shore.io"
+      },
+      {
+        "text": "io.adjacency",
+        "link": "/reference/api/shore.io.adjacency"
+      },
+      {
+        "text": "io.boxes",
+        "link": "/reference/api/shore.io.boxes"
+      },
+      {
+        "text": "io.cc_par",
+        "link": "/reference/api/shore.io.cc_par"
+      },
+      {
+        "text": "io.cgns",
+        "link": "/reference/api/shore.io.cgns"
+      },
+      {
+        "text": "io.geo",
+        "link": "/reference/api/shore.io.geo"
+      },
+      {
+        "text": "io.grd",
+        "link": "/reference/api/shore.io.grd"
+      },
+      {
+        "text": "io.plot3d",
+        "link": "/reference/api/shore.io.plot3d"
+      },
+      {
+        "text": "io.proc_input",
+        "link": "/reference/api/shore.io.proc_input"
+      },
+      {
+        "text": "io.vtk",
+        "link": "/reference/api/shore.io.vtk"
+      },
+      {
+        "text": "split",
+        "link": "/reference/api/shore.split"
+      }
+    ]
+  },
+  {
+    "text": "GUI and visualisation",
+    "collapsed": true,
+    "items": [
+      {
+        "text": "gui",
+        "link": "/reference/api/shore.gui"
+      },
+      {
+        "text": "gui.forms",
+        "link": "/reference/api/shore.gui.forms"
+      },
+      {
+        "text": "gui.session",
+        "link": "/reference/api/shore.gui.session"
+      },
+      {
+        "text": "gui.viewport",
+        "link": "/reference/api/shore.gui.viewport"
+      },
+      {
+        "text": "gui.viewport.pygfx_backend",
+        "link": "/reference/api/shore.gui.viewport.pygfx_backend"
+      },
+      {
+        "text": "gui.window",
+        "link": "/reference/api/shore.gui.window"
+      },
+      {
+        "text": "vis",
+        "link": "/reference/api/shore.vis"
+      }
+    ]
+  }
+]

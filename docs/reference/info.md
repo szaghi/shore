@@ -54,4 +54,4 @@ shore info grids/fuselage.geo
 ## See also
 
 - [`shore check`](check) — validate Jacobians
-- [geo format](/reference/api-geo) — file format details
+- [geo format](/reference/api/shore.io.geo) — file format details

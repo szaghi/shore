@@ -16,7 +16,7 @@ coordinates ordered upper-TE → LE → lower-TE. Compatible with
 
 For the algorithmic detail (NACA 4 vs 5-digit polynomial families,
 closed vs open TE, cosine sampling), see
-[Algorithm — airfoil profiles](/algorithm/airfoil-profiles).
+[Algorithm — airfoil profiles](/concepts/airfoil-profiles).
 
 ## `shore profile naca`
 
@@ -88,4 +88,4 @@ and aren't implemented in this release.
 ## See also
 
 - [`shore body extrude`](body) — extrude a Selig section into a 3D wing STL.
-- [Algorithm — airfoil profiles](/algorithm/airfoil-profiles) — polynomial derivations.
+- [Algorithm — airfoil profiles](/concepts/airfoil-profiles) — polynomial derivations.

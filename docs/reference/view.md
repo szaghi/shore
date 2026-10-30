@@ -77,10 +77,10 @@ pl = view_geo(grid, jupyter=True)
 pl.show()
 ```
 
-See [Quick Start — Visualization](/guide/quickstart#visualization) and [`shore.vis`](api-vis) for the full Jupyter workflow.
+See [`shore.vis`](/reference/api/shore.vis) for the full Jupyter workflow.
 
 ## See also
 
 - [`shore export`](export) — write a `.vts` file for ParaView
-- [`shore.vis`](api-vis) — Python API for interactive and off-screen rendering
-- [`shore.io.vtk`](api-vtk) — Python API for VTK file export
+- [`shore.vis`](/reference/api/shore.vis) — Python API for interactive and off-screen rendering
+- [`shore.io.vtk`](/reference/api/shore.io.vtk) — Python API for VTK file export

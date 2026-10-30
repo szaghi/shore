@@ -127,7 +127,7 @@ its j-ring partners (`sub1`, `sub3`) and to both polar caps
 Earlier versions rejected an unmatched perpendicular split on a shared
 seam ("split all four sub-blocks at the same indices"). That manual
 pairing is gone — see
-[Design decisions → auto-propagate cuts](/guide/design-decisions#splitting-auto-propagates-cuts-across-seams).
+[Design decisions → auto-propagate cuts](/concepts/load-balancing#splitting-auto-propagates-cuts-across-seams).
 Pass `propagate_seams=False` to the Python API to restore the legacy
 behaviour.
 :::
@@ -182,7 +182,7 @@ explicit Xall natural-BC code in `[1, 19]` (e.g. `3` inflow, `9`
 extrapolation) that overrides the per-block `free_face_bc` default in
 [cc.par](/reference/cc-par). The key is emitted only when set, so older
 sidecars round-trip unchanged. See
-[Design decisions → per-face BC codes](/guide/design-decisions#per-face-natural-bc-codes).
+[Design decisions → per-face BC codes](/concepts/load-balancing#per-face-natural-bc-codes).
 
 `axis_map` is `null` for `WALL` / `FREE`, otherwise a 2-element list
 of `[partner_axis, flipped]` pairs. The order of the pairs matches
@@ -278,11 +278,11 @@ co-split. Always pass the mesh's `--adjacency` for topology meshes.
 
 ## See also
 
-- [`shore.split`](/reference/api-split) — the Python API
+- [`shore.split`](/reference/api/shore.split) — the Python API
   (`from shore.split import BlockSplit, split_blocks`).
-- [`shore.io.adjacency`](/reference/api-adjacency) — reading / writing the
+- [`shore.io.adjacency`](/reference/api/shore.io.adjacency) — reading / writing the
   JSON sidecar (`wire_blocks_from_adjacency`, `propagate_cuts`).
 - [`shore balance`](balance) — plans the splits this command applies.
-- [Design decisions](/guide/design-decisions) — why splitting works this way.
+- [Design decisions](/concepts/load-balancing) — why splitting works this way.
 - [`shore export`](export) — bundling `.geo` files into a `.vtm`
   MultiBlock for ParaView; complementary to splitting.

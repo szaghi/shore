@@ -13,7 +13,8 @@ All Python dependencies are installed automatically:
 | `numpy >= 1.26` | Core array numerics |
 | `trimesh >= 4.0` | STL I/O, BVH ray casting |
 | `rtree >= 1.0` | Spatial index for trimesh ray backend |
-| `scipy >= 1.12` | Spatial queries (fallback) |
+| `networkx >= 3.0` | Normal repair on STL load (trimesh) |
+| `scipy >= 1.12` | Sparse solvers (surface marching, elliptic smoothing), spatial queries |
 | `typer >= 0.12` | CLI framework |
 | `rich >= 13.0` | Progress bar and formatted output |
 
@@ -58,6 +59,20 @@ curl -fsSL https://raw.githubusercontent.com/szaghi/shore/main/install.sh | bash
 ```
 
 To upgrade later: `pipx upgrade shore-mesh`. To uninstall: `pipx uninstall shore-mesh`.
+
+## Optional extras
+
+The core install meshes STL bodies and writes every Xall file. Extras add
+the rest:
+
+| Extra | Adds | Needed for |
+|---|---|---|
+| `cad` | `build123d` (OpenCascade) | STEP / IGES / BREP geometry, exact projection, CAD faces and edges |
+| `gui` | PySide6, pygfx, wgpu, rendercanvas | `shore gui` |
+| `cgns` | `h5py` | `shore cgns`, `Project.write_cgns` |
+| `vis` | PyVista | `shore view`, `shore export`, `shore boxes-export`, `shore.vis` |
+
+Combine them as usual: `pipx install 'shore-mesh[cad,gui,cgns,vis]'`.
 
 ## With pipx (manual)
 
@@ -110,20 +125,18 @@ pip install -e ".[dev]"
 ```
 
 The `[dev]` extra adds `pytest`, `pytest-cov`, `ruff`, `pyvista`, `h5py` and
-`pycgns` (the independent CGNS reader of the export specs, ADR 0035).
+`pycgns` (the independent CGNS reader of the export specs, ADR 0035). For
+the CAD and GUI tests add those extras: `pip install -e ".[dev,cad,gui]"`.
 
 Run the test suite to confirm everything works:
 
 ```bash
-make test
+make test                                         # about 2000 tests, ~9 min
+QT_QPA_PLATFORM=offscreen pytest tests_gui --no-cov   # the GUI tests, needs [gui]
 ```
 
-Expected output (count grows with each release; the run completes in
-under a minute on a modern laptop):
-
-```
-588 passed in 53s
-```
+[Examples and tests](/guide/running) describes the suites and the frozen
+acceptance specs.
 
 ## Optional: pyvista for visualisation
 
@@ -155,4 +168,7 @@ make test   # run test suite with coverage
 make lint   # ruff check + format check (read-only)
 make fmt    # ruff fix + format (destructive)
 make clean  # remove build artefacts
+make docs-api      # regenerate the Python API reference from the docstrings
+make docs-figures  # redraw the docs figures (light and dark)
+make docs-build    # build the docs site (fails on dead links)
 ```

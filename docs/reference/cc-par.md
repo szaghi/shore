@@ -261,7 +261,7 @@ Patches:
   digit (l=3), because the two faces are on opposite sides of their
   blocks (Jmax meets Jmin). See [orientation digits](#orientation-digits-in-detail).
 - A solver-run INSEAN `cc.par` writes exactly this: 135 on both sides of
-  its 89 j lo ↔ hi seams ([ADR 0036](../adr/0036-cc-par-as-xall-reads-it.md);
+  its 89 j lo ↔ hi seams ([ADR 0036](/adr/0036-cc-par-as-xall-reads-it);
   SHORE wrote 145 on the lo side before).
 - `family = 2` and `family = 1` cross-reference the two patches.
 - A's j-extents are `8 8` (collapsed at j-max); B's j-extents are
@@ -334,7 +334,7 @@ For a same-axis seam with no flips (lo ↔ hi), both sides emit `135`.
 A lo ↔ lo seam (the C-grid wake cut, `k_lo` ↔ `k_lo` with i reversed)
 emits `236` from both sides.
 
-Before [ADR 0036](../adr/0036-cc-par-as-xall-reads-it.md), SHORE picked
+Before [ADR 0036](/adr/0036-cc-par-as-xall-reads-it), SHORE picked
 the perpendicular digit from the partner's side alone. That is right on
 hi faces and reversed on lo faces, so every lo-face connection sent Xall
 to the wrong nodes. Regenerate `cc.par` files written by earlier versions.
@@ -374,8 +374,9 @@ above for the full Xall BC vocabulary.
 |---|---|---|---|
 | `WALL` | `1` (`parete`, viscous wall) | `0` | Body wall. |
 | `FREE` | `--free-bc` (default `40`), or per-block `free_face_bc` via `--meta`, or per-**face** `bc_code` | `0` | `40` = chimera cell-center recipient (body-fitted / buffer meshes). For far-field background blocks, override with a **positive** natural BC in `[1, 19]`: `3` inflow, `4` outflow, `9` extrapolation (see warning below). Per-block `--meta` overrides `--free-bc`; a per-face `bc_code` (see [per-face BC](#per-face-bc-codes)) overrides both. |
-| `SHARED` | orientation code (≥ 100) | partner patch index | Code derived from the face's `axis_map` plus the partner face name — see [orientation digits](#orientation-digits-in-detail). For a same-axis lo ↔ hi seam with no flips the code is `135` on both sides. A face shared with several partners (CH's `body.k_hi`) gets a patch per partner, from the sidecar's `patches` (ADR 0036). |
+| `SHARED` | orientation code (≥ 100) | partner patch index | Code derived from the face's `axis_map` plus the partner face name — see [orientation digits](#orientation-digits-in-detail). For a same-axis lo ↔ hi seam with no flips the code is `135` on both sides. A face shared with several partners (CH's `body.k_hi`) gets a patch per partner, from the sidecar's `patches` ([ADR 0036](/adr/0036-cc-par-as-xall-reads-it)). |
 | `DIRICHLET` | orientation code | partner patch index | Same derivation as `SHARED`; cross-axis seams (e.g. cubed-sphere cap-equator) are produced naturally from the `axis_map` without per-topology lookup tables. |
+| `SYMMETRY` | `2` (natural-BC index of the symmetry plane, internal code `-2`) | `0` | Half-model symmetry planes (half-collar j-faces, [ADR 0013](/adr/0013-half-collar-block)). |
 | `PERIODIC` | `40` + `UserWarning` | `0` | `cc.par` has no first-class periodic BC; use Xall chimera boxes for periodic stitching. |
 
 ::: warning Natural-BC codes for FREE faces must be POSITIVE
@@ -390,7 +391,7 @@ natural faces meet at an edge. (Earlier docs recommended `-9`; that was wrong.)
 ### Per-face BC codes {#per-face-bc-codes}
 
 A single block sometimes needs *heterogeneous* outer BCs — e.g. inflow on one
-face and extrapolation on the others. A `FREE` [`Face`](/reference/api-mesh)
+face and extrapolation on the others. A `FREE` [`Face`](/reference/api/shore.mesh.mesh)
 can carry an explicit `bc_code` (positive, `[1, 19]`) that overrides the
 per-block `free_face_bc` for that face only:
 
@@ -401,7 +402,7 @@ blk._set_face_bc("i_lo", FaceBC.FREE, bc_code=3)
 ```
 
 The code is carried through the adjacency sidecar and emitted by `cc-par`. See
-[Design decisions → per-face BC](/guide/design-decisions#per-face-natural-bc-codes).
+[Design decisions → per-face BC](/concepts/load-balancing#per-face-natural-bc-codes).
 
 ## Cubed-sphere cap-equator codes
 
@@ -431,12 +432,18 @@ output, not as a writer input.
 
 ## CLI options
 
+| Argument | Description |
+|---|---|
+| `ADJACENCY` | Input `.adjacency.json` sidecar (from `shore mesh`, `shore split`, `shore cap-tip`, `shore collar` or `Project.write_adjacency`). |
+| `OUTPUT` | The `cc.par` file to write. |
+
 | Flag | Default | Description |
 |---|---|---|
 | `--grd TEXT` | *required* | Name of the `.grd` mesh file Xall pairs with this `cc.par` (header line 1). |
 | `--output-basename TEXT` | `"cc."` | Output basename Xall uses for derived files (header line 2). |
 | `--free-bc INT` | `40` | BC code for `FREE` faces on every block that has no entry in `--meta`. Use a **positive** natural BC (`3`/`4`/`9`) for far-field background blocks — see the warning above. |
 | `--meta TEXT` | `null` | Per-block `BlockMeta` overrides. Accepts an inline JSON object or a path to a JSON file (inline JSON is tried first). Keys are block labels; values are objects with any subset of `{level, group, priority, comment, free_face_bc}`. Missing keys inherit their defaults. Any block absent from the map uses `--free-bc` for its FREE faces. |
+| `--boxes TEXT` | — | Hexahedral marker boxes for the boxes section, as an inline JSON list or a path to a JSON file (e.g. from [`shore boxes-from-stl`](boxes)). Each entry: `associated_block` (block label) and `vertices` (8 `[x, y, z]` in canonical i-fastest order). See [Marker boxes](#marker-boxes). |
 | `--mgl INT INT` | `4 1` | Multigrid levels: total, finest active. |
 | `--boundary-layer-thickness FLOAT` | `-0.1` | Header line 9. |
 | `--numerical-beach FLOAT` | `-1.0` | Header line 10. |
@@ -478,12 +485,12 @@ shore cc-par sphere.adjacency.json sphere.cc.par --grd sphere.grd
 
 # Far-field background mesh — all FREE faces are extrapolation
 shore cc-par background.adjacency.json background.cc.par \
-  --grd background.grd --free-bc -9
+  --grd background.grd --free-bc 9
 
 # Mixed near-body: caps get a different overset level and far-field BC
 shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd \
-  --meta '{"cap_north": {"level": 2, "free_face_bc": -9},
-           "cap_south": {"level": 2, "free_face_bc": -9}}'
+  --meta '{"cap_north": {"level": 2, "free_face_bc": 9},
+           "cap_south": {"level": 2, "free_face_bc": 9}}'
 
 # Same, loading the metadata from a JSON file
 shore cc-par wall.adjacency.json wall.cc.par --grd wall.grd \
@@ -510,8 +517,8 @@ write_cc_par(
         "sub2": BlockMeta(free_face_bc=40),
         "sub3": BlockMeta(free_face_bc=40),
         # Polar caps — different overset level, far-field BC
-        "cap_north": BlockMeta(level=2, free_face_bc=-9),
-        "cap_south": BlockMeta(level=2, free_face_bc=-9),
+        "cap_north": BlockMeta(level=2, free_face_bc=9),
+        "cap_south": BlockMeta(level=2, free_face_bc=9),
     },
 )
 ```
@@ -543,7 +550,7 @@ the `--boxes` flag, the `shore boxes-from-stl` generator, and the
 `shore boxes-export` ParaView visualiser:
 
 - [Marker boxes](./boxes) — full reference.
-- [Algorithm — marker boxes](/algorithm/boxes) — voxel-fill +
+- [Algorithm — marker boxes](/concepts/marker-boxes) — voxel-fill +
   greedy-merge derivation.
 
 ## Limitations
