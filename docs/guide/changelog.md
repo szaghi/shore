@@ -2,6 +2,77 @@
 title: Changelog
 ---
 
+## [0.5.0] — 2026-10-30
+### Added
+- **project**: Load saved projects without replaying their journal
+
+- **mesh**: Remove the marcher's normal blending (blend_normals_k) ⚠ BREAKING CHANGE
+
+- **io**: Export projects as CGNS and Plot3D grid files
+
+- **gui**: Add the desktop GUI: viewer and command shell
+
+- **gui**: Show geometries and slice planes of the blocks
+
+- **project**: Associate block faces, edges and vertices with geometry
+
+- **gui**: Associate block entities with geometry from the window
+
+- **mesh**: Redistribute the nodes along a block edge's axis
+
+- **mesh**: Build a block skeleton by hand and premesh it into blocks
+
+- **mesh**: Insert O-grids in a blocking
+
+- **gui**: Select blocking faces and blocks in the view
+
+- **mesh**: Move blocking vertices onto their geometry
+
+- **mesh**: Make premeshed grid lines leave the walls along their normal
+
+- **geometry**: Give STL geometry feature curves and points
+
+- **mesh**: Cluster premeshed wall layers with an absolute first cell
+
+
+### Documentation
+- **adr**: Record the collar-volume investigation at extreme clustering
+
+- **adr**: Record the concave-notch collar investigation
+
+- **roadmap**: Close phase 4 with its open limits recorded
+
+- **adr**: Accept the GUI stack on native Windows spike results
+
+- **adr**: Investigate a wing on a plane with the blocking tools
+
+- **adr**: Reject wall entities projected from across the block
+
+- Restructure the documentation into tutorials, cookbook and concepts
+
+
+### Fixed
+- **surface**: March surfaces cleanly at clustered loop corners
+
+- **project**: Keep input copy names when re-saving a loaded project
+
+- **project**: Write the Xall run of a one-component project
+
+- **io**: Write cc.par connections as Xall's pre-processor reads them ⚠ BREAKING CHANGE
+
+- **project**: Keep seams closed when snap moves one side of them
+
+- **project**: Replay journals with NumPy values and post-load relative inputs
+
+- **cli**: Use positive far-field BC codes and correct help texts
+
+
+### Performance
+- **surface**: Stop polishing junction nodes once their iterates cycle
+
+- **geometry**: Compute each STL projection query point only once
+
+
 ## [0.4.0] — 2026-10-28
 ### Added
 - **collar**: Cut the collar at sharp junction corners with split_collar
