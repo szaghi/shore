@@ -55,6 +55,7 @@ by a later record that supersedes it.
 | [0045](./0045-move-blocking-vertex.md) | Moving blocking vertices (phase 7, slice 4) | Accepted |
 | [0046](./0046-wing-blocking-investigation.md) | A wing on a plane with the blocking tools | Investigation |
 | [0047](./0047-walls-from-outside-rejected.md) | Wall entities projected from across the block | Rejected |
+| [0048](./0048-orthogonal-wall-lines.md) | Grid lines leaving the walls along their normal | Proposed |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
