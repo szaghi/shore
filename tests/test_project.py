@@ -65,6 +65,18 @@ class TestToSource:
         line = p.history[-1].to_source()
         assert repr(0.05 * np.pi) in line  # repr is exact, so replay is bit-identical
 
+    def test_numpy_scalars_written_as_python(self, sphere_stl, tmp_path):
+        p = Project()
+        p.load_geometry(sphere_stl)
+        params = {**SPHERE, "theta_cap": np.deg2rad(np.float64(9.0)), "ni": np.int64(10)}
+        p.build_topology("cubed_sphere", **params)
+        p.march()
+        line = p.history[-2].to_source()
+        assert "np." not in line and repr(float(np.deg2rad(9.0))) in line
+        q = run_journal(p.save_journal(tmp_path / "j.py"))
+        for a, b in zip(_nodes(q), _nodes(p), strict=True):
+            np.testing.assert_array_equal(a, b)
+
 
 # ---------------------------------------------------------------------------
 # Undo / redo
@@ -212,6 +224,23 @@ class TestPersistence:
         saved = (tmp_path / "proj" / "journal.py").read_text()
         assert "p.load_geometry('inputs/00_sphere.stl')" in saved
         assert q.journal() == saved
+
+    def test_relative_input_after_load(self, sphere_stl, tmp_path, monkeypatch):
+        # shore mesh ... --project P twice: the second command names its STL
+        # relative to the working directory, not to the loaded project's
+        work = tmp_path / "work"
+        work.mkdir()
+        (work / "b.stl").write_bytes(sphere_stl.read_bytes())
+        monkeypatch.chdir(work)
+        p = _sphere_project(sphere_stl)
+        p.save("proj")
+        q = Project.load("proj")
+        q.use_component("two")
+        q.load_geometry("b.stl", name="b")
+        q.build_topology("cubed_sphere", geometry="b", **SPHERE)
+        q.save("proj")
+        assert (work / "proj" / "inputs" / "01_b.stl").is_file()
+        assert sorted(Project.load("proj").components) == ["main", "two"]
 
     def test_load_detects_tampered_grid(self, sphere_stl, tmp_path):
         p = _sphere_project(sphere_stl)

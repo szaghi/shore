@@ -596,9 +596,33 @@ class Project:
                     self._built_on[self._current] = built_on
             self._done.append((command, None))
             return
+        command = self._anchored(command)
         undo = command.apply(self, Context(progress, cancel))
         self._done.append((command, undo))
         self._redo.clear()
+
+    def _anchored(self, command: Command) -> Command:
+        """*command* with relative input files made absolute, if they would be misread.
+
+        A loaded project resolves its journal's relative inputs against its
+        directory (``_input_root``); a command issued after the load names
+        files relative to the working directory, so ``save`` would look for
+        them in the wrong place. Paths that are not files there (a collar's
+        *other* naming a loaded geometry) are left alone.
+        """
+        if self._input_root is None or input_root.get() is not None or not command.inputs:
+            return command
+        changes: dict[str, Any] = {}
+        for name in command.inputs:
+            value = getattr(command, name)
+            paths = value if isinstance(value, tuple) else (value,)
+            fixed = tuple(
+                str(Path(p).resolve()) if not Path(p).is_absolute() and Path(p).is_file() else p
+                for p in paths
+            )
+            if fixed != paths:
+                changes[name] = fixed if isinstance(value, tuple) else fixed[0]
+        return dataclasses.replace(command, **changes) if changes else command  # type: ignore[type-var]
 
     def undo(self) -> Command:
         """Revert the last state-changing command (and any outputs after it)."""

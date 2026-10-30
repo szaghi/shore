@@ -160,6 +160,31 @@ class UndoCache:
         shutil.rmtree(self._dir, ignore_errors=True)
 
 
+def _plain(value: Any) -> Any:
+    """*value* with NumPy scalars and arrays made Python numbers and lists."""
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if type(value) is tuple:
+        return tuple(_plain(v) for v in value)
+    if type(value) is list:
+        return [_plain(v) for v in value]
+    if type(value) is dict:
+        return {k: _plain(v) for k, v in value.items()}
+    return value
+
+
+def _source(value: Any) -> str:
+    """*value* as journal source: ``repr`` of its plain Python form.
+
+    ``repr(np.float64(0.5))`` is ``np.float64(0.5)`` under NumPy 2, which a
+    journal could not replay (it does not import NumPy); ``repr`` of a float
+    is exact, so the replay stays bit for bit.
+    """
+    return repr(_plain(value))
+
+
 class Command(ABC):
     """Base of all commands. Subclasses are frozen dataclasses."""
 
@@ -173,7 +198,7 @@ class Command(ABC):
 
     def to_source(self) -> str:
         """``p.<method>(...)`` with positional fields and non-default keywords."""
-        args = [repr(getattr(self, name)) for name in self.positional]
+        args = [_source(getattr(self, name)) for name in self.positional]
         for f in dataclasses.fields(self):  # type: ignore[arg-type]
             if f.name in self.positional:
                 continue
@@ -182,7 +207,7 @@ class Command(ABC):
             if f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
                 default = f.default_factory()  # type: ignore[misc]
             if value != default:
-                args.append(f"{f.name}={value!r}")
+                args.append(f"{f.name}={_source(value)}")
         return f"p.{self.method}({', '.join(args)})"
 
 
@@ -312,7 +337,7 @@ class BuildState:
 def _params_source(command: Command, params: dict[str, Any]) -> str:
     """``to_source`` with *params* rendered as trailing keywords."""
     head = Command.to_source(dataclasses.replace(command, params={}))  # type: ignore[type-var]
-    extra = ", ".join(f"{k}={v!r}" for k, v in params.items())
+    extra = ", ".join(f"{k}={_source(v)}" for k, v in params.items())
     return head if not extra else f"{head[:-1]}, {extra})"
 
 
