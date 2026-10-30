@@ -28,7 +28,7 @@ try:
 except ImportError as e:
     raise ImportError(
         "pyvista is required for VTK export.  "
-        "Install it with: pip install shore[vis]  or  pip install pyvista"
+        "Install it with: pip install shore-mesh[vis]  or  pip install pyvista"
     ) from e
 
 from shore.volume.jacobian import _jacobian_field_open, jacobian_field

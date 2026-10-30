@@ -25,7 +25,7 @@ flag) give full per-block control:
 
 - ``sub{0..3}`` — equatorial sub-blocks, chimera handoff → BC ``40`` (offgen).
 - ``cap_north / cap_south`` — polar cap blocks, same → BC ``40``.
-- Background blocks — far-field extrapolation → BC ``-9``.
+- Background blocks — far-field extrapolation → BC ``9``.
 
 The ``proc.input`` step shows the load-balancing summary on stderr and
 sets ``body=1`` on every wall block (so Xall's force / moment integration
@@ -457,7 +457,7 @@ def main() -> None:
     # every sub-block and cap; this is also the write_cc_par default, but we
     # spell it out explicitly to show the block_metadata interface.
     #
-    # Background: all blocks get far-field extrapolation BC (-9).
+    # Background: all blocks get far-field extrapolation BC (9).
     from shore.io.cc_par import BlockMeta
 
     nb_meta = {
@@ -468,7 +468,7 @@ def main() -> None:
         "cap_north": BlockMeta(level=1, comment="cap_north", free_face_bc=40),
         "cap_south": BlockMeta(level=1, comment="cap_south", free_face_bc=40),
     }
-    bg_meta = {blk.label: BlockMeta(comment=blk.label, free_face_bc=-9) for blk in bg_blocks}
+    bg_meta = {blk.label: BlockMeta(comment=blk.label, free_face_bc=9) for blk in bg_blocks}
 
     print("\nWriting cc.par files:")
     nb_ccpar = write_cc_par_file(

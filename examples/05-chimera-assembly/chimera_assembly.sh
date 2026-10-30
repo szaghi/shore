@@ -170,10 +170,10 @@ WALL_META='{
   --meta "$WALL_META" \
   --boxes "$OUT_DIR/sphere_boxes.json"
 
-# Background cc.par: far-field extrapolation everywhere (free_face_bc=-9).
+# Background cc.par: far-field extrapolation everywhere (free_face_bc=9).
 "$SHORE" cc-par "$OUT_DIR/background.adjacency.json" "$OUT_DIR/background.cc.par" \
   --grd background.grd \
-  --free-bc -9
+  --free-bc 9
 
 # ── 9. Per-component proc.input ───────────────────────────────────────────────
 info "9. proc.input files (np=${NP})"

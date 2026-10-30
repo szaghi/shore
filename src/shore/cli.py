@@ -661,7 +661,7 @@ def mesh(
     input: Annotated[
         Path | None,
         typer.Argument(
-            help="Input STL or CAD file (STEP/IGES/BREP, needs shore-mesh[cad]);"
+            help="Input STL or CAD file (STEP/IGES/BREP, needs shore-mesh\\[cad]);"
             " optional when --config supplies it."
         ),
     ] = None,
@@ -1410,7 +1410,7 @@ def xall(
     out: Annotated[Path, typer.Option("--out", help="Directory for the Xall run files.")],
     options: Annotated[
         Path | None,
-        typer.Option("--options", help="TOML file: [run] and [components.<name>] options."),
+        typer.Option("--options", help="TOML file: \\[run] and \\[components.<name>] options."),
     ] = None,
     no_replay: _NO_REPLAY = False,
 ) -> None:
@@ -1578,7 +1578,7 @@ def config_cmd(
 def project(
     input: Annotated[
         Path,
-        typer.Argument(help="Input STL or CAD file (STEP/IGES/BREP, needs shore-mesh[cad])."),
+        typer.Argument(help="Input STL or CAD file (STEP/IGES/BREP, needs shore-mesh\\[cad])."),
     ],
     output: Annotated[
         Path | None,
@@ -2620,8 +2620,8 @@ def cap_tip(
 ) -> None:
     """Build a wing-tip cap from a C-grid body block's .geo file.
 
-    The cap is an independent 3-block (sharp TE) or 4-block (blunt TE)
-    H-style structured component that closes the wing's airfoil cross-
+    The cap is an independent H-style structured component (5 blocks;
+    a blunt TE adds a wake-base block) that closes the wing's airfoil cross-
     section at one spanwise extreme.  It composes against the C-grid
     body wrap as a chimera component via ``shore cc-par`` — the cap's
     k_lo face is WALL (the actual wing-tip closure), k_hi is FREE
@@ -2783,7 +2783,7 @@ def split(
     """Split structured blocks along ijk vertex indices, preserving adjacency.
 
     Reads existing ``.geo`` files, applies the splits described in the
-    TOML config (one ``[[splits]]`` entry per block), writes new
+    TOML config (one ``\\[\\[splits]]`` entry per block), writes new
     ``.geo`` files and a JSON sidecar with the adjacency graph.
 
     Pass ``--adjacency`` with each input component's sidecar so the
@@ -2960,8 +2960,9 @@ def cc_par(
             "--free-bc",
             help="BC code emitted for FREE faces on every block that has no "
             "entry in --meta.  Default 40 (chimera cell-center, body-fitted/"
-            "buffer meshes).  Use a negative natural BC for far-field background "
-            "blocks: -3 inflow, -4 inoutflow, -9 extrapolation.",
+            "buffer meshes).  Far-field background blocks take a positive natural "
+            "BC in 1..19, e.g. 3 inflow, 4 outflow, 9 extrapolation (Xall rejects "
+            "codes < 1).",
         ),
     ] = 40,
     block_meta_json: Annotated[
@@ -2973,7 +2974,7 @@ def cc_par(
             "subset of {level, group, priority, comment, free_face_bc}.  "
             "Missing keys inherit the block's defaults (level=1, group=0, "
             "priority=1, free_face_bc=--free-bc).  "
-            'Example: \'{"cap_north": {"level": 2, "free_face_bc": -9}}\'',
+            'Example: \'{"cap_north": {"level": 2, "free_face_bc": 9}}\'',
         ),
     ] = None,
     boxes_json: Annotated[
@@ -3665,7 +3666,7 @@ def boxes_from_stl_cmd(
             help="Max distance (STL units) from any box-surface point to the "
             "nearest STL surface, measured outward only.  Strictly positive; "
             "should be smaller than the body's near-mesh wall-normal thickness.  "
-            "voxel-fill chooses voxel size = 2 * gap / sqrt(3) so every "
+            "voxel-fill chooses voxel size = gap / sqrt(3) so every "
             "voxel-corner stays within the gap of the body surface.",
         ),
     ],
@@ -3810,7 +3811,7 @@ def boxes_export(
     except ImportError as exc:
         _err.print(
             f"[red]Error:[/red] VTK export requires pyvista — install "
-            f"with `pip install shore[vis]`.  ({_esc(str(exc))})"
+            f"with `pip install shore-mesh[vis]`.  ({_esc(str(exc))})"
         )
         raise typer.Exit(1) from None
 

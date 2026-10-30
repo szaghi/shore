@@ -37,7 +37,7 @@ try:
 except ImportError as e:
     raise ImportError(
         "pyvista is required for visualisation.  "
-        "Install it with: pip install shore[vis]  or  pip install pyvista"
+        "Install it with: pip install shore-mesh[vis]  or  pip install pyvista"
     ) from e
 
 from shore.io.vtk import geo_to_pyvista, surface_to_pyvista
