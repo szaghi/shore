@@ -58,6 +58,7 @@ by a later record that supersedes it.
 | [0048](./0048-orthogonal-wall-lines.md) | Grid lines leaving the walls along their normal | Accepted |
 | [0049](./0049-stl-feature-curves.md) | Feature curves and points of STL geometry | Accepted |
 | [0050](./0050-wall-layer.md) | Wall layers with an absolute first cell (algebraic, after premesh) | Accepted |
+| [0051](./0051-wing-body-acceptance.md) | Phase 7 acceptance: a wing–body blocking replayed after a CAD edit | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
