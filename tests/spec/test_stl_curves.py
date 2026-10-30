@@ -85,7 +85,6 @@ def on_polyline(curve, points):
 
 
 class TestFeatures:
-    @PENDING
     def test_c1_sphere(self):
         from shore.geometry.base import EntityKind
         from shore.geometry.stl import StlGeometry
@@ -96,7 +95,6 @@ class TestFeatures:
         assert g.entities(EntityKind.CURVE) == () and g.entities(EntityKind.POINT) == ()
         assert g.display().curves == () and len(g.display().vertices) == 0
 
-    @PENDING
     def test_c2_box(self):
         from shore.geometry.base import EntityKind, EntityRef
         from shore.geometry.stl import StlGeometry
@@ -120,7 +118,6 @@ class TestFeatures:
         keys = {g.fingerprint(r) for r in g.entities(EntityKind.CURVE)}
         assert len(keys) == 12  # distinct fingerprints
 
-    @PENDING
     def test_c3_wing(self):
         from shore.geometry.stl import StlGeometry
 
@@ -137,7 +134,6 @@ class TestFeatures:
         np.testing.assert_allclose(np.sort(points[:, 2]), [0, 0, 2, 2])
         np.testing.assert_allclose(points[:, 0], 1.0)
 
-    @PENDING
     def test_c4_associate_and_replay(self, tmp_path):
         from shore.project import Project
         from shore.project.project import run_journal
@@ -184,7 +180,6 @@ class TestFeatures:
             p.associate("box", "i_lo_j_lo", "cube", "curve", [12])
         assert p.journal() == journal
 
-    @PENDING
     def test_c6_point(self, tmp_path):
         from shore.project import Project
 

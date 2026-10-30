@@ -63,6 +63,7 @@ class StlGeometry:
         # closest point per query point, by the point's exact bytes (ADR 0032): a point's
         # answer does not depend on the other points of its batch
         self._closest: dict[bytes, tuple[np.ndarray, float, int]] = {}
+        self._features: tuple[list[np.ndarray], np.ndarray] | None = None
 
     @classmethod
     def from_file(
@@ -78,17 +79,42 @@ class StlGeometry:
         return np.asarray(self.mesh.bounds, dtype=np.float64).copy()
 
     def display(self) -> Display:
-        """The mesh as drawn (ADR 0038): every triangle belongs to the body."""
+        """The mesh as drawn (ADR 0038): every triangle belongs to the body;
+        the feature curves and their junctions (ADR 0049) drawn over it."""
         faces = np.asarray(self.mesh.faces)
+        curves, points = self.features()
         return Display(
             points=np.asarray(self.mesh.vertices, dtype=np.float64),
             triangles=faces,
             triangle_entity=np.zeros(len(faces), dtype=np.int64),
             surface_kind=EntityKind.BODY,
+            curves=tuple(c.copy() for c in curves),
+            vertices=points.copy(),
         )
 
     def entities(self, kind: EntityKind) -> tuple[EntityRef, ...]:
-        return (BODY,) if kind is EntityKind.BODY else ()
+        if kind is EntityKind.BODY:
+            return (BODY,)
+        curves, points = self.features()
+        if kind is EntityKind.CURVE:
+            return tuple(EntityRef(kind, i) for i in range(len(curves)))
+        if kind is EntityKind.POINT:
+            return tuple(EntityRef(kind, i) for i in range(len(points)))
+        return ()
+
+    def features(self) -> tuple[list[np.ndarray], np.ndarray]:
+        """Feature curves and points (ADR 0049), computed once.
+
+        Feature edges are the mesh edges whose two facets' normals differ by
+        more than ``crease_deg``, and the open-boundary edges. They are
+        chained into polylines (the CURVE entities) split at every vertex
+        where other than two feature edges meet; those vertices are the POINT
+        entities. Chains, and the points, are ordered by their lowest vertex
+        index, closed loops starting there.
+        """
+        if self._features is None:
+            self._features = _feature_curves(self.mesh, self.crease_deg)
+        return self._features
 
     def ray_cast(
         self, anchor: np.ndarray, dirs: np.ndarray, on_failure: str = "raise"
@@ -114,6 +140,17 @@ class StlGeometry:
         pts = np.asarray(points, dtype=np.float64)
         shape = pts.shape[:-1]
         flat = pts.reshape(-1, 3)
+        if entity is not None and entity.kind in (EntityKind.CURVE, EntityKind.POINT):
+            curves, points_ = self.features()
+            if entity.kind is EntityKind.CURVE:
+                closest = _closest_on_polyline(curves[entity.index], flat)
+            else:
+                closest = np.broadcast_to(points_[entity.index], flat.shape).copy()
+            return Projection(
+                points=closest.reshape(*shape, 3),
+                distances=np.linalg.norm(closest - flat, axis=-1).reshape(shape),
+                normals=np.full((*shape, 3), np.nan),
+            )
         closest, distances, tri_ids = self._closest_points(flat)
         bary = trimesh.triangles.points_to_barycentric(self.mesh.triangles[tri_ids], closest)
         normals = (bary[..., None] * self._corner_normals[tri_ids]).sum(axis=1)
@@ -129,8 +166,23 @@ class StlGeometry:
         raise ParameterError("STL geometry has no parametric entities; use project().")
 
     def fingerprint(self, entity: EntityRef) -> EntityKey:
-        """Fingerprint of the body: area-weighted facet centroid, area, bbox."""
+        """Fingerprint of the body (area-weighted facet centroid, area, bbox),
+        a feature curve (length-weighted centroid, length, bbox) or a point."""
         self._check_entity(entity)
+        if entity.kind is EntityKind.CURVE:
+            curve = self.features()[0][entity.index]
+            seg = np.linalg.norm(np.diff(curve, axis=0), axis=1)
+            mid = 0.5 * (curve[1:] + curve[:-1])
+            centroid = (mid * seg[:, None]).sum(axis=0) / max(float(seg.sum()), 1e-300)
+            box = np.array([curve.min(axis=0), curve.max(axis=0)])
+            return make_key(
+                EntityKind.CURVE, "polyline", centroid, float(seg.sum()), box, self.bounds
+            )
+        if entity.kind is EntityKind.POINT:
+            point = self.features()[1][entity.index]
+            return make_key(
+                EntityKind.POINT, "Point", point, 0.0, np.array([point, point]), self.bounds
+            )
         areas = self.mesh.area_faces
         centroid = (self.mesh.triangles_center * areas[:, None]).sum(axis=0) / areas.sum()
         return make_key(
@@ -168,8 +220,17 @@ class StlGeometry:
         return self._projectors[key]
 
     def _check_entity(self, entity: EntityRef | None) -> None:
-        if entity is not None and entity != BODY:
-            raise ParameterError(f"STL geometry has only the body entity, got {entity}.")
+        if entity is None or entity == BODY:
+            return
+        if entity.kind in (EntityKind.CURVE, EntityKind.POINT):
+            curves, points = self.features()
+            count = len(curves) if entity.kind is EntityKind.CURVE else len(points)
+            if 0 <= entity.index < count:
+                return
+        raise ParameterError(
+            f"STL geometry has the body, {len(self.features()[0])} feature curve(s) and "
+            f"{len(self.features()[1])} point(s); got {entity}."
+        )
 
 
 def _corner_normals(mesh: trimesh.Trimesh, crease_deg: float) -> np.ndarray:
@@ -233,3 +294,58 @@ def _planar_boundaries(mesh: trimesh.Trimesh) -> list[tuple[np.ndarray, np.ndarr
             continue  # not planar
         out.append((vertices, normal))
     return out
+
+
+def _feature_curves(
+    mesh: trimesh.Trimesh, crease_deg: float
+) -> tuple[list[np.ndarray], np.ndarray]:
+    """Feature polylines and junction points of *mesh* (``StlGeometry.features``)."""
+    angles = np.asarray(mesh.face_adjacency_angles)
+    sharp = np.sort(np.asarray(mesh.face_adjacency_edges)[angles > np.radians(crease_deg)], axis=1)
+    edges, counts = np.unique(np.asarray(mesh.edges_sorted), axis=0, return_counts=True)
+    feature = np.unique(np.vstack([sharp.reshape(-1, 2), edges[counts == 1]]), axis=0)
+    neighbours: dict[int, list[int]] = {}
+    for a, b in feature.tolist():
+        neighbours.setdefault(a, []).append(b)
+        neighbours.setdefault(b, []).append(a)
+    for v in neighbours:
+        neighbours[v].sort()
+    junctions = sorted(v for v, n in neighbours.items() if len(n) != 2)
+    used: set[tuple[int, int]] = set()
+    chains: list[list[int]] = []
+
+    def walk(start: int, nxt: int) -> list[int]:
+        chain, prev, cur = [start], start, nxt
+        used.add((min(start, nxt), max(start, nxt)))
+        while True:
+            chain.append(cur)
+            if cur == start or len(neighbours[cur]) != 2:
+                return chain
+            step = next(v for v in neighbours[cur] if v != prev)
+            if (min(cur, step), max(cur, step)) in used:
+                return chain
+            used.add((min(cur, step), max(cur, step)))
+            prev, cur = cur, step
+
+    for j in junctions:
+        for n in neighbours[j]:
+            if (min(j, n), max(j, n)) not in used:
+                chains.append(walk(j, n))
+    for v in sorted(neighbours):  # closed loops without junctions
+        for n in neighbours[v]:
+            if (min(v, n), max(v, n)) not in used:
+                chains.append(walk(v, n))
+    chains.sort(key=lambda c: (min(c), c))
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    return [vertices[c] for c in chains], vertices[junctions].reshape(-1, 3)
+
+
+def _closest_on_polyline(curve: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """The closest points (n, 3) of the polyline *curve* (m, 3) to *points* (n, 3)."""
+    a, b = curve[:-1], curve[1:]
+    ab = b - a
+    length2 = np.maximum((ab * ab).sum(axis=1), 1e-300)
+    t = np.clip(np.einsum("nsj,sj->ns", points[:, None] - a[None], ab) / length2, 0.0, 1.0)
+    candidates = a[None] + t[..., None] * ab[None]
+    best = np.argmin(((candidates - points[:, None]) ** 2).sum(axis=-1), axis=1)
+    return candidates[np.arange(len(points)), best]

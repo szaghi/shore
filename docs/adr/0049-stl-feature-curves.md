@@ -1,6 +1,6 @@
 # 0049 — Feature curves and points of STL geometry
 
-- **Status:** Proposed (spec frozen 2026-10-29)
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -107,3 +107,19 @@ body.
 | C6 | a vertex associated with a box corner and snapped |
 | U1 | the curves drawn; a pick on the tip outline picks it |
 | U2 | that curve associated with a box edge from the Association dock |
+
+## Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, plus:
+- unit tests (`tests/test_geometry.py::TestStlFeatures`):
+  - an open square sheet has one boundary loop and no point;
+  - the crease threshold;
+  - point projection and fingerprint;
+- `docs/reference/run.md` (Curves and points of an STL).
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_stl_curves.py`: **7 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_stl_curves.py`: **2 passed, 0 skipped, 0
+  xfailed**.
+
+All `@PENDING` lines are removed.

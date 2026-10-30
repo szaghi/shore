@@ -72,7 +72,6 @@ def pick_tip(qapp, tmp_path):
 
 
 class TestStlCurves:
-    @PENDING
     def test_u1_pick_curve(self, qapp, tmp_path):
         from shore.geometry.base import EntityKind, EntityRef
         from shore.gui.viewport import GeometryPick
@@ -83,7 +82,6 @@ class TestStlCurves:
         assert isinstance(pick, GeometryPick)
         assert pick.entity == EntityRef(EntityKind.CURVE, k)
 
-    @PENDING
     def test_u2_associate(self, qapp, tmp_path):
         w, k, _ = pick_tip(qapp, tmp_path)
         box = "{'vmin': (1.0, 0.0, 0.1), 'vmax': (1.5, 0.5, 1.9), 'ni': 3, 'nj': 3, 'nk': 5}"

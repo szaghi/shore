@@ -284,3 +284,40 @@ class TestDisplay:
         assert np.array_equal(d.points, unit_sphere.vertices)
         assert np.array_equal(d.triangles, unit_sphere.faces)
         assert not d.triangle_entity.any() and d.curves == () and len(d.vertices) == 0
+
+
+class TestStlFeatures:
+    """``StlGeometry.features`` (ADR 0049)."""
+
+    def test_open_strip_has_one_boundary_loop(self):
+        import trimesh
+
+        from shore.geometry.stl import StlGeometry
+
+        plane = trimesh.creation.box(extents=(2.0, 2.0, 1.0))
+        top = plane.face_normals[:, 2] > 0.5
+        sheet = trimesh.Trimesh(plane.vertices, plane.faces[top], process=True)
+        curves, points = StlGeometry(sheet).features()
+        assert len(curves) == 1 and len(points) == 0  # a square boundary loop, no junction
+        assert np.array_equal(curves[0][0], curves[0][-1]) and len(curves[0]) == 5
+
+    def test_crease_threshold(self):
+        import trimesh
+
+        from shore.geometry.stl import StlGeometry
+
+        box = trimesh.creation.box()
+        assert len(StlGeometry(box, crease_deg=30).features()[0]) == 12
+        assert len(StlGeometry(box, crease_deg=91).features()[0]) == 0  # 90 deg edges not sharp
+
+    def test_point_projection_and_fingerprint(self):
+        import trimesh
+
+        from shore.geometry.base import EntityKind, EntityRef
+        from shore.geometry.stl import StlGeometry
+
+        g = StlGeometry(trimesh.creation.box())
+        pr = g.project(np.zeros((2, 3)), EntityRef(EntityKind.POINT, 0))
+        np.testing.assert_array_equal(pr.points, np.broadcast_to(g.features()[1][0], (2, 3)))
+        key = g.fingerprint(EntityRef(EntityKind.POINT, 0))
+        assert key.kind is EntityKind.POINT and key.measure == 0.0

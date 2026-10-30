@@ -209,6 +209,20 @@ Around a body, layer the faces of the hole (or O-grid the centre block
 before deleting its core): the grid lines then leave the wall nearly normal
 to it (within 6 degrees around a sphere, against 41 for the plain lattice).
 
+### Curves and points of an STL
+
+An STL has CURVE and POINT entities, like a CAD model, for associations
+([ADR 0049](../adr/0049-stl-feature-curves.md)).
+- **Curves:** chains of its feature edges, the edges where the facets turn
+  by more than `crease_deg` (30°), and its open boundaries. A wing's TE
+  corner lines are curves, and so are its root and tip outlines.
+- **Points:** the vertices where chains meet or end.
+
+`p.geometries["body"].geometry.features()` lists them. Then
+`p.associate("box", "i_lo_j_lo", "body", "curve", [k])` or
+`p.associate_blocking(...)` puts an edge on curve `k`, and the GUI picks
+curves as it does CAD edges. A smooth body (a sphere) has none.
+
 ### Moving vertices
 
 `p.move_vertex("b0", "v7", (1.2, 1.3, 1.1))` moves vertex `v7` of block
