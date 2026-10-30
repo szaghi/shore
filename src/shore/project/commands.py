@@ -607,34 +607,70 @@ class Orthogonalize(Command):
     strength: float = 1.0
 
     def apply(self, project: Project, ctx: Context) -> Undo:
-        from shore.mesh.blocking import tfi_volume
         from shore.mesh.orthogonal import orthogonal_walls
-        from shore.quality import scaled_jacobian
 
-        mesh, _ = project.require_mesh()
-        valid = {b.label: bool(scaled_jacobian(b.nodes).min() > 0.0) for b in mesh.blocks}
-        before = [b.nodes.copy() for b in mesh.blocks]
-        restore = project.undo_cache.snapshot(mesh)
-        try:
-            with _seams_written_through(mesh.blocks):
-                changed = set(orthogonal_walls(mesh.blocks, self.strength))
-            for b, old in zip(mesh.blocks, before, strict=True):
-                if b.label not in changed and not np.array_equal(b.nodes, old):
-                    tfi_volume(b.nodes)  # its faces moved with a neighbour's lines
-            inverted = [
-                b.label
-                for b in mesh.blocks
-                if valid[b.label] and not scaled_jacobian(b.nodes).min() > 0.0
-            ]
-            if inverted:
-                raise ParameterError(
-                    f"orthogonalize: strength {self.strength} would invert {inverted}; "
-                    "use a lower strength."
-                )
-        except BaseException:
-            restore()
-            raise
-        return Undo(restore)
+        return _reshape_wall_blocks(
+            project,
+            lambda blocks: orthogonal_walls(blocks, self.strength),
+            f"orthogonalize: strength {self.strength}",
+            "use a lower strength",
+        )
+
+
+def _reshape_wall_blocks(
+    project: Project, reshape: Callable[[list[Any]], list[str]], what: str, hint: str
+) -> Undo:
+    """Run *reshape* on the current mesh's blocks inside the seams' write-through
+    (ADR 0040), re-fill by TFI the blocks it did not change whose faces moved,
+    and refuse, restoring everything, if a block that was valid inverts."""
+    from shore.mesh.blocking import tfi_volume
+    from shore.quality import scaled_jacobian
+
+    mesh, _ = project.require_mesh()
+    valid = {b.label: bool(scaled_jacobian(b.nodes).min() > 0.0) for b in mesh.blocks}
+    before = [b.nodes.copy() for b in mesh.blocks]
+    restore = project.undo_cache.snapshot(mesh)
+    try:
+        with _seams_written_through(mesh.blocks):
+            changed = set(reshape(mesh.blocks))
+        for b, old in zip(mesh.blocks, before, strict=True):
+            if b.label not in changed and not np.array_equal(b.nodes, old):
+                tfi_volume(b.nodes)  # its faces moved with a neighbour's lines
+        inverted = [
+            b.label
+            for b in mesh.blocks
+            if valid[b.label] and not scaled_jacobian(b.nodes).min() > 0.0
+        ]
+        if inverted:
+            raise ParameterError(f"{what} would invert {inverted}; {hint}.")
+    except BaseException:
+        restore()
+        raise
+    return Undo(restore)
+
+
+@dataclass(frozen=True)
+class WallLayer(Command):
+    """Cluster the nodes towards the walls (ADR 0050): on every line across
+    the wall of each block with one WALL face, geometric cells from the wall
+    with the first *first_step* long (an absolute length), on the line's own
+    polyline (after ``orthogonalize``: along the wall normal). Refused if a
+    line cannot hold it or a valid block would invert."""
+
+    method: ClassVar[str] = "wall_layer"
+    positional: ClassVar[tuple[str, ...]] = ("first_step",)
+
+    first_step: float
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.orthogonal import wall_layer
+
+        return _reshape_wall_blocks(
+            project,
+            lambda blocks: wall_layer(blocks, self.first_step),
+            f"wall_layer: first step {self.first_step}",
+            "use a smaller first step or more nodes across the layer",
+        )
 
 
 @dataclass(frozen=True)

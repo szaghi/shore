@@ -43,3 +43,38 @@ def test_orthogonal_walls_on_a_box_changes_nothing():
     np.testing.assert_allclose(blocks[0].nodes, before, atol=1e-12)  # already orthogonal
     with pytest.raises(ParameterError):
         orthogonal_walls(blocks, 0.0)
+
+
+def test_layer_fractions():
+    from shore.mesh.orthogonal import layer_fractions
+
+    t = layer_fractions(10.0, 6, 0.5)
+    cells = np.diff(t) * 10.0
+    assert t[0] == 0.0 and t[-1] == 1.0
+    np.testing.assert_allclose(cells[0], 0.5, rtol=1e-12)
+    ratios = cells[1:] / cells[:-1]
+    np.testing.assert_allclose(ratios, ratios[0], rtol=1e-9)  # one geometric ratio
+    assert ratios[0] > 1.0
+    with pytest.raises(ParameterError):
+        layer_fractions(1.0, 6, 0.2)  # = the uniform spacing
+
+
+def test_wall_layer_on_a_box():
+    from shore.mesh import blocking as bk
+    from shore.mesh.association import Association
+    from shore.mesh.orthogonal import wall_layer
+
+    class Flat:
+        def project(self, assoc, pts):
+            pts = np.array(pts, dtype=float)
+            pts[..., 2] = 0.0
+            return pts
+
+    b = bk.associate(bk.box((0, 0, 0), (1, 1, 1), 3, 3, 9), "b0", "k_lo", Association.body())
+    blocks = bk.premesh(b, Flat())
+    assert wall_layer(blocks, 0.01) == ["b0"]
+    z = blocks[0].nodes[1, 1, :, 2]
+    np.testing.assert_allclose(z[1], 0.01, rtol=1e-12)
+    assert z[-1] == 1.0 and np.all(np.diff(np.diff(z)) > 0)
+    with pytest.raises(ParameterError):
+        wall_layer(blocks, -1.0)

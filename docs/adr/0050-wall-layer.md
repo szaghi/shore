@@ -1,6 +1,6 @@
 # 0050 — Wall layers with an absolute first cell (algebraic, after premesh)
 
-- **Status:** Proposed (spec frozen 2026-10-29)
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -118,3 +118,19 @@ wall is on the high side of their block (3 cases fail).
 | L3 (× 3) | refusals: 0, above a line's uniform spacing, a lattice without a layer |
 | L4 | journal, replay, undo |
 | W1–W2 | the GUI form: first cells; a refusal |
+
+## Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, plus:
+- unit tests (`tests/test_orthogonal.py`):
+  - one geometric ratio with the first cell exact;
+  - the uniform-spacing refusal;
+  - a box's layer;
+- `docs/reference/run.md` (Wall layers) and the GUI form.
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_wall_layer.py`: **6 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_wall_layer.py`: **2 passed, 0 skipped, 0
+  xfailed**.
+
+All `@PENDING` lines are removed.

@@ -78,6 +78,7 @@ from shore.project.commands import (
     Undo,
     UndoCache,
     UseComponent,
+    WallLayer,
     WriteAdjacency,
     WriteCcPar,
     WriteCgns,
@@ -416,6 +417,11 @@ class Project:
         """Make the grid lines leave the walls along their normal
         (``Orthogonalize``, ADR 0048)."""
         self.execute(Orthogonalize(float(strength)))
+
+    def wall_layer(self, first_step: float) -> None:
+        """Cluster the nodes towards the walls, the first cell *first_step* long
+        (``WallLayer``, ADR 0050)."""
+        self.execute(WallLayer(float(first_step)))
 
     def surface_grid(
         self,

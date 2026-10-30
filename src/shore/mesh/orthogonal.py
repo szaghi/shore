@@ -1,4 +1,4 @@
-"""Grid lines leaving the walls along their normal (ADR 0048).
+"""Grid lines leaving the walls along their normal (ADR 0048) and wall layers (ADR 0050).
 
 After a premesh (ADR 0042) the lines across a block run from the wall to the
 opposite face along the transfinite interpolation, so they leave a curved
@@ -119,6 +119,66 @@ def orthogonal_walls(blocks: list[HexBlock], strength: float = 1.0) -> list[str]
         lines = x.reshape(-1, shape[-2], 3)
         nrm = np.array([normals[p.tobytes()] for p in lines[:, 0]])
         new = hermite_lines(lines, nrm, strength).reshape(shape)
+        if side == -1:
+            new = new[..., ::-1, :]
+        b.nodes[...] = np.moveaxis(new, -2, axis)
+        changed.append(b.label)
+    return changed
+
+
+def _wall_lines(block: HexBlock) -> tuple[int, int, np.ndarray] | None:
+    """(axis, side, lines (m, n, 3) from the wall) of a block with one WALL face."""
+    walls = [f.name for f in block.faces() if f.bc.name == "WALL"]
+    if len(walls) != 1:
+        return None
+    axis, side = _wall(block, walls[0])
+    x = np.moveaxis(block.nodes, axis, -2)
+    if side == -1:
+        x = x[..., ::-1, :]
+    return axis, side, np.ascontiguousarray(x.reshape(-1, x.shape[-2], 3))
+
+
+def layer_fractions(length: float, n: int, first_step: float) -> np.ndarray:
+    """Arc-length fractions (n,) of geometric cells from the wall, the first
+    *first_step* long, over a line of *length* (one line at a time, so a
+    line's answer does not depend on the others)."""
+    from shore.topology.oh_channel import _solve_geometric_ratio
+
+    if not first_step * (n - 1) < length:
+        raise ParameterError(
+            f"wall_layer: first step {first_step} is not below the uniform spacing "
+            f"{length / (n - 1):.6g} of a line ({n} nodes, length {length:.6g})."
+        )
+    ratio = float(_solve_geometric_ratio(np.array([length / first_step]), n - 1)[0])
+    s = np.concatenate([[0.0], np.cumsum(first_step * ratio ** np.arange(n - 1))])
+    return s / s[-1]
+
+
+def wall_layer(blocks: list[HexBlock], first_step: float) -> list[str]:
+    """Redistribute, in place, the nodes of every line across the wall of each
+    block with one WALL face: geometric cells from the wall, the first
+    *first_step* long, on the line's own polyline; the labels changed."""
+    from shore.mesh.redistribute import resample
+
+    if not first_step > 0.0:
+        raise ParameterError(f"wall_layer: first_step must be > 0, got {first_step}.")
+    changed = []
+    for b in blocks:
+        found = _wall_lines(b)
+        if found is None:
+            continue
+        axis, side, lines = found
+        # sequential sums: a line's length does not depend on its memory layout
+        lengths = np.cumsum(np.linalg.norm(np.diff(lines, axis=1), axis=-1), axis=1)[:, -1]
+        n = lines.shape[1]
+        new = np.stack(
+            [
+                resample(line[None], layer_fractions(float(length), n, first_step))[0]
+                for line, length in zip(lines, lengths, strict=True)
+            ]
+        )
+        shape = list(np.moveaxis(b.nodes, axis, -2).shape)
+        new = new.reshape(shape)
         if side == -1:
             new = new[..., ::-1, :]
         b.nodes[...] = np.moveaxis(new, -2, axis)

@@ -204,7 +204,6 @@ def wall_lines(blocks):
 
 
 class TestWallLayer:
-    @PENDING
     def test_l1_sphere(self, sphere_stl):
         p = layered_sphere(sphere_stl)
         before = wall_lines(p.mesh.blocks)
@@ -222,7 +221,6 @@ class TestWallLayer:
         _, new_angle = wall_angles(p.mesh.blocks, radial)
         assert new_angle.max() < 3.0 and angle.max() < 3.0
 
-    @PENDING
     def test_l2_wing(self, tmp_path):
         from shore.project import Project
 
@@ -247,7 +245,6 @@ class TestWallLayer:
         keep = (pts[:, 2] > 0.05) & (pts[:, 2] < 1.95) & (pts[:, 0] < 0.95)
         assert np.median(ang[keep]) < 5.0 and np.percentile(ang[keep], 95) < 12.0
 
-    @PENDING
     @pytest.mark.parametrize("case", ["zero", "too_large", "lattice"])
     def test_l3_refused(self, sphere_stl, case):
         p = sphere(sphere_stl, layered=False) if case == "lattice" else layered_sphere(sphere_stl)
@@ -259,7 +256,6 @@ class TestWallLayer:
         for b, old in zip(p.mesh.blocks, nodes, strict=True):
             np.testing.assert_array_equal(b.nodes, old)
 
-    @PENDING
     def test_l4_journal_undo(self, sphere_stl, tmp_path):
         from shore.project.project import run_journal
 

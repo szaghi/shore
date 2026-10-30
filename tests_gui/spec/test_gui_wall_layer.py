@@ -66,7 +66,6 @@ def window(qapp, sphere_stl):
 
 
 class TestWallLayerForm:
-    @PENDING
     def test_w1_form(self, qapp, sphere_stl):
         w = window(qapp, sphere_stl)
         w.run_form("wall_layer", {"first_step": "0.01"})
@@ -83,7 +82,6 @@ class TestWallLayerForm:
                 )
                 np.testing.assert_allclose(np.linalg.norm(first, axis=-1), 0.01, rtol=1e-9)
 
-    @PENDING
     def test_w2_refused(self, qapp, sphere_stl):
         w = window(qapp, sphere_stl)
         lines = w.session.journal_lines()

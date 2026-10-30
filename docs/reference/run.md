@@ -249,3 +249,18 @@ reshapes them ([ADR 0048](../adr/0048-orthogonal-wall-lines.md)).
 Around a wing on a plane, the median angle between the first grid segment
 and the wall normal goes from 30 to 8 degrees. Then `redistribute`
 (clustering towards the wall) moves the nodes along the new lines.
+
+### Wall layers
+
+`p.wall_layer(1e-4)` clusters the nodes towards the walls
+([ADR 0050](../adr/0050-wall-layer.md)).
+- On every line across the wall of a block with one WALL face, the cells
+  grow geometrically from the wall, the first exactly `first_step` long.
+  The ratio comes from each line's length.
+- The nodes stay on the line, and the wall node and the far node stay put.
+
+Run it after `orthogonalize`, so that the clustered lines leave the wall
+along its normal: `premesh → orthogonalize → wall_layer(ds)`. It needs a
+layer topology (an O-grid around the body). On a plain lattice it would
+invert the corner blocks and is refused, as is a first step that a line
+cannot hold.

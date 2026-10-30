@@ -57,7 +57,7 @@ by a later record that supersedes it.
 | [0047](./0047-walls-from-outside-rejected.md) | Wall entities projected from across the block | Rejected |
 | [0048](./0048-orthogonal-wall-lines.md) | Grid lines leaving the walls along their normal | Accepted |
 | [0049](./0049-stl-feature-curves.md) | Feature curves and points of STL geometry | Accepted |
-| [0050](./0050-wall-layer.md) | Wall layers with an absolute first cell (algebraic, after premesh) | Proposed |
+| [0050](./0050-wall-layer.md) | Wall layers with an absolute first cell (algebraic, after premesh) | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
