@@ -1,6 +1,6 @@
 # 0048 — Grid lines leaving the walls along their normal
 
-- **Status:** Proposed (spec frozen 2026-10-29)
+- **Status:** Accepted
 - **Date:** 2026-10-29
 
 ## Context
@@ -109,3 +109,20 @@ fail.
 | R5 | `redistribute` after: every node on its reshaped line |
 | R6 | undo; replay bit for bit |
 | G1–G2 | the GUI form; a refusal |
+
+## Acceptance (2026-10-29): both specs met
+
+**Implementation.** As decided, plus:
+- unit tests (`tests/test_orthogonal.py`):
+  - normals of a plane grid;
+  - Hermite lines keep ends and order, and leave along the normal;
+  - an already orthogonal box is unchanged;
+  - refusal;
+- `docs/reference/run.md` (Wall-normal grid lines) and the GUI form.
+
+**Verdicts** (T2 locally; `scripts/check_spec.py` reports all files ok):
+- `tests/spec/test_orthogonalize.py`: **7 passed, 0 skipped, 0 xfailed**;
+- `tests_gui/spec/test_gui_orthogonalize.py`: **2 passed, 0 skipped, 0
+  xfailed**.
+
+All `@PENDING` lines are removed.

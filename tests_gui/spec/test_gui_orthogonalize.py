@@ -58,7 +58,6 @@ def window(qapp, sphere_stl):
 
 
 class TestOrthogonalizeForm:
-    @PENDING
     def test_g1_form(self, qapp, sphere_stl):
         w = window(qapp, sphere_stl)
         before = [b.nodes.copy() for _, b in w.session.blocks()]
@@ -69,7 +68,6 @@ class TestOrthogonalizeForm:
         after = [b.nodes for _, b in w.session.blocks()]
         assert any(not np.array_equal(a, b) for a, b in zip(after, before, strict=True))
 
-    @PENDING
     def test_g2_refused(self, qapp, sphere_stl):
         w = window(qapp, sphere_stl)
         lines = w.session.journal_lines()

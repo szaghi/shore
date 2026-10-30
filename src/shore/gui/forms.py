@@ -189,6 +189,7 @@ FORMS: tuple[Form, ...] = (
         ),
     ),
     Form("premesh", "Premesh blocking", (Field("exact", "bool", False),), long=True),
+    Form("orthogonalize", "Orthogonal wall lines", (Field("strength", "float", 1.0),), long=True),
     Form(
         "write_xall", "Write Xall run", (Field("directory", "dir", "", keyword=False),), long=True
     ),

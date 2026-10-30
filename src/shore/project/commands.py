@@ -592,6 +592,52 @@ class Redistribute(Command):
 
 
 @dataclass(frozen=True)
+class Orthogonalize(Command):
+    """Make the grid lines leave the walls along their normal (ADR 0048).
+
+    Every block of the current mesh with exactly one WALL face has its lines
+    across the wall reshaped (``shore.mesh.orthogonal``, tangent *strength*
+    times the chord); blocks whose faces the seams change are re-filled by
+    TFI. Refused, with nothing changed, if a block that was valid would be
+    inverted (lower *strength*).
+    """
+
+    method: ClassVar[str] = "orthogonalize"
+
+    strength: float = 1.0
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.blocking import tfi_volume
+        from shore.mesh.orthogonal import orthogonal_walls
+        from shore.quality import scaled_jacobian
+
+        mesh, _ = project.require_mesh()
+        valid = {b.label: bool(scaled_jacobian(b.nodes).min() > 0.0) for b in mesh.blocks}
+        before = [b.nodes.copy() for b in mesh.blocks]
+        restore = project.undo_cache.snapshot(mesh)
+        try:
+            with _seams_written_through(mesh.blocks):
+                changed = set(orthogonal_walls(mesh.blocks, self.strength))
+            for b, old in zip(mesh.blocks, before, strict=True):
+                if b.label not in changed and not np.array_equal(b.nodes, old):
+                    tfi_volume(b.nodes)  # its faces moved with a neighbour's lines
+            inverted = [
+                b.label
+                for b in mesh.blocks
+                if valid[b.label] and not scaled_jacobian(b.nodes).min() > 0.0
+            ]
+            if inverted:
+                raise ParameterError(
+                    f"orthogonalize: strength {self.strength} would invert {inverted}; "
+                    "use a lower strength."
+                )
+        except BaseException:
+            restore()
+            raise
+        return Undo(restore)
+
+
+@dataclass(frozen=True)
 class FillFace(Command):
     """Rebuild one block face from its boundary on a CAD surface (ADR 0007).
 

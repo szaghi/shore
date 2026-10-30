@@ -185,7 +185,6 @@ def wing(tmp_path):
 
 
 class TestOrthogonalize:
-    @PENDING
     def test_r1_hole_layer(self, sphere_stl):
         p = sphere(sphere_stl, layered=True)
         _, before = wall_angles(p.mesh.blocks, radial)
@@ -208,7 +207,6 @@ class TestOrthogonalize:
         for (label, face), old in fixed.items():
             np.testing.assert_array_equal(face_nodes(blocks[label].nodes, face), old)
 
-    @PENDING
     def test_r2_lattice(self, sphere_stl):
         p = sphere(sphere_stl, layered=False)
         _, before = wall_angles(p.mesh.blocks, radial)
@@ -218,7 +216,6 @@ class TestOrthogonalize:
         assert min_jacobian(p.mesh.blocks) > 0.2
         assert seam_gap(p.mesh.blocks) == 0.0
 
-    @PENDING
     @pytest.mark.parametrize("strength", [2.0, 0.0])
     def test_r3_refused(self, sphere_stl, strength):
         p = sphere(sphere_stl, layered=False)
@@ -230,7 +227,6 @@ class TestOrthogonalize:
         for b, old in zip(p.mesh.blocks, nodes, strict=True):
             np.testing.assert_array_equal(b.nodes, old)
 
-    @PENDING
     def test_r4_wing(self, tmp_path):
         from shore.project import Project
 
@@ -259,7 +255,6 @@ class TestOrthogonalize:
         assert np.median(after) < 10.0 and np.percentile(after, 95) < 20.0
         assert min_jacobian(p.mesh.blocks) > 0.3 and seam_gap(p.mesh.blocks) == 0.0
 
-    @PENDING
     def test_r5_then_redistribute(self, sphere_stl):
         p = sphere(sphere_stl, layered=True)
         p.orthogonalize()
@@ -280,7 +275,6 @@ class TestOrthogonalize:
             assert d.max() < 1e-12
         assert min_jacobian(p.mesh.blocks) > 0.0 and seam_gap(p.mesh.blocks) == 0.0
 
-    @PENDING
     def test_r6_undo_replay(self, sphere_stl, tmp_path):
         from shore.project.project import run_journal
 

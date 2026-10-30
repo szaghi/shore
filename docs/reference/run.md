@@ -217,3 +217,21 @@ to it (within 6 degrees around a sphere, against 41 for the plain lattice).
 association (its own, or inherited from its edges or faces) goes to the
 projection of the point onto it, so it slides on its geometry. After a
 geometry edit, premesh re-projects it.
+
+### Wall-normal grid lines
+
+After `premesh`, the lines across a wall run along the transfinite
+interpolation and leave a curved wall obliquely. `p.orthogonalize(strength=1.0)`
+reshapes them ([ADR 0048](../adr/0048-orthogonal-wall-lines.md)).
+
+- In every block with one WALL face, each line across the wall becomes a
+  curve that leaves the wall along its normal (tangent `strength` times its
+  chord) and meets the opposite face as before.
+- The wall and the opposite face stay put, and each line keeps its nodes'
+  arc-length fractions.
+- Blocks without a wall whose faces move are re-filled.
+- A strength that would invert a valid block is refused.
+
+Around a wing on a plane, the median angle between the first grid segment
+and the wall normal goes from 30 to 8 degrees. Then `redistribute`
+(clustering towards the wall) moves the nodes along the new lines.

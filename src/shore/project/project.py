@@ -68,6 +68,7 @@ from shore.project.commands import (
     March,
     MoveVertex,
     Ogrid,
+    Orthogonalize,
     Premesh,
     ProgressFn,
     Redistribute,
@@ -410,6 +411,11 @@ class Project:
     def premesh(self, exact: bool = False) -> None:
         """Make the component's mesh from its blocking (``Premesh``, ADR 0042)."""
         self.execute(Premesh(exact))
+
+    def orthogonalize(self, strength: float = 1.0) -> None:
+        """Make the grid lines leave the walls along their normal
+        (``Orthogonalize``, ADR 0048)."""
+        self.execute(Orthogonalize(float(strength)))
 
     def surface_grid(
         self,
