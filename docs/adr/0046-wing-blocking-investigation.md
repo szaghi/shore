@@ -35,7 +35,7 @@ artifact of 90°.
 | **B.** Associate the centre's faces, delete it, O-grid the hole (factor 0.5) | 22 | 0.44 | 35° / 52° / 55° |
 | B with 57 × 31 × 31 nodes | 22 | 0.39 | 36° / 50° / 55° |
 | B with factor 0.3 | 22 | −0.09 (corner layers) | — |
-| B with the hole's corners moved onto the wing (LE shoulders, TE corners) | 22 | **−1** (collapsed) | — |
+| B with the hole's corners moved onto the wing (LE shoulders, TE corners) | 22 | ~~−1 (collapsed)~~ 0.26 / 0.11 (shoulders at x = 0.04 / 0.10), see the correction | 37° / 55° / 71°; 39° / 56° / 84° |
 
 ## Findings
 
@@ -53,7 +53,7 @@ artifact of 90°.
      box, not the normal: median 35°.
    - Refining does not help; it is the parametrization, not the
      resolution.
-3. **Placing vertices on the wing needs edges that do not cut through it.**
+3. **~~Placing vertices on the wing needs edges that do not cut through it.~~** Wrong; see the correction below.
    - A straight edge between an upper and a lower LE shoulder crosses the
      wing's interior. Projecting it folds onto one side, so the LE face
      collapses.
@@ -66,6 +66,26 @@ artifact of 90°.
 So the blocking commands make valid wing topologies (route B), but premesh
 by TFI and closest-point projection gives wall quality far below SHORE's
 marched C-grids, whose lines leave the wall nearly normal.
+
+## Correction (2026-10-29, ADR 0047)
+
+- **Finding 3 came from a script bug.** The moves were applied after the
+  O-grid, to the hole faces looked up by their old `(block, face)` names.
+  After the O-grid those names give the set blocks' inner copies, which
+  carry no association. The moved vertices were therefore the copies, not
+  the wall.
+- **Moved correctly** (the vertices of the associated faces), the corners
+  land on the wing and premesh stays valid, though worse than without the
+  moves:
+  - minimum scaled Jacobian 0.26 with the LE shoulders at x = 0.04, 0.11
+    at x = 0.10;
+  - wall spacing ratio 3.6 / 9.7;
+  - median wall angle 37° / 39°.
+- **The other numbers stand.** Re-measured on a wing STL without the root
+  cap (the root lies on the plane), route B gives median 35.9°, p95
+  53.3°: the same.
+- **Option 2's premise does not hold:** edges between vertices on the wing
+  do not fold. ADR 0047 tried that option anyway and rejects it.
 
 ## Options (for a decision)
 

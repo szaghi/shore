@@ -54,6 +54,7 @@ by a later record that supersedes it.
 | [0044](./0044-blocking-selection.md) | Selecting blocking faces and blocks in the GUI (phase 7, slice 3) | Accepted |
 | [0045](./0045-move-blocking-vertex.md) | Moving blocking vertices (phase 7, slice 4) | Accepted |
 | [0046](./0046-wing-blocking-investigation.md) | A wing on a plane with the blocking tools | Investigation |
+| [0047](./0047-walls-from-outside-rejected.md) | Wall entities projected from across the block | Rejected |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
