@@ -24,7 +24,7 @@ and leaves the mesh as it was (``March`` restores on failure); the CLI exits
 
 Cases
 -----
-- F1 the default cap (theta_cap 0.05 pi) on a sphere, algebraic scheme: 72
+- F1 the old default cap (theta_cap 9 deg) on a sphere, algebraic scheme: 72
   folded cap-corner cells before ADR 0052 (min -0.83), now refused.
 - F2 the same from ``shore mesh``: exit 1, no ``.geo`` written.
 - F3 a capsule with a 45 deg cap, hyperbolic scheme: 8 folds (min -0.006).
@@ -34,6 +34,9 @@ Cases
   (``data/cap_folds_clean.npz``, made at the base commit), bit for bit.
 - F7 the OH hybrid (cubed-sphere wrap, cap pinned at 45 deg) on a sphere
   still marches, every cell positive.
+
+Re-frozen 2026-10-31 (ADR 0054, approved by the owner): the default cap
+became 30 deg, so F1, F2 and F4 give the old default, 9 deg, explicitly.
 
 Out of scope of this spec: the default ``theta_cap`` (unchanged here; ADR
 0052 proposes 30 deg separately, a re-freeze of ADR 0034's R8 golden), the
@@ -107,7 +110,7 @@ def refused(p, scheme):
 
 class TestRefused:
     def test_f1_default_cap_algebraic(self, bodies):
-        msg = refused(project(bodies / "sphere.stl"), "algebraic")
+        msg = refused(project(bodies / "sphere.stl", 9), "algebraic")
         assert "theta_cap" in msg and "hyperbolic" in msg
 
     def test_f2_cli(self, bodies, tmp_path):
@@ -116,7 +119,8 @@ class TestRefused:
         r = CliRunner().invoke(
             app,
             ["mesh", str(bodies / "sphere.stl"), "--ni", "33", "--nj", "64", "--nk", "25",
-             "--ds", "0.01", "--growth", "1.15", "-o", str(tmp_path / "s")],
+             "--ds", "0.01", "--growth", "1.15", "--theta-cap-deg", "9",
+             "-o", str(tmp_path / "s")],
         )  # fmt: skip
         assert r.exit_code == 1
         assert "fold" in r.output.lower()
@@ -126,7 +130,7 @@ class TestRefused:
         refused(project(bodies / "capsule.stl", 45), "hyperbolic")
 
     def test_f4_few_folds(self, bodies):
-        refused(project(bodies / "sphere.stl", None, ni=41, nj=64, nk=31, ds=1e-3), "algebraic")
+        refused(project(bodies / "sphere.stl", 9, ni=41, nj=64, nk=31, ds=1e-3), "algebraic")
 
 
 class TestAccepted:

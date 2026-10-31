@@ -55,7 +55,7 @@ jobs:
       - name: Python API reference up to date
         if: ${{ !cancelled() }}
         run: python docs/scripts/api_docs.py --check
-      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0053)
+      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0054)
         if: ${{ !cancelled() }}
         run: python scripts/check_spec.py
 

@@ -28,7 +28,8 @@ A plate (an STL box) pierced by an STL box prism 1 x 0.1 (a loop with four
 90 deg corners), n_loop 48, surface steps ``0.01 * 1.2**j`` (8), wall-normal
 ``1e-4 * 1.3**k`` (12).
 
-- D1 ``Project.save`` writes ``format = 3``.
+- D1 ``Project.save`` writes ``format = 4`` (re-frozen 2026-10-31: format 4
+  since ADR 0054; format 3 was this spec's).
 - D2 a project saved before format 3 (a collar journalled without a volume,
   ``format = 2``) loads, and its collar is the ``"stations"`` block.
 - D3 a new project's collar without a volume is the ``"smoothed"`` block,
@@ -85,10 +86,11 @@ def project(d, **kw):
 
 
 class TestDefault:
+    @PENDING
     def test_d1_format_3(self, tmp_path):
         write_bodies(tmp_path)
         project(tmp_path).save(tmp_path / "p")
-        assert re.search(r"^format = 3$", (tmp_path / "p" / "project.toml").read_text(), re.M)
+        assert re.search(r"^format = 4$", (tmp_path / "p" / "project.toml").read_text(), re.M)
 
     def test_d2_old_projects_load(self, tmp_path):  # holds before the switch: a guard
         from shore.project import Project
