@@ -46,9 +46,8 @@ base background: 1 zones, 0 1-to-1 connections, 6 BCs
   one connection per partner; nodes that match no partner are refused.
 - FREE faces (outer boundaries, overlap boundaries) are user-defined:
   set the far-field or overset condition in your solver set-up.
-- A box primitive keeps the block default `k_lo = WALL`, so the
-  background box above has a `BCWall` at its `k_lo` face. Override it in
-  the solver set-up when the box is a far field.
+- A background primitive (box, annulus, flat-caps) has no wall: its faces
+  are FREE or seams ([ADR 0055](/adr/0055-background-primitives-have-no-wall)).
 
 ## Write a Plot3D grid
 

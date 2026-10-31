@@ -21,7 +21,7 @@ sector direction.
 ```python
 AnnulusExtent(r_in: float, r_out: float, z0: float, z1: float)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/annulus.py#L33">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/annulus.py#L34">source</a>
 
 Inner radius, outer radius, axial extent of an annular cylinder.
 
@@ -31,7 +31,7 @@ Inner radius, outer radius, axial extent of an annular cylinder.
 AnnularCylinderMesh(blocks: list[HexBlock])
 ```
 Bases: `PrimitiveMesh`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/annulus.py#L64">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/annulus.py#L65">source</a>
 
 Single-block annular cylinder.
 
@@ -99,7 +99,7 @@ build(
     label: str = 'annulus',
 ) -> AnnularCylinderMesh
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/annulus.py#L111">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/annulus.py#L112">source</a>
 
 Build an annular cylinder primitive.
 

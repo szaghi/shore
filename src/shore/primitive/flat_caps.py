@@ -83,7 +83,13 @@ from shore.exceptions import ParameterError
 from shore.mesh.block import HexBlock
 from shore.mesh.face import AxisMap, FaceBC, FaceName
 from shore.mesh.spacing import Spacing1D
-from shore.primitive.base import PrimitiveMesh, axis_frame, coords_1d, resolve_axis
+from shore.primitive.base import (
+    PrimitiveMesh,
+    axis_frame,
+    coords_1d,
+    free_boundaries,
+    resolve_axis,
+)
 from shore.volume.spacing import tanh_one_sided, tanh_two_sided
 
 
@@ -176,7 +182,7 @@ class FlatCapsCylinder(PrimitiveMesh):
     label_default = "flat_caps"
 
     def __init__(self, blocks: list[HexBlock]) -> None:
-        self.blocks = blocks
+        self.blocks = free_boundaries(blocks)  # a background has no wall (ADR 0055)
 
     @classmethod
     def build(

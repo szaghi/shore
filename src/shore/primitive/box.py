@@ -12,6 +12,7 @@ from shore.mesh.spacing import Spacing1D
 from shore.primitive.base import (
     PrimitiveMesh,
     axis_field_tfi,
+    free_boundaries,
     resolve_edge_specs,
     stamp_edge_specs_onto_block,
 )
@@ -87,7 +88,7 @@ class BoxMesh(PrimitiveMesh):
     label_default = "box"
 
     def __init__(self, blocks: list[HexBlock]) -> None:
-        self.blocks = blocks
+        self.blocks = free_boundaries(blocks)  # a background has no wall (ADR 0055)
 
     @classmethod
     def build(

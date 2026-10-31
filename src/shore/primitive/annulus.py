@@ -23,6 +23,7 @@ from shore.primitive.base import (
     PrimitiveMesh,
     axis_field_tfi,
     axis_frame,
+    free_boundaries,
     resolve_axis,
     resolve_edge_specs,
     stamp_edge_specs_onto_block,
@@ -105,7 +106,7 @@ class AnnularCylinderMesh(PrimitiveMesh):
     label_default = "annulus"
 
     def __init__(self, blocks: list[HexBlock]) -> None:
-        self.blocks = blocks
+        self.blocks = free_boundaries(blocks)  # a background has no wall (ADR 0055)
 
     @classmethod
     def build(

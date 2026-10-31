@@ -129,27 +129,13 @@ face code below 1 ("icc sulle facce deve essere > 0"): the natural codes are
 positive, 1 to 19.
 :::
 
-::: warning The background's z0 end is written as a wall
-The flat-caps primitive leaves the `k_lo` face of its five blocks (the
-`z0 = -10` end of the cylinder) as WALL, and `cc.par` gets code 1, a
-viscous wall, there:
-
-```
-        7         5         1         0         0        23         0        23         0         0 !        41
-```
-
-(block 7, face 5 = `k_lo`, code 1). The `z1` end gets the 9 you asked for.
-`shore xall` has no option to change it. In the file-by-file route below,
-make the face FREE in the sidecar before writing `cc.par` (step 3).
-:::
-
 ## 3. The same, file by file
 
 `shore xall` runs the steps below for you. Run them yourself when the
 components do not live in one project, or to control each file. The shell
 script
 [`examples/05-chimera-assembly/chimera_assembly.sh`](https://github.com/szaghi/shore/blob/main/examples/05-chimera-assembly/chimera_assembly.sh)
-chains the same commands from the STL on (without the sidecar fix below).
+chains the same commands from the STL on.
 
 **Pack the blocks.** The order of the files is the block order of the
 `.grd` and must be the order `cc.par` uses: the order of the blocks in the
@@ -165,13 +151,9 @@ shore grd background_center.geo background_sub_e.geo background_sub_n.geo \
 <<< @/../examples/tutorials/xall_bundle.py#grd{python} [Python]
 :::
 
-**Open the background's z0 end.** Edit the sidecar so every `k_lo` face of
-the background is FREE (see the warning above):
-
-<<< @/../examples/tutorials/xall_bundle.py#farfield{python}
-
 **Write one `cc.par` per component.** Near-body FREE faces default to 40;
-the background's take 9. The boxes go with the near-body grid.
+the background's take 9: a background primitive has no wall, every face
+that is not a seam is FREE ([ADR 0055](/adr/0055-background-primitives-have-no-wall)). The boxes go with the near-body grid.
 
 ::: code-group
 ```bash [CLI]

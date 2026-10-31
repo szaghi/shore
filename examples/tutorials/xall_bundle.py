@@ -56,18 +56,6 @@ write_grd("wall.grd", wall_geo)  # the block order of the .grd is the order of t
 write_grd("background.grd", background_geo)
 # #endregion grd
 
-# #region farfield
-# The flat-caps primitive leaves k_lo (its z0 end) as WALL, a viscous wall in
-# cc.par. In a far-field background it is an open boundary: make it FREE.
-with open("background.adjacency.json") as f:
-    sidecar = json.load(f)
-for block in sidecar["blocks"]:
-    if block["faces"]["k_lo"]["bc"] == "WALL":
-        block["faces"]["k_lo"]["bc"] = "FREE"
-with open("background.adjacency.json", "w") as f:
-    json.dump(sidecar, f, indent=2)
-# #endregion farfield
-
 # #region ccpar
 from shore.io.cc_par import BlockMeta, write_cc_par  # noqa: E402
 

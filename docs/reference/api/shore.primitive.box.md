@@ -12,7 +12,7 @@ Cartesian box primitive — a single axis-aligned hexahedral block.
 ```python
 BoxExtent(vmin: tuple[float, float, float], vmax: tuple[float, float, float])
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/box.py#L21">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/box.py#L22">source</a>
 
 Min/max corners of an axis-aligned box.
 
@@ -26,7 +26,7 @@ strictly exceed *vmin*.
 BoxMesh(blocks: list[HexBlock])
 ```
 Bases: `PrimitiveMesh`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/box.py#L55">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/box.py#L56">source</a>
 
 Single-block axis-aligned Cartesian box.
 
@@ -81,7 +81,7 @@ build(
     label: str = 'box',
 ) -> BoxMesh
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/box.py#L93">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/box.py#L94">source</a>
 
 Build a box primitive.
 

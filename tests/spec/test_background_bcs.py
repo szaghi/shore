@@ -74,14 +74,12 @@ def bcs(p):
 
 
 class TestBackgrounds:
-    @PENDING
     @pytest.mark.parametrize("kind", sorted(BACKGROUNDS))
     def test_b1_no_wall(self, kind):
         faces = bcs(primitive(kind))
         assert not [f for f in faces if f[2] == "WALL"]
         assert {f[2] for f in faces} <= {"FREE", "SHARED"}
 
-    @PENDING
     def test_b2_cc_par(self, tmp_path):
         from tests.spec.test_cc_par_xall import parse
 
@@ -92,7 +90,6 @@ class TestBackgrounds:
         assert 1 not in codes
         assert 9 in codes
 
-    @PENDING
     def test_b3_cgns(self, tmp_path):
         import CGNS.MAP
 
@@ -124,7 +121,6 @@ class TestBackgrounds:
         p.build_topology("cubed_sphere", nk=5, ds=0.05, growth=1.1, ni=9, nj=16)
         assert all(b.face("k_lo").bc.name == "WALL" for b in p.mesh.blocks)
 
-    @PENDING
     def test_b6_cli_project(self, tmp_path):
         from shore.cli import app
 

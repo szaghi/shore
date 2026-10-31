@@ -109,7 +109,9 @@ class TestSplitSingleBlock:
         assert b.face("i_lo").axis_map == AxisMap.identity("i_lo")
 
     def test_external_face_bcs_preserved_per_chunk(self):
-        new = split_blocks(_box(), [BlockSplit("box", "i", [6])])
+        blocks = _box()
+        blocks[0]._set_face_bc("k_lo", FaceBC.WALL)  # a box is all FREE (ADR 0055)
+        new = split_blocks(blocks, [BlockSplit("box", "i", [6])])
         a, b = new
         # Wall (k_lo) and free (k_hi, j_lo, j_hi) inherited on every chunk.
         for blk in (a, b):

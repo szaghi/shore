@@ -23,7 +23,7 @@ write, VTK export) are inherited.
 ```python
 class PrimitiveMesh(ABC)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/base.py#L337">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/base.py#L354">source</a>
 
 Abstract base for parametric structured grids.
 
@@ -37,7 +37,7 @@ suffix for multi-block primitives).
 ```python
 write_geo(output: str | Path) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/base.py#L354">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/base.py#L371">source</a>
 
 Write the primitive to one or more `.geo` files.
 
@@ -49,7 +49,7 @@ Multi-block primitives append `_<label>.geo` to *output*'s stem.
 ```python
 write_vtk(output: str | Path, with_jacobian: bool = True) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/base.py#L375">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/base.py#L392">source</a>
 
 Write the primitive as a single `.vtm` MultiBlock file.
 

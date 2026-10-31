@@ -83,7 +83,7 @@ Index counts
 ```python
 FlatCapsExtent(r_out: float, z0: float, z1: float)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/flat_caps.py#L91">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/flat_caps.py#L97">source</a>
 
 Outer radius and axial extent of a flat-caps cylinder.
 
@@ -93,7 +93,7 @@ Outer radius and axial extent of a flat-caps cylinder.
 FlatCapsCylinder(blocks: list[HexBlock])
 ```
 Bases: `PrimitiveMesh`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/flat_caps.py#L165">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/flat_caps.py#L171">source</a>
 
 5-block flat-caps cylinder primitive.
 
@@ -128,7 +128,7 @@ build(
     edge_pins: dict[str, Spacing1D] | None = None,
 ) -> FlatCapsCylinder
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/flat_caps.py#L182">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/primitive/flat_caps.py#L188">source</a>
 
 Build a flat-caps cylinder primitive.
 

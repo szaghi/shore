@@ -68,14 +68,9 @@ same files byte for byte:
   reported before anything is written.
 - `shore xall` requires `--out`.
 
-::: warning Background primitives have a wall at `k_lo`
-Blocks start with `k_lo = WALL`, and the primitive builders (`box`,
-`annulus`, `flat_caps`) keep it. In the run above the `z = -4` end of the
-background cylinder is written as BC 1 (wall) in `cc.par`. `free_face_bc`
-does not change it, since the face is not FREE. Check the background
-patches in `cc.par` and change that code by hand if the face is a far
-field.
-:::
+Background primitives (`box`, `annulus`, `flat_caps`) have no wall: every
+face that is not a seam is FREE, so `free_face_bc` sets all their boundary
+codes ([ADR 0055](/adr/0055-background-primitives-have-no-wall)).
 
 ## Merge separate component files
 

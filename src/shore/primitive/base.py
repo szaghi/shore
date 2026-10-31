@@ -329,6 +329,23 @@ __all__ = [
 _ = warnings  # touched in concrete primitives
 
 
+def free_boundaries(blocks: list[HexBlock]) -> list[HexBlock]:
+    """Make every WALL face of *blocks* FREE (ADR 0055).
+
+    A background grid has no wall: ``HexBlock`` defaults ``k_lo`` to WALL
+    for marched topologies, which put the body there. A box, an annulus or
+    a flat-caps cylinder would otherwise write a viscous wall (``cc.par`` BC
+    1, CGNS ``BCWall``) on a far-field face.
+    """
+    from shore.mesh.face import FaceBC
+
+    for block in blocks:
+        for face in block.faces():
+            if face.bc is FaceBC.WALL:
+                block._set_face_bc(face.name, FaceBC.FREE)
+    return blocks
+
+
 # ---------------------------------------------------------------------------
 # Primitive ABC
 # ---------------------------------------------------------------------------
