@@ -99,7 +99,7 @@ blocks `chan_upper` / `chan_body_top` / `chan_body_front` /
 slices; the 4 outflow sub-blocks `chan_outflow_top_upper` /
 `chan_outflow_wake_upper` / `chan_outflow_wake_lower` /
 `chan_outflow_top_lower` (plus `chan_outflow_wake_base` for CH-4)
-bridge the wrap's i-direction far-tip faces to the rear frame edge
+bridge the wrap's i-direction far-tip faces to the rear frame edge (the upper ones and the blunt `wake_base` run j against their partners so every block is right-handed, ADR 0057)
 with cross-axis SHARED face mapping (k=0 data copied — channel-i =
 wrap-k).
 Body wrap is split into 3 i-segments; the splits' outer-quad

@@ -81,7 +81,6 @@ def face_nodes(nodes, face):
 
 @pytest.mark.parametrize("te", ["sharp", "blunt"])
 class TestHandedness:
-    @PENDING
     def test_h1_right_handed(self, grids, te):
         from shore.quality import scaled_jacobian
 
@@ -110,7 +109,6 @@ class TestHandedness:
                 compared += 1
         assert compared >= 20
 
-    @PENDING
     def test_h3_same_grid(self, grids, te):
         with np.load(DATA / "ch_handedness_before.npz") as gold:
             for b in grids[te]:

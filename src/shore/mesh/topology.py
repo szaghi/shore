@@ -2887,13 +2887,15 @@ class CHTopology(Topology):
                 "k_lo",
                 FaceBC.SHARED,
                 partner=chan_outflow_wb.face("k_lo"),
-                axis_map=AxisMap.identity("k_lo"),
+                axis_map=AxisMap.from_pairs(
+                    ("i", False), ("j", True)
+                ),  # wake_base's j reversed (ADR 0057)
             )
             chan_outflow_wb._set_face_bc(
                 "k_lo",
                 FaceBC.SHARED,
                 partner=chan_outflow_wake_lower.face("k_lo"),
-                axis_map=AxisMap.identity("k_lo"),
+                axis_map=AxisMap.from_pairs(("i", False), ("j", True)),
             )
             # wake_upper.k_lo (+te/2 from above) <-> wake_base.k_hi
             chan_outflow_wake_upper._set_face_bc(
@@ -2908,18 +2910,18 @@ class CHTopology(Topology):
                 partner=chan_outflow_wake_upper.face("k_lo"),
                 axis_map=AxisMap.identity("k_hi"),
             )
-        else:
+        else:  # j reversed on the upper side (ADR 0057)
             chan_outflow_wake_upper._set_face_bc(
                 "k_lo",
                 FaceBC.SHARED,
                 partner=chan_outflow_wake_lower.face("k_lo"),
-                axis_map=AxisMap.identity("k_lo"),
+                axis_map=AxisMap.from_pairs(("i", False), ("j", True)),
             )
             chan_outflow_wake_lower._set_face_bc(
                 "k_lo",
                 FaceBC.SHARED,
                 partner=chan_outflow_wake_upper.face("k_lo"),
-                axis_map=AxisMap.identity("k_lo"),
+                axis_map=AxisMap.from_pairs(("i", False), ("j", True)),
             )
 
         # ----- Conformal SHARED seams to the wrap and k_hi-side channels -----
@@ -2932,13 +2934,13 @@ class CHTopology(Topology):
             "i_lo",
             FaceBC.SHARED,
             partner=chan_outflow_top_upper.face("i_lo"),
-            axis_map=AxisMap.identity("i_lo"),
+            axis_map=AxisMap.from_pairs(("j", True), ("k", False)),  # j reversed (ADR 0057)
         )
         chan_outflow_top_upper._set_face_bc(
             "i_lo",
             FaceBC.SHARED,
             partner=chan_upper.face("i_lo"),
-            axis_map=AxisMap.identity("i_lo"),
+            axis_map=AxisMap.from_pairs(("j", True), ("k", False)),
         )
         # chan_lower.i_hi is at chord=chord_lower_far (since chan_lower's i
         # runs lower-TE -> lower-far-tip).  Pair to chan_outflow_top_lower.i_lo.
@@ -2964,13 +2966,13 @@ class CHTopology(Topology):
             "i_lo",
             FaceBC.SHARED,
             partner=chan_outflow_wake_upper.face("i_lo"),
-            axis_map=AxisMap.identity("i_lo"),
+            axis_map=AxisMap.from_pairs(("j", True), ("k", False)),  # j reversed (ADR 0057)
         )
         chan_outflow_wake_upper._set_face_bc(
             "i_lo",
             FaceBC.SHARED,
             partner=upper.face("i_lo"),
-            axis_map=AxisMap.identity("i_lo"),
+            axis_map=AxisMap.from_pairs(("j", True), ("k", False)),
         )
         # lower.i_hi is at chord=chord_lower_far (lower's i runs TE ->
         # far-tip).  Pair to chan_outflow_wake_lower.i_lo (i_hi <-> i_lo
@@ -2994,13 +2996,13 @@ class CHTopology(Topology):
                 "i_lo",
                 FaceBC.SHARED,
                 partner=chan_outflow_wb.face("i_lo"),
-                axis_map=AxisMap.identity("i_lo"),
+                axis_map=AxisMap.from_pairs(("j", True), ("k", False)),  # j reversed (ADR 0057)
             )
             chan_outflow_wb._set_face_bc(
                 "i_lo",
                 FaceBC.SHARED,
                 partner=wake_base.face("i_lo"),
-                axis_map=AxisMap.identity("i_lo"),
+                axis_map=AxisMap.from_pairs(("j", True), ("k", False)),
             )
 
         # Outermost outflow faces are at the bottom / top frame edges.
@@ -3219,9 +3221,12 @@ class CHTopology(Topology):
         # wake_upper inner face = upper.i_lo face (= upper.nodes[0, :, :, :])
         # wake_lower inner face = lower.i_hi face (= lower.nodes[-1, :, :, :])
         # wake_base inner face (blunt) = wake_base.i_lo face
+        # The upper-side blocks and wake_base have channel-k pointing up
+        # (+normal): with i along the chord and j along the span they would
+        # be left-handed, so their j runs against the partner's (ADR 0057).
         _fill_outflow_block(
             chan_outflow_top_upper,
-            inner_face=chan_upper.nodes[0, :, :, :].copy(),
+            inner_face=chan_upper.nodes[0, ::-1, :, :].copy(),
         )
         _fill_outflow_block(
             chan_outflow_top_lower,
@@ -3229,7 +3234,7 @@ class CHTopology(Topology):
         )
         _fill_outflow_block(
             chan_outflow_wake_upper,
-            inner_face=upper.nodes[0, :, :, :].copy(),
+            inner_face=upper.nodes[0, ::-1, :, :].copy(),
         )
         _fill_outflow_block(
             chan_outflow_wake_lower,
@@ -3238,7 +3243,7 @@ class CHTopology(Topology):
         if self._is_blunt and chan_outflow_wb is not None and wake_base is not None:
             _fill_outflow_block(
                 chan_outflow_wb,
-                inner_face=wake_base.nodes[0, :, :, :].copy(),
+                inner_face=wake_base.nodes[0, ::-1, :, :].copy(),
             )
 
         # The conformal-SHARED partners are i_lo/i_hi face-graph entries.

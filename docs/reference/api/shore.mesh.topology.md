@@ -675,7 +675,7 @@ Build the CH topology block list.
 ```python
 fill_channel_blocks(blocks: list[HexBlock]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L3024">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L3026">source</a>
 
 Populate every channel block's interior after wrap marching.
 

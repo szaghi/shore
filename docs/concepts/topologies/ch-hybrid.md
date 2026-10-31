@@ -91,10 +91,14 @@ wrap and the outflow channels:
 | `chan_outflow_wake_lower.i_lo` | `lower.i_hi` | `nk_wrap` |
 | `chan_outflow_wake_base.i_lo` *(blunt)* | `wake_base.i_lo` | `nk_w` |
 
-All identity AxisMap (same-axis i↔i). The outflow's i_lo face data
-is copied bit-exact from the wrap face in `fill_channel_blocks`, so
-the geometric coincidence at the seam is exact (not a tolerance-based
-match).
+Same-axis i↔i seams. The blocks above the wake cut (`top_upper`,
+`wake_upper`) and the blunt `wake_base` would be left-handed with their
+channel k pointing up, so their j runs against their partners' and those
+seams map j with a flip; the lower-side seams are identity
+([ADR 0057](/adr/0057-right-handed-ch-outflow)). Every CH block is
+right-handed. The outflow's i_lo face data is copied bit-exact from the
+wrap face (j-reversed where flipped) in `fill_channel_blocks`, so the
+geometric coincidence at the seam is exact (not a tolerance-based match).
 
 ## Channel construction (deferred fill)
 

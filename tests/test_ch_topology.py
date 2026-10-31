@@ -208,8 +208,9 @@ class TestSharedViewAliasing:
         labels = [b.label for b in m.blocks]
         wake_upper = m.blocks[labels.index("chan_outflow_wake_upper")]
         wake_lower = m.blocks[labels.index("chan_outflow_wake_lower")]
+        # the upper side's j runs against the lower side's (ADR 0057: right-handed)
         np.testing.assert_allclose(
-            wake_upper.nodes[:, :, 0, :],
+            wake_upper.nodes[:, ::-1, 0, :],
             wake_lower.nodes[:, :, 0, :],
             atol=1e-9,
         )

@@ -13,6 +13,17 @@ See [C-grid topology — Tip caps](/concepts/topologies/c-grid#tip-caps-closed-f
 for the geometric layout, the rationale for chimera-overlap (vs
 SHARED-face) cap-body coupling, and the H3 T-fill block decomposition.
 
+::: warning Known problems of the tip-cap blocks
+Measured on a NACA 0012 wing ([ADR 0057](/adr/0057-right-handed-ch-outflow)):
+- three cap blocks are mirrored, with every cell's scaled Jacobian
+  negative: one tip's `lower` and `wake_base`, the other's `upper`;
+- the LE blocks are degenerate (`jlo`) or twisted (`jhi`);
+- the four `te_*` blocks have a single node along i, so no cells.
+
+A redesign of the cap is proposed, not done. Check a cap with
+`shore check` / `quality.summary` before using it.
+:::
+
 ## Synopsis
 
 ```

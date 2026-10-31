@@ -86,6 +86,17 @@ NACA section.
 
 ## Tip caps
 
+::: warning Known problems of the tip-cap blocks
+Measured on a NACA 0012 wing ([ADR 0057](/adr/0057-right-handed-ch-outflow)):
+- three cap blocks are mirrored, with every cell's scaled Jacobian
+  negative: one tip's `lower` and `wake_base`, the other's `upper`;
+- the LE blocks are degenerate (`jlo`) or twisted (`jhi`);
+- the four `te_*` blocks have a single node along i, so no cells.
+
+A redesign of the cap is proposed, not done. Check a cap with
+`shore check` / `quality.summary` before using it.
+:::
+
 The wrap leaves the span ends open. A finite wing is closed at a tip by
 an H-style set of cap blocks that fills the airfoil section in the tip
 plane:
