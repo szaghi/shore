@@ -55,7 +55,7 @@ jobs:
       - name: Python API reference up to date
         if: ${{ !cancelled() }}
         run: python docs/scripts/api_docs.py --check
-      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0052)
+      - name: Frozen acceptance specs unmodified (ADR 0005, 0007-0053)
         if: ${{ !cancelled() }}
         run: python scripts/check_spec.py
 
@@ -74,7 +74,7 @@ jobs:
       - name: Run geometry tests
         run: pytest tests/test_geometry.py tests/test_geometry_occt.py tests/test_cad_pipeline.py tests/spec/test_surface_tfi_cad.py
           tests/spec/test_loop_corners_cad.py tests/spec/test_associate.py tests/test_association.py
-          tests/spec/test_wing_body.py tests/test_docs_examples.py --no-cov
+          tests/spec/test_wing_body.py tests/spec/test_symmetry_plane.py tests/test_docs_examples.py --no-cov
 
   test-gui:
     # the GUI (shore[gui], ~90 MB of wheels; ADR 0037) headless: Qt's offscreen
