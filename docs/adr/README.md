@@ -63,6 +63,7 @@ by a later record that supersedes it.
 | [0053](./0053-blocking-symmetry-planes.md) | Symmetry planes of a blocking | Accepted |
 | [0054](./0054-default-cap-30-degrees.md) | The cubed sphere's default cap: 30 degrees | Accepted |
 | [0055](./0055-background-primitives-have-no-wall.md) | Background primitives have no wall | Accepted |
+| [0056](./0056-no-silent-folds-other-marchers.md) | Refuse folded cells in the O-grid and C-grid marches | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
