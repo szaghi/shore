@@ -59,6 +59,7 @@ by a later record that supersedes it.
 | [0049](./0049-stl-feature-curves.md) | Feature curves and points of STL geometry | Accepted |
 | [0050](./0050-wall-layer.md) | Wall layers with an absolute first cell (algebraic, after premesh) | Accepted |
 | [0051](./0051-wing-body-acceptance.md) | Phase 7 acceptance: a wing–body blocking replayed after a CAD edit | Accepted |
+| [0052](./0052-no-silent-cap-folds.md) | Refuse folded cells in the cubed-sphere march, corner cells included | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
