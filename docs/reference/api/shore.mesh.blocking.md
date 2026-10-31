@@ -51,9 +51,10 @@ Blocking(
     nodes: dict[tuple[int, int], int],
     associations: dict[EntityKey, Association] = field(default_factory=dict),
     next_label: int = 1,
+    planes: tuple[Plane, ...] = (),
 )
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L74">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L75">source</a>
 
 A block skeleton (see the module docstring).
 
@@ -62,35 +63,35 @@ A block skeleton (see the module docstring).
 ```python
 copy() -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L83">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L85">source</a>
 
 ### `Blocking.labels` <Badge type="info" text="method" /> {#Blocking-labels}
 
 ```python
 labels() -> list[str]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L94">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L96">source</a>
 
 ### `Blocking.block` <Badge type="info" text="method" /> {#Blocking-block}
 
 ```python
 block(label: str) -> tuple[int, ...]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L97">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L99">source</a>
 
 ### `Blocking.edge_count` <Badge type="info" text="method" /> {#Blocking-edge_count}
 
 ```python
 edge_count(a: int, b: int) -> int
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L103">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L105">source</a>
 
 ### `Blocking.entity` <Badge type="info" text="method" /> {#Blocking-entity}
 
 ```python
 entity(label: str, name: str) -> tuple[EntityKey, str]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L106">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L108">source</a>
 
 The key of face, edge or vertex *name* of block *label*, and which it is.
 
@@ -99,14 +100,14 @@ The key of face, edge or vertex *name* of block *label*, and which it is.
 ```python
 shape(label: str) -> tuple[int, int, int]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L121">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L123">source</a>
 
 ### `Blocking.edges` <Badge type="info" text="method" /> {#Blocking-edges}
 
 ```python
 edges() -> dict[tuple[int, int], list[tuple[int, str]]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L127">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L129">source</a>
 
 Every edge (a &lt; b) -&gt; the (block index, edge name) that have it.
 
@@ -115,7 +116,7 @@ Every edge (a &lt; b) -&gt; the (block index, edge name) that have it.
 ```python
 polylines() -> list[tuple[str, str, np.ndarray]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L136">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L138">source</a>
 
 Every edge once, as `(block, edge name, nodes (n, 3))`: its nodes
 equally spaced on the straight line between its skeleton vertices, in
@@ -126,7 +127,7 @@ the direction of the edge in the first block that has it.
 ```python
 centres(kind: str) -> list[tuple[str, str, np.ndarray]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L151">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L153">source</a>
 
 Skeleton centres of every `"face"` (once, named by its first block),
 `"block"` or `"vertex"` (its point, once, named `v0`..`v7` by
@@ -137,7 +138,7 @@ its first block): `(block, name, centre)`, the name `""` for a block.
 ```python
 faces() -> dict[tuple[int, ...], list[tuple[int, str]]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L169">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L171">source</a>
 
 Every face (sorted vertex ids) -&gt; the (block index, face name) that have it.
 
@@ -146,7 +147,7 @@ Every face (sorted vertex ids) -&gt; the (block index, face name) that have it.
 ```python
 box(vmin: Any, vmax: Any, ni: int, nj: int, nk: int, label: str = 'b0') -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L182">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L184">source</a>
 
 One block between the corners *vmin* and *vmax*, with *ni* x *nj* x *nk* nodes.
 
@@ -155,7 +156,7 @@ One block between the corners *vmin* and *vmax*, with *ni* x *nj* x *nk* nodes.
 ```python
 split(blocking: Blocking, label: str, axis: str, fraction: float) -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L197">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L199">source</a>
 
 Cut block *label* across *axis* at the node nearest *fraction* of it.
 
@@ -175,7 +176,7 @@ ogrid(
     nodes: int = 5,
 ) -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L302">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L304">source</a>
 
 Insert an O-grid: a layer of blocks on faces of the block set *labels*.
 
@@ -203,7 +204,7 @@ move(
     resolver: AssociationResolver | None = None,
 ) -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L450">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L452">source</a>
 
 Move vertex *vertex* (`v0`..`v7`) of block *label* to *xyz*: onto
 the projection of *xyz* on the vertex's association (own or inherited),
@@ -214,7 +215,7 @@ when it has one, so an associated vertex slides on its geometry.
 ```python
 delete(blocking: Blocking, labels: list[str] | tuple[str, ...]) -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L476">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L478">source</a>
 
 Remove blocks *labels*; their faces left alone become boundary faces.
 
@@ -228,16 +229,47 @@ associate(
     association: Association | None,
 ) -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L488">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L490">source</a>
 
 Set (or with None clear) the association of *entity* of block *label*.
+
+## `symmetry` <Badge type="info" text="function" /> {#symmetry}
+
+```python
+symmetry(blocking: Blocking, point: Any, normal: Any) -> Blocking
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L506">source</a>
+
+A copy of *blocking* with the symmetry plane through *point* (ADR 0053).
+
+`premesh` makes the unassociated boundary faces lying on the plane
+`SYMMETRY` faces, and `orthogonal_walls` keeps the lines leaving the
+wall from the plane in it.
+
+## `on_plane` <Badge type="info" text="function" /> {#on_plane}
+
+```python
+on_plane(points: np.ndarray, plane: Plane, tol: float) -> np.ndarray
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L528">source</a>
+
+Which of *points* (..., 3) lie within *tol* of *plane*.
+
+## `plane_tolerance` <Badge type="info" text="function" /> {#plane_tolerance}
+
+```python
+plane_tolerance(points: np.ndarray) -> float
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L534">source</a>
+
+1e-9 of the extent of *points*: their distance to a plane they lie on.
 
 ## `effective_associations` <Badge type="info" text="function" /> {#effective_associations}
 
 ```python
 effective_associations(blocking: Blocking) -> dict[EntityKey, Association]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L504">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L540">source</a>
 
 Every entity's association: its own, else inherited (module docstring).
 
@@ -251,7 +283,7 @@ tfi_face(
     j_hi: np.ndarray,
 ) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L571">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L607">source</a>
 
 Coons patch (na, nb, 3) from its four boundary rows.
 
@@ -263,7 +295,7 @@ Coons patch (na, nb, 3) from its four boundary rows.
 ```python
 tfi_volume(x: np.ndarray) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L589">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L625">source</a>
 
 Fill the interior of *x* (ni, nj, nk, 3) by TFI of its six faces, in place.
 
@@ -272,6 +304,6 @@ Fill the interior of *x* (ni, nj, nk, 3) by TFI of its six faces, in place.
 ```python
 premesh(blocking: Blocking, resolver: AssociationResolver | None) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L616">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/blocking.py#L652">source</a>
 
 The blocking's blocks as `HexBlock`s (module docstring).

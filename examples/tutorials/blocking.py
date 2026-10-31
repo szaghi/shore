@@ -70,6 +70,8 @@ print("CAD model:", len(g.entities(EntityKind.SURFACE)), "faces,",
 
 # one block of 53 x 33 x 25 nodes over the far field, the symmetry plane at z = 0
 p.create_blocking(53, 33, 25, vmin=(-6, -4, 0), vmax=(7, 4, 6))
+# z = 0 is a symmetry plane: its faces become SYMMETRY and stay on it (ADR 0053)
+p.symmetry_plane((0, 0, 0), (0, 0, 1))
 # #endregion box
 
 

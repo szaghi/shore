@@ -11,12 +11,15 @@ keep their arc-length fractions, the wall and the opposite face stay put.
 The normal of a wall node is the mean of the grid normals of every wall face
 holding it (each oriented into its block), keyed by the node's exact
 coordinates: blocks sharing a wall node use the same normal, and blocks
-sharing a face build its lines identically, so seams stay closed.
+sharing a face build its lines identically, so seams stay closed. On a
+symmetry plane (ADR 0053) the normal of a wall node lying on the plane is
+projected into it, so the lines from the plane stay in the plane.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -100,12 +103,37 @@ def hermite_lines(
     return out
 
 
-def orthogonal_walls(blocks: list[HexBlock], strength: float = 1.0) -> list[str]:
+def in_planes(normals: dict[bytes, np.ndarray], planes: Sequence[Any], tol: float) -> None:
+    """Project, in place, the normal of every node lying on one of *planes*
+    ((point, unit normal) pairs, within *tol*) into that plane."""
+    for key, n in normals.items():
+        x = np.frombuffer(key, dtype=float)
+        for point, m in planes:
+            m = np.asarray(m, dtype=float)
+            if abs(float((x - np.asarray(point)) @ m)) <= tol:
+                t = n - (n @ m) * m
+                normals[key] = t / max(float(np.linalg.norm(t)), 1e-300)
+                break
+
+
+def orthogonal_walls(
+    blocks: list[HexBlock], strength: float = 1.0, planes: Sequence[Any] = ()
+) -> list[str]:
     """Reshape, in place, the lines of every block with exactly one WALL face
-    to leave the wall along its normal; the labels of the blocks changed."""
+    to leave the wall along its normal; the labels of the blocks changed.
+    *planes*: symmetry planes ((point, unit normal), ADR 0053) whose wall
+    nodes keep their lines in the plane."""
     if not strength > 0.0:
         raise ParameterError(f"orthogonalize: strength must be > 0, got {strength}.")
     normals = wall_normals(blocks)
+    if planes:
+        from shore.mesh.blocking import plane_tolerance
+
+        in_planes(
+            normals,
+            planes,
+            plane_tolerance(np.concatenate([b.nodes.reshape(-1, 3) for b in blocks])),
+        )
     changed = []
     for b in blocks:
         walls = [f.name for f in b.faces() if f.bc.name == "WALL"]

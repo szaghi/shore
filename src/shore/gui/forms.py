@@ -188,6 +188,16 @@ FORMS: tuple[Form, ...] = (
             Field("indices", "literal", (), label="entity indices, e.g. [3, 4]", keyword=False),
         ),
     ),
+    Form(
+        "symmetry_plane",
+        "Symmetry plane",
+        (
+            Field(
+                "point", "literal", (0.0, 0.0, 0.0), label="(x, y, z) on the plane", keyword=False
+            ),
+            Field("normal", "literal", (0.0, 0.0, 1.0), label="(nx, ny, nz)", keyword=False),
+        ),
+    ),
     Form("premesh", "Premesh blocking", (Field("exact", "bool", False),), long=True),
     Form("orthogonalize", "Orthogonal wall lines", (Field("strength", "float", 1.0),), long=True),
     Form(

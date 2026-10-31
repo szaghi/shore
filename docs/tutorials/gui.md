@@ -60,7 +60,10 @@ p.load_geometry('wb.step', name='wb')
 
 Pick **Create blocking**: *ni* `53`, *nj* `33`, *nk* `25`, *vmin*
 `(-6, -4, 0)`, *vmax* `(7, 4, 6)`; **Run**. The skeleton is drawn as orange
-lines with their nodes.
+lines with their nodes. Then pick **Symmetry plane**: *point* `(0, 0, 0)`,
+*normal* `(0, 0, 1)`; **Run**. The faces on z = 0 will be premeshed as
+`SYMMETRY` faces and stay on the plane through the orthogonal lines
+([ADR 0053](/adr/0053-blocking-symmetry-planes)).
 
 Make the 10 cuts of the headless tutorial: x = −3, −0.3, 1.3, 3;
 y = ±0.8, ±0.3; z = 0.8, 3.3. Two ways:

@@ -43,7 +43,11 @@ would do for the walls, but not for the junction curve.
 A blocking is a skeleton of hex blocks whose edges carry node counts
 ([ADR 0042](/adr/0042-blocking-skeleton-premesh)). You start with one block
 over the far field: 53 × 33 × 25 nodes on [-6, 7] × [-4, 4] × [0, 6]. The
-z = 0 face lies on the symmetry plane.
+z = 0 face lies on the symmetry plane, and you declare it as one
+([ADR 0053](/adr/0053-blocking-symmetry-planes)): the premesh then makes
+the faces on it `SYMMETRY` faces, and the wall-normal lines that start on
+it stay in it. Without the declaration they are `FREE` faces, and
+`orthogonalize` moves them up to 0.026 off the plane.
 
 <<< @/../examples/tutorials/blocking.py#box{python}
 
@@ -188,19 +192,18 @@ angles near 45°; without them the median is 9.0° (ADR 0051).
 
 <<< @/../examples/tutorials/blocking.py#write{python}
 
-The journal is saved before the writes, so it holds the 46 commands that
+The journal is saved before the writes, so it holds the 47 commands that
 build the grid and nothing else. `write_cgns` writes one zone per block with
-1-to-1 connections for the seams and `BCWall` for the walls. The premesh
-makes unassociated boundary faces FREE, so the faces on z = 0 and the far
-field are written as `BCTypeUserDefined` (`shore:FREE`): set the symmetry
-condition in your solver set-up. `write_xall` writes the `.geo` files, `mesh.grd`,
+1-to-1 connections for the seams, `BCWall` for the walls and
+`BCSymmetryPlane` for the faces on z = 0; the far field's unassociated faces
+are FREE, written as `BCTypeUserDefined` (`shore:FREE`). `write_xall` writes the `.geo` files, `mesh.grd`,
 `cc.par` and `proc.input` under `xall/`.
 
 ## 10. Edit the model and replay
 
 The edit: span 2.7 instead of 3 and fuselage radius 0.55 instead of 0.5.
 The journal reads `wb.step`, so writing the edited file under the same name
-in `edited/` and replaying with `input_dir="edited"` runs the same 46
+in `edited/` and replaying with `input_dir="edited"` runs the same 47
 commands on it.
 
 <<< @/../examples/tutorials/blocking.py#replay{python}

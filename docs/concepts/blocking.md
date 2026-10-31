@@ -184,8 +184,9 @@ with the junction curve.
 Edges and faces are copied into every block that has them, oriented by
 the corner permutations, so **seams match bit for bit** (gap 0). Faces
 shared by two blocks become SHARED seams, with axis maps from the corner
-ids; boundary faces are **WALL** when associated (own or inherited) and
-**FREE** otherwise. The blocks carry the associations, so a `snap` after
+ids; boundary faces are **WALL** when associated (own or inherited),
+**SYMMETRY** when they lie on a declared symmetry plane, and **FREE**
+otherwise. The blocks carry the associations, so a `snap` after
 premesh moves nodes by round-off only. The mesh is not marchable.
 
 `exact` selects the CAD projection tier. With `exact=False` (tier 1)
@@ -341,10 +342,33 @@ Before `orthogonalize` the wall angle was 24.7° median, 68.6° p95.
 Without the junction associations no wall node lands on the junction.
 The same blocking built through the GUI replays headless bit for bit.
 
+## Symmetry planes
+
+A half model's cut plane is declared with `p.symmetry_plane(point, normal)`
+([ADR 0053](/adr/0053-blocking-symmetry-planes)), right after
+`create_blocking`; a quarter model declares two. The plane is stored with
+the blocking and does two things:
+
+- `premesh` makes every unassociated boundary face whose four corners lie
+  on the plane (within $10^{-9}$ of the skeleton's extent) a **SYMMETRY**
+  face: `BCSymmetryPlane` in CGNS, natural code 2 in `cc.par`.
+- `orthogonalize` projects the wall normal into the plane at every wall
+  node lying on it. Wall nodes on the plane are boundary nodes of the
+  wall's surface grid, where the grid normal is a one-sided difference and
+  tilts out of the plane; without the projection the lines that start on
+  the plane leave it. On the wing–body the faces on z = 0 then drift up to
+  0.026; with the plane they stay on it to $4 \cdot 10^{-16}$.
+
+The plane is a statement, not a guess: a box's far-field faces are planar
+too, and only the user knows which plane is a symmetry plane.
+
 ## Limits
 
-Recorded by ADR 0046–0051:
+Recorded by ADR 0046–0051 and 0053:
 
+- **Symmetry planes are declared** (ADR 0053): without
+  `symmetry_plane` the faces on the plane are FREE and `orthogonalize`
+  moves them off it.
 - **Half model, edits inside the hole.** The edit must keep the body
   inside the blocking's hole; a longer span would pierce the wing's
   block. Blockings that adapt to edits leaving the hole, full-span and

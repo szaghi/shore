@@ -75,6 +75,7 @@ from shore.project.commands import (
     Snap,
     Split,
     SplitBlocking,
+    SymmetryPlane,
     Undo,
     UndoCache,
     UseComponent,
@@ -408,6 +409,19 @@ class Project:
         self.execute(
             AssociateBlocking(block, entity, geometry, kind, tuple(int(i) for i in indices))
         )
+
+    def symmetry_plane(self, point: Sequence[float], normal: Sequence[float]) -> None:
+        """Declare a symmetry plane of the blocking through *point*, normal to
+        *normal* (``SymmetryPlane``, ADR 0053)."""
+        try:
+            pt = tuple(float(x) for x in point)
+            nm = tuple(float(x) for x in normal)
+        except (TypeError, ValueError) as err:
+            raise ParameterError(
+                "symmetry_plane: point and normal must be 3 numbers each, "
+                f"got {point!r}, {normal!r}."
+            ) from err
+        self.execute(SymmetryPlane(pt, nm))  # type: ignore[arg-type]
 
     def premesh(self, exact: bool = False) -> None:
         """Make the component's mesh from its blocking (``Premesh``, ADR 0042)."""

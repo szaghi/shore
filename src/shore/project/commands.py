@@ -634,9 +634,11 @@ class Orthogonalize(Command):
     def apply(self, project: Project, ctx: Context) -> Undo:
         from shore.mesh.orthogonal import orthogonal_walls
 
+        blocking = project.blocking
+        planes = blocking.planes if blocking is not None else ()
         return _reshape_wall_blocks(
             project,
-            lambda blocks: orthogonal_walls(blocks, self.strength),
+            lambda blocks: orthogonal_walls(blocks, self.strength, planes),
             f"orthogonalize: strength {self.strength}",
             "use a lower strength",
         )
@@ -875,6 +877,26 @@ class MoveVertex(Command):
         geometries = {name: body.geometry for name, body in project.geometries.items()}
         moved = move(blocking, self.block, self.vertex, self.xyz, AssociationResolver(geometries))
         return _replace_blocking(project, moved)
+
+
+@dataclass(frozen=True)
+class SymmetryPlane(Command):
+    """Declare a symmetry plane of the current blocking (ADR 0053): *point*
+    on it, *normal* to it. ``premesh`` makes the boundary faces lying on it
+    without an association ``SYMMETRY`` faces; ``orthogonalize`` keeps the
+    lines leaving the wall from the plane in the plane."""
+
+    method: ClassVar[str] = "symmetry_plane"
+    positional: ClassVar[tuple[str, ...]] = ("point", "normal")
+
+    point: tuple[float, float, float]
+    normal: tuple[float, float, float]
+
+    def apply(self, project: Project, ctx: Context) -> Undo:
+        from shore.mesh.blocking import symmetry
+
+        new = symmetry(project.require_blocking("symmetry_plane"), self.point, self.normal)
+        return _replace_blocking(project, new)
 
 
 @dataclass(frozen=True)

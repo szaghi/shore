@@ -79,6 +79,21 @@ the free faces as the chimera code `40`:
 `FaceBC.SYMMETRY` round-trips through `.adjacency.json` and is written as
 `BCSymmetryPlane` by the CGNS export ([Export CGNS and Plot3D](/cookbook/exports)).
 
+## Declare the symmetry plane of a blocking
+
+A blocked half model declares its cut plane once, after `create_blocking`:
+
+```python
+p.create_blocking(53, 33, 25, vmin=(-6, -4, 0), vmax=(7, 4, 6))
+p.symmetry_plane((0, 0, 0), (0, 0, 1))
+```
+
+`premesh` then makes the faces on the plane SYMMETRY faces, and
+`orthogonalize` keeps the wall-normal lines that start on it in it
+([ADR 0053](/adr/0053-blocking-symmetry-planes)); without the declaration
+those faces are FREE and drift off the plane. [Blocking a wing–body](/tutorials/blocking)
+uses it.
+
 ## See also
 
 - [Intersection curves](/concepts/intersection-curves),

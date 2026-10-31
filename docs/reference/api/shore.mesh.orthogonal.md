@@ -18,14 +18,16 @@ keep their arc-length fractions, the wall and the opposite face stay put.
 The normal of a wall node is the mean of the grid normals of every wall face
 holding it (each oriented into its block), keyed by the node's exact
 coordinates: blocks sharing a wall node use the same normal, and blocks
-sharing a face build its lines identically, so seams stay closed.
+sharing a face build its lines identically, so seams stay closed. On a
+symmetry plane (ADR 0053) the normal of a wall node lying on the plane is
+projected into it, so the lines from the plane stay in the plane.
 
 ## `grid_normals` <Badge type="info" text="function" /> {#grid_normals}
 
 ```python
 grid_normals(surface: np.ndarray) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L34">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L37">source</a>
 
 Unit normals (na, nb, 3) of a structured surface grid (na, nb, 3).
 
@@ -34,7 +36,7 @@ Unit normals (na, nb, 3) of a structured surface grid (na, nb, 3).
 ```python
 wall_normals(blocks: list[HexBlock]) -> dict[bytes, np.ndarray]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L40">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L43">source</a>
 
 Per wall node, by its coordinates' bytes: the mean grid normal of the
 wall faces holding it, each oriented into its block.
@@ -49,7 +51,7 @@ hermite_lines(
     samples: int = 64,
 ) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L63">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L66">source</a>
 
 Lines (m, n, 3), wall node first, reshaped to leave along *normals* (m, 3).
 
@@ -58,22 +60,38 @@ Each line becomes the cubic Hermite curve from its wall node (tangent
 the old last segment's direction); its nodes keep their arc-length
 fractions, measured on the old line and placed on the curve.
 
+## `in_planes` <Badge type="info" text="function" /> {#in_planes}
+
+```python
+in_planes(normals: dict[bytes, np.ndarray], planes: Sequence[Any], tol: float) -> None
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L106">source</a>
+
+Project, in place, the normal of every node lying on one of *planes*
+((point, unit normal) pairs, within *tol*) into that plane.
+
 ## `orthogonal_walls` <Badge type="info" text="function" /> {#orthogonal_walls}
 
 ```python
-orthogonal_walls(blocks: list[HexBlock], strength: float = 1.0) -> list[str]
+orthogonal_walls(
+    blocks: list[HexBlock],
+    strength: float = 1.0,
+    planes: Sequence[Any] = (),
+) -> list[str]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L103">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L119">source</a>
 
 Reshape, in place, the lines of every block with exactly one WALL face
 to leave the wall along its normal; the labels of the blocks changed.
+*planes*: symmetry planes ((point, unit normal), ADR 0053) whose wall
+nodes keep their lines in the plane.
 
 ## `layer_fractions` <Badge type="info" text="function" /> {#layer_fractions}
 
 ```python
 layer_fractions(length: float, n: int, first_step: float) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L141">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L169">source</a>
 
 Arc-length fractions (n,) of geometric cells from the wall, the first
 *first_step* long, over a line of *length* (one line at a time, so a
@@ -84,7 +102,7 @@ line's answer does not depend on the others).
 ```python
 wall_layer(blocks: list[HexBlock], first_step: float) -> list[str]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L157">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/orthogonal.py#L185">source</a>
 
 Redistribute, in place, the nodes of every line across the wall of each
 block with one WALL face: geometric cells from the wall, the first

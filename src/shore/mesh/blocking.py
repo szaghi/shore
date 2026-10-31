@@ -68,6 +68,7 @@ def face_corners(face: str) -> np.ndarray:
 FACES = tuple(FACE_ALONG_AXES)
 
 EntityKey = tuple  # ("v", id) | ("e", a, b) a < b | ("f", a, b, c, d) sorted
+Plane = tuple[tuple[float, float, float], tuple[float, float, float]]  # (point, unit normal)
 
 
 @dataclass
@@ -79,6 +80,7 @@ class Blocking:
     nodes: dict[tuple[int, int], int]  # edge (a < b) -> node count
     associations: dict[EntityKey, Association] = field(default_factory=dict)
     next_label: int = 1
+    planes: tuple[Plane, ...] = ()  # symmetry planes (ADR 0053)
 
     def copy(self) -> Blocking:
         return dataclasses.replace(
@@ -501,6 +503,40 @@ def associate(
 # -- premesh ------------------------------------------------------------------------
 
 
+def symmetry(blocking: Blocking, point: Any, normal: Any) -> Blocking:
+    """A copy of *blocking* with the symmetry plane through *point* (ADR 0053).
+
+    ``premesh`` makes the unassociated boundary faces lying on the plane
+    ``SYMMETRY`` faces, and ``orthogonal_walls`` keeps the lines leaving the
+    wall from the plane in it.
+    """
+    p = np.asarray(point, dtype=float).reshape(-1)
+    n = np.asarray(normal, dtype=float).reshape(-1)
+    if p.shape != (3,) or n.shape != (3,) or not np.all(np.isfinite([*p, *n])):
+        raise ParameterError(
+            f"symmetry_plane: point and normal must be 3 numbers each, got {point!r}, {normal!r}."
+        )
+    length = float(np.linalg.norm(n))
+    if not length > 0.0:
+        raise ParameterError("symmetry_plane: the normal must not be zero.")
+    plane: Plane = (tuple(float(x) for x in p), tuple(float(x) for x in n / length))  # type: ignore[assignment]
+    out = blocking.copy()
+    out.planes = (*blocking.planes, plane)
+    return out
+
+
+def on_plane(points: np.ndarray, plane: Plane, tol: float) -> np.ndarray:
+    """Which of *points* (..., 3) lie within *tol* of *plane*."""
+    p, n = np.asarray(plane[0]), np.asarray(plane[1])
+    return np.abs((np.asarray(points) - p) @ n) <= tol
+
+
+def plane_tolerance(points: np.ndarray) -> float:
+    """1e-9 of the extent of *points*: their distance to a plane they lie on."""
+    pts = np.asarray(points).reshape(-1, 3)
+    return 1e-9 * max(float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0))), 1e-300)
+
+
 def effective_associations(blocking: Blocking) -> dict[EntityKey, Association]:
     """Every entity's association: its own, else inherited (module docstring)."""
     own = blocking.associations
@@ -670,12 +706,18 @@ def _face_view(x: np.ndarray, name: str) -> np.ndarray:
 
 def _wire(blocking: Blocking, blocks: list[HexBlock], assoc: dict[EntityKey, Any]) -> None:
     """Face BCs, seams with their axis maps, and associations of the premeshed blocks."""
+    tol = plane_tolerance(blocking.points)
     for fkey, owners in blocking.faces().items():
         if len(owners) > 2:
             raise ParameterError(f"premesh: face {fkey} belongs to {len(owners)} blocks.")
         if len(owners) == 1:
             ((b, name),) = owners
             bc = FaceBC.WALL if ("f", *fkey) in assoc else FaceBC.FREE
+            corners = blocking.points[list(fkey)]
+            if bc is FaceBC.FREE and any(
+                on_plane(corners, pl, tol).all() for pl in blocking.planes
+            ):
+                bc = FaceBC.SYMMETRY
             blocks[b]._set_face_bc(name, bc)  # type: ignore[arg-type]
             continue
         (b0, f0), (b1, f1) = owners

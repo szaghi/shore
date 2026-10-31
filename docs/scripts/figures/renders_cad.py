@@ -119,6 +119,7 @@ def wing_body_stages() -> WingBody:
     p = Project()
     p.load_geometry(step, name="wb")
     p.create_blocking(53, 33, 25, vmin=(-6, -4, 0), vmax=(7, 4, 6))
+    p.symmetry_plane((0, 0, 0), (0, 0, 1))  # ADR 0053
     corner = (-5.99, -3.99, 0.01)
     for axis, cuts in (("i", (-3.0, -0.3, 1.3, 3.0)), ("j", (-0.8, -0.3, 0.3, 0.8)),
                        ("k", (0.8, 3.3))):  # fmt: skip
@@ -248,9 +249,8 @@ def _plane_faces(grid: list, box=None):
     for n, (_, _, nodes) in enumerate(grid):
         for name in FACES:
             g = _face(nodes, name)
-            # within 0.05 of the plane: orthogonalize() moves some plane nodes
-            # off it by up to 0.026 (reported; the plane is not a symmetry BC here)
-            if np.abs(g[..., 2]).min() > 1e-12 or np.abs(g[..., 2]).max() > 0.05:
+            # the faces on the declared symmetry plane z = 0 (ADR 0053)
+            if np.abs(g[..., 2]).max() > 1e-9:
                 continue
             if box is not None:
                 lo, hi = g.reshape(-1, 3).min(axis=0), g.reshape(-1, 3).max(axis=0)

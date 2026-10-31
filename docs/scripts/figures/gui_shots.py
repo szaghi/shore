@@ -133,6 +133,8 @@ class Driver:
         w.run_form("create_blocking", {"ni": "53", "nj": "33", "nk": "25",
                                        "vmin": "(-6, -4, 0)", "vmax": "(7, 4, 6)"})  # fmt: skip
         self._ok()
+        w.run_form("symmetry_plane", {"point": "(0, 0, 0)", "normal": "(0, 0, 1)"})
+        self._ok()
         corner = np.array([-5.99, -3.99, 0.01])
         for axis, cuts in (("i", (-3.0, -0.3, 1.3, 3.0)), ("j", (-0.8, -0.3, 0.3, 0.8)),
                            ("k", (0.8, 3.3))):  # fmt: skip

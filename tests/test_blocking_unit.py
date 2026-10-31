@@ -222,3 +222,36 @@ def test_move_vertex():
     a = bk.associate(b, "b0", "k_hi", Association.body())
     with pytest.raises(ParameterError):  # associated, but no geometry to project on
         bk.move(a, "b0", "v7", (1, 1, 1))
+
+
+def test_symmetry_plane_declared_and_copied():  # ADR 0053
+    b = bk.symmetry(bk.box((0, 0, 0), (1, 1, 1), 3, 3, 3), (0, 0, 0), (0, 0, 2))
+    assert b.planes == (((0.0, 0.0, 0.0), (0.0, 0.0, 1.0)),)
+    assert b.copy().planes == b.planes
+    assert bk.symmetry(b, (0, 0, 0), (1, 0, 0)).planes[1] == ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+    for point, normal in (((0, 0, 0), (0, 0, 0)), ((0, 0), (0, 0, 1)), ((0, 0, 0), (np.nan, 0, 1))):
+        with pytest.raises(ParameterError):
+            bk.symmetry(b, point, normal)
+
+
+def test_premesh_symmetry_faces():  # ADR 0053
+    b = bk.symmetry(bk.box((0, 0, 0), (1, 1, 1), 3, 3, 3), (0, 0, 0), (0, 0, 1))
+    (block,) = bk.premesh(b, None)
+    assert {f.name: f.bc.name for f in block.faces()} == {
+        "i_lo": "FREE", "i_hi": "FREE", "j_lo": "FREE", "j_hi": "FREE",
+        "k_lo": "SYMMETRY", "k_hi": "FREE",
+    }  # fmt: skip
+    (plain,) = bk.premesh(bk.box((0, 0, 0), (1, 1, 1), 3, 3, 3), None)
+    assert all(f.bc.name == "FREE" for f in plain.faces())
+
+
+def test_in_planes_projects_normals_on_the_plane():  # ADR 0053
+    from shore.mesh.orthogonal import in_planes
+
+    on = np.array([1.0, 2.0, 0.0])
+    off = np.array([1.0, 2.0, 0.5])
+    tilted = np.array([0.6, 0.0, 0.8])
+    normals = {on.tobytes(): tilted.copy(), off.tobytes(): tilted.copy()}
+    in_planes(normals, [((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))], 1e-9)
+    np.testing.assert_array_equal(normals[on.tobytes()], [1.0, 0.0, 0.0])
+    np.testing.assert_array_equal(normals[off.tobytes()], tilted)

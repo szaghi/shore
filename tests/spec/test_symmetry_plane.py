@@ -115,7 +115,6 @@ def bc(block, name):
 
 
 class TestSymmetryPlane:
-    @PENDING
     def test_y1_symmetry_faces(self, step):
         p = build(step)
         p.undo()  # wall_layer
@@ -127,7 +126,6 @@ class TestSymmetryPlane:
         assert {(id(b), f) for b, f in sym} == {(id(b), f) for b, f in flat}
         assert all(bc(b, f) != "FREE" for b, f in flat)
 
-    @PENDING
     def test_y2_stays_on_plane(self, built):
         worst = 0.0
         for b in built.mesh.blocks:
@@ -136,7 +134,6 @@ class TestSymmetryPlane:
                     worst = max(worst, float(np.abs(wb.face_nodes(b.nodes, f.name)[..., 2]).max()))
         assert worst <= 1e-12
 
-    @PENDING
     def test_y3_quality_as_adr_0051(self, built):
         from shore.geometry.base import BODY
 
@@ -153,7 +150,6 @@ class TestSymmetryPlane:
                     nxt = wb.next_nodes(b.nodes, f.name).reshape(-1, 3)
                     np.testing.assert_allclose(np.linalg.norm(nxt - w, axis=1), 2e-3, rtol=1e-9)
 
-    @PENDING
     def test_y4_outputs(self, built, tmp_path):
         import CGNS.MAP
 
@@ -176,7 +172,6 @@ class TestSymmetryPlane:
         faces = read_adjacency_json(tmp_path / "wb.adjacency.json")
         assert str(faces).count("SYMMETRY") >= n_sym
 
-    @PENDING
     def test_y5_journal_replay_undo(self, built, tmp_path):
         from shore.project.project import run_journal
 
@@ -196,7 +191,6 @@ class TestSymmetryPlane:
         r.undo()
         assert r.blocking.planes == ()
 
-    @PENDING
     def test_y6_refusals(self):
         from shore.project import Project
 

@@ -109,6 +109,7 @@ project. A command that raises leaves the project as it was.
 | `ogrid(blocks=(), *, faces=(), exclude=(), factor=0.5, nodes=5)` | `Ogrid` | Insert an O-grid layer on faces of a block set. | [0043](/adr/0043-ogrid-insertion) |
 | `move_vertex(block, vertex, xyz)` | `MoveVertex` | Move a blocking vertex, onto its association if it has one. | [0045](/adr/0045-move-blocking-vertex) |
 | `associate_blocking(block, entity, geometry="body", kind="body", indices=())` | `AssociateBlocking` | `associate` for blocking faces, edges and vertices. | [0042](/adr/0042-blocking-skeleton-premesh), [0049](/adr/0049-stl-feature-curves) |
+| `symmetry_plane(point, normal)` | `SymmetryPlane` | Declare a symmetry plane of the blocking: premesh makes the unassociated boundary faces on it SYMMETRY faces, `orthogonalize` keeps the lines starting on it in it. | [0053](/adr/0053-blocking-symmetry-planes) |
 | `premesh(exact=False)` | `Premesh` | Make the component's mesh from its blocking. | [0042](/adr/0042-blocking-skeleton-premesh) |
 
 ### Collars and surface grids
