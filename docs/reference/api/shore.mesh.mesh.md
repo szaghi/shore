@@ -12,7 +12,7 @@ Mesh: multi-block orchestrator — projection, marching, I/O.
 ```python
 check_blend_normals_k(blend_normals_k: int | None) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L58">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L59">source</a>
 
 Refuse the removed `blend_normals_k` (ADR 0034); warn on an explicit 0.
 
@@ -21,7 +21,7 @@ Refuse the removed `blend_normals_k` (ADR 0034); warn on an explicit 0.
 ```python
 Mesh(body: Body | None, blocks: list[HexBlock], topology: Topology)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L259">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L260">source</a>
 
 Multi-block structured mesh.
 
@@ -36,7 +36,7 @@ Multi-block structured mesh.
 ```python
 geometries: dict[str, Geometry]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L290">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L291">source</a>
 
 Geometry map for associations (`"body"` when the mesh has one).
 
@@ -45,7 +45,7 @@ Geometry map for associations (`"body"` when the mesh has one).
 ```python
 snap(exact: bool = False) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L294">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L295">source</a>
 
 Project every associated node onto its geometry (ADR 0003).
 
@@ -64,7 +64,7 @@ from_array(
     **kwargs,
 ) -> Mesh
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L306">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L307">source</a>
 
 Build a Mesh from a pre-built surface array (no STL).
 
@@ -91,7 +91,7 @@ called.
 ```python
 from_stl(path: str | Path, topology: Topology, *args: object, **kwargs: object) -> Mesh
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L352">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L353">source</a>
 
 Alias of `from_file` (which also reads STEP/IGES/BREP).
 
@@ -114,7 +114,7 @@ from_file(
     spacing_k: Spacing1D | None = None,
 ) -> Mesh
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L359">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L360">source</a>
 
 Load a body, project to surface, wire blocks.  Does not march.
 
@@ -146,7 +146,7 @@ march(
     march_scheme: str = 'algebraic',
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L473">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L474">source</a>
 
 Extrude all blocks simultaneously by hyperbolic marching.
 
@@ -179,7 +179,7 @@ Fills `block.nodes[:, :, 1:, :]` in place for every block.
 ```python
 write_geo(stem: str | Path) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1065">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1069">source</a>
 
 Write each block as a separate `<stem>_<label>.geo` file.
 
@@ -188,7 +188,7 @@ Write each block as a separate `<stem>_<label>.geo` file.
 ```python
 write_vtk(stem: str | Path, with_jacobian: bool = True) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1073">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1077">source</a>
 
 Write all blocks as a single PyVista MultiBlock `.vtm` file.
 
@@ -202,7 +202,7 @@ Write all blocks as a single PyVista MultiBlock `.vtm` file.
 ```python
 info() -> dict
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1097">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1101">source</a>
 
 Return a dict of mesh metadata.
 
@@ -215,7 +215,7 @@ Return a dict of mesh metadata.
 ```python
 check(warn_threshold: float = 1e-06) -> dict
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1121">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1125">source</a>
 
 Check cell Jacobians for all blocks layer by layer.
 
@@ -236,7 +236,7 @@ Check cell Jacobians for all blocks layer by layer.
 ```python
 export(stem: str | Path, with_jacobian: bool = True) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1160">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1164">source</a>
 
 Export the mesh to VTK MultiBlock format (.vtm) for ParaView.
 
@@ -259,7 +259,7 @@ view(
     colorby: str = 'Jacobian',
 ) -> object
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1178">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/mesh.py#L1182">source</a>
 
 Open an interactive PyVista window showing all blocks.
 

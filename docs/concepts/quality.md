@@ -89,6 +89,7 @@ with the hyperbolic scheme:
 import warnings
 
 from shore import quality
+from shore.exceptions import MarchingError
 from shore.project import Project
 from shore.shapes import sphere
 
@@ -99,7 +100,11 @@ for scheme in ("algebraic", "hyperbolic"):
     p = Project()
     p.load_geometry("ball.stl")
     p.build_topology("cubed_sphere", nk=21, ds=0.005, growth=1.15, ni=33, nj=64)
-    p.march(march_scheme=scheme)
+    try:
+        p.march(march_scheme=scheme)
+    except MarchingError as err:
+        print(f"{scheme:10s} refused: {str(err).split(' Cubed')[0]}")
+        continue
     s = quality.summary(p.mesh.blocks)
     print(f"{scheme:10s} min SJ {s['scaled_jacobian_min']:.3f}  folded {s['folded_cells']}"
           f"  wall angle mean/max {s['wall_orthogonality_mean_deg']:.2f}"
@@ -107,15 +112,19 @@ for scheme in ("algebraic", "hyperbolic"):
 ```
 
 ```text
-algebraic  min SJ -0.209  folded 16  wall angle mean/max 6.56/15.07
+algebraic  refused: Folded cell (scaled Jacobian -0.089) in cap_north at layer k=19, cell (15, 15), 4 folded in the layer.
 hyperbolic min SJ 0.488  folded 0  wall angle mean/max 0.40/4.22
 ```
 
-The algebraic march completes, yet 16 cells are folded: they are the corner
-cells of the two polar caps (the 3-block junctions) in the two outermost
-layers. The marcher's own guard checks the one-corner Jacobian of each new
-layer and leaves the cap-corner cells out by design, so it does not see
-them. Run `summary` on every grid you hand to a solver.
+With the default 9° cap the algebraic march folds the corner cells of the
+polar caps (the 3-block junctions) in its outer layers. Since
+[ADR 0052](/adr/0052-no-silent-cap-folds) the cubed-sphere march judges
+every new cell by its scaled Jacobian, corner cells included, and refuses
+the grid; before, its one-corner guard left those cells out and returned
+16 folded cells here. A larger cap (`theta_cap` 30° or more) or the
+hyperbolic scheme marches this body cleanly. The other topologies still
+use the one-corner guard: run `summary` on every grid you hand to a
+solver.
 
 ## What the acceptance specs require
 

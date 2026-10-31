@@ -392,12 +392,18 @@ class TestMarchingNoNegativeJacobian:
 
     @pytest.mark.parametrize("nk", [5, 10, 20])
     def test_march(self, sphere_stl, nk):
+        # a 30 deg cap: with the default 9 deg cap the nk=20 march folds its
+        # cap-corner cells, which ADR 0052 refuses (tests/spec/test_cap_folds.py)
+        from shore.quality import scaled_jacobian
+
         m = Mesh.from_stl(
             sphere_stl,
             topology=CubedSphereTopology(),
             ni=20,
             nj=32,
             nk=nk,
+            theta_cap=float(np.deg2rad(30.0)),
             spacing_k=Spacing1D(law="geometric", ds=0.02, growth=1.1),
         )
         m.march(ds=0.02, growth=1.1)
+        assert min(float(scaled_jacobian(b.nodes).min()) for b in m.blocks) > 0.0

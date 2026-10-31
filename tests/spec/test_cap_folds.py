@@ -106,12 +106,10 @@ def refused(p, scheme):
 
 
 class TestRefused:
-    @PENDING
     def test_f1_default_cap_algebraic(self, bodies):
         msg = refused(project(bodies / "sphere.stl"), "algebraic")
         assert "theta_cap" in msg and "hyperbolic" in msg
 
-    @PENDING
     def test_f2_cli(self, bodies, tmp_path):
         from shore.cli import app
 
@@ -124,11 +122,9 @@ class TestRefused:
         assert "fold" in r.output.lower()
         assert not list(tmp_path.glob("*.geo"))
 
-    @PENDING
     def test_f3_capsule_45_hyperbolic(self, bodies):
         refused(project(bodies / "capsule.stl", 45), "hyperbolic")
 
-    @PENDING
     def test_f4_few_folds(self, bodies):
         refused(project(bodies / "sphere.stl", None, ni=41, nj=64, nk=31, ds=1e-3), "algebraic")
 

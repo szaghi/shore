@@ -23,6 +23,7 @@ from shore.mesh.face import FaceBC
 from shore.mesh.spacing import Spacing1D
 from shore.mesh.topology import Topology
 from shore.topology.sphere_cap import (
+    _check_folds,
     _check_jacobian,
     _march_cap_layer,
     _march_one_layer,
@@ -730,6 +731,7 @@ class Mesh:
                     exclude_corners=True,
                     tol=-1e-6,
                 )
+                _check_folds(blk.nodes[:, :, k, :], new_subs[q], blk.label, k)
                 jmin_global = min(jmin_global, jmin)
 
             # --- 2. Extract pole rows for cap boundary pins ---
@@ -781,6 +783,8 @@ class Mesh:
                 exclude_corners=True,
                 tol=-1e-6,
             )
+            _check_folds(cap_north.nodes[:, :, k, :], new_cap_north, "cap_north", k)
+            _check_folds(cap_south.nodes[:, :, k, :], new_cap_south, "cap_south", k)
             jmin_global = min(jmin_global, jmin_cap_n, jmin_cap_s)
 
             # --- 4. Commit ---

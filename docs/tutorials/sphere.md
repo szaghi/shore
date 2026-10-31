@@ -75,10 +75,10 @@ UserWarning: Cap radial step (~0.0138 rad) is incompatible with equator 'uniform
 (natural first step ~0.0884 rad); falling back to unpinned spacing. ...
 ```
 
-Worse, the march then folds 40 cells at the cap corners and `shore mesh`
-still exits with code 0. `shore check` on `sphere_cap_north.geo` and
-`sphere_cap_south.geo` reports `✗ Inverted cells detected.` Always check
-(step 4).
+Worse, the march then folds cells at the cap corners, so `shore mesh`
+stops with `Folded cell ... in cap_north` and writes nothing
+([ADR 0052](/adr/0052-no-silent-cap-folds)). A cap of 30° or more marches
+this sphere cleanly.
 :::
 
 <Figure name="sphere-blocks" caption="The k = 0 wall of the cubed sphere, one colour per block: four equatorial blocks and the north cap." />
@@ -250,7 +250,8 @@ executed as Python: replay only journals you trust.
 - `shore mesh` / `Project.build_topology` + `march` build a cubed sphere;
   `--nj` is the equator-ring node count, split four ways.
 - `--theta-cap` decides whether the cap and equator spacings join with C1
-  continuity; the 9° default folds cap-corner cells without failing the run.
+  continuity; with the 9° default the march folds cap-corner cells and is
+  refused.
 - `ds`, `growth` and `nk` fix the wall spacing and the thickness; a tanh law
   fixes the thickness instead.
 - `shore check` finds folded cells; `shore.quality.summary` finds skewed and
