@@ -26,7 +26,7 @@ project's directory).
 ```python
 resolve_input(path: str) -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L72">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L79">source</a>
 
 *path*, relative to `input_root` when that is set and *path* is relative.
 
@@ -35,7 +35,7 @@ resolve_input(path: str) -> str
 ```python
 class Cancelled(ShoreError)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L97">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L104">source</a>
 
 Raised inside a long command when its `CancelToken` was set.
 
@@ -44,7 +44,7 @@ Raised inside a long command when its `CancelToken` was set.
 ```python
 CancelToken()
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L101">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L108">source</a>
 
 Cooperative cancellation flag, checked once per layer / sweep.
 
@@ -53,21 +53,21 @@ Cooperative cancellation flag, checked once per layer / sweep.
 ```python
 cancel() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L107">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L114">source</a>
 
 ### `CancelToken.check` <Badge type="info" text="method" /> {#CancelToken-check}
 
 ```python
 check() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L110">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L117">source</a>
 
 ## `Context` <Badge type="tip" text="dataclass" /> {#Context}
 
 ```python
 Context(progress: ProgressFn | None = None, cancel: CancelToken | None = None)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L116">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L123">source</a>
 
 Per-execution hooks: progress reporting and cancellation.
 
@@ -76,21 +76,21 @@ Per-execution hooks: progress reporting and cancellation.
 ```python
 report(fraction: float, message: str = '') -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L122">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L129">source</a>
 
 ### `Context.check` <Badge type="info" text="method" /> {#Context-check}
 
 ```python
 check() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L126">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L133">source</a>
 
 ## `Undo` <Badge type="tip" text="dataclass" /> {#Undo}
 
 ```python
 Undo(restore: Callable[[], None])
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L132">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L139">source</a>
 
 How to revert one applied command.
 
@@ -99,7 +99,7 @@ How to revert one applied command.
 ```python
 UndoCache(root: Path | None = None)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L138">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L145">source</a>
 
 On-disk store of node-array snapshots, deleted with the project.
 
@@ -108,7 +108,7 @@ On-disk store of node-array snapshots, deleted with the project.
 ```python
 snapshot(mesh: Mesh) -> Callable[[], None]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L145">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L152">source</a>
 
 Save every block's nodes; return a function restoring them in place.
 
@@ -117,14 +117,14 @@ Save every block's nodes; return a function restoring them in place.
 ```python
 close() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L159">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L166">source</a>
 
 ## `Command` <Badge type="tip" text="class" /> {#Command}
 
 ```python
 class Command(ABC)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L188">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L195">source</a>
 
 Base of all commands. Subclasses are frozen dataclasses.
 
@@ -133,14 +133,14 @@ Base of all commands. Subclasses are frozen dataclasses.
 ```python
 apply(project: Project, ctx: Context) -> Undo | None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L197">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L204">source</a>
 
 ### `Command.to_source` <Badge type="info" text="method" /> {#Command-to_source}
 
 ```python
 to_source() -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L199">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L206">source</a>
 
 `p.<method>(...)` with positional fields and non-default keywords.
 
@@ -155,7 +155,7 @@ LoadGeometry(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L215">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L222">source</a>
 
 Load a geometry (STL or STEP/IGES/BREP) under *name*.
 
@@ -167,7 +167,7 @@ components built on it (ADR 0016).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L231">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L238">source</a>
 
 ## `UseComponent` <Badge type="tip" text="dataclass" /> {#UseComponent}
 
@@ -175,7 +175,7 @@ apply(project: Project, ctx: Context) -> Undo
 UseComponent(name: str)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L250">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L257">source</a>
 
 Make *name* the current component, creating it empty if new (ADR 0016).
 
@@ -184,7 +184,7 @@ Make *name* the current component, creating it empty if new (ADR 0016).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L258">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L265">source</a>
 
 ## `BuildTopology` <Badge type="tip" text="dataclass" /> {#BuildTopology}
 
@@ -203,7 +203,7 @@ BuildTopology(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L272">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L279">source</a>
 
 Build the topology's blocks on the body (`shore mesh` stage 2).
 
@@ -216,14 +216,14 @@ constructor's arguments (`ch`, `oh`); *params* go to its `build`.
 ```python
 to_source() -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L294">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L301">source</a>
 
 ### `BuildTopology.apply` <Badge type="info" text="method" /> {#BuildTopology-apply}
 
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L298">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L305">source</a>
 
 ## `BuildState` <Badge type="tip" text="dataclass" /> {#BuildState}
 
@@ -239,7 +239,7 @@ BuildState(
     geometries: tuple[str, ...] = (),
 )
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L324">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L331">source</a>
 
 What later commands need from the command that made the mesh.
 
@@ -255,7 +255,7 @@ March(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L345">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L352">source</a>
 
 Extrude all blocks from the wall (`shore mesh` stage 3).
 
@@ -264,7 +264,7 @@ Extrude all blocks from the wall (`shore mesh` stage 3).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L356">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L363">source</a>
 
 ## `Snap` <Badge type="tip" text="dataclass" /> {#Snap}
 
@@ -272,7 +272,7 @@ apply(project: Project, ctx: Context) -> Undo
 Snap(exact: bool = False)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L390">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L397">source</a>
 
 Project associated nodes onto their geometry (ADR 0003).
 
@@ -281,7 +281,7 @@ Project associated nodes onto their geometry (ADR 0003).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L397">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L404">source</a>
 
 ## `Associate` <Badge type="tip" text="dataclass" /> {#Associate}
 
@@ -295,7 +295,7 @@ Associate(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L470">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L477">source</a>
 
 Associate a block face, edge or vertex with geometry (ADR 0003, 0039).
 
@@ -313,14 +313,14 @@ only on `snap`.
 ```python
 to_source() -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L492">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L499">source</a>
 
 ### `Associate.apply` <Badge type="info" text="method" /> {#Associate-apply}
 
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L496">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L503">source</a>
 
 ## `Redistribute` <Badge type="tip" text="dataclass" /> {#Redistribute}
 
@@ -337,7 +337,7 @@ Redistribute(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L571">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L578">source</a>
 
 Redistribute the nodes along a block edge's axis (ADR 0041).
 
@@ -355,7 +355,7 @@ run `snap` after.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L596">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L603">source</a>
 
 ## `Orthogonalize` <Badge type="tip" text="dataclass" /> {#Orthogonalize}
 
@@ -363,7 +363,7 @@ apply(project: Project, ctx: Context) -> Undo
 Orthogonalize(strength: float = 1.0)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L620">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L627">source</a>
 
 Make the grid lines leave the walls along their normal (ADR 0048).
 
@@ -378,7 +378,7 @@ inverted (lower *strength*).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L634">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L641">source</a>
 
 ## `WallLayer` <Badge type="tip" text="dataclass" /> {#WallLayer}
 
@@ -386,7 +386,7 @@ apply(project: Project, ctx: Context) -> Undo
 WallLayer(first_step: float)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L680">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L687">source</a>
 
 Cluster the nodes towards the walls (ADR 0050): on every line across
 the wall of each block with one WALL face, geometric cells from the wall
@@ -399,7 +399,7 @@ line cannot hold it or a valid block would invert.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L692">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L699">source</a>
 
 ## `FillFace` <Badge type="tip" text="dataclass" /> {#FillFace}
 
@@ -413,7 +413,7 @@ FillFace(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L704">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L711">source</a>
 
 Rebuild one block face from its boundary on a CAD surface (ADR 0007).
 
@@ -426,7 +426,7 @@ the loaded geometry.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L721">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L728">source</a>
 
 ## `CreateBlocking` <Badge type="tip" text="dataclass" /> {#CreateBlocking}
 
@@ -442,7 +442,7 @@ CreateBlocking(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L749">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L756">source</a>
 
 Start the current component's blocking with one block (ADR 0042).
 
@@ -456,7 +456,7 @@ component's blocking; its mesh changes only on `premesh`.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L769">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L776">source</a>
 
 ## `SplitBlocking` <Badge type="tip" text="dataclass" /> {#SplitBlocking}
 
@@ -464,7 +464,7 @@ apply(project: Project, ctx: Context) -> Undo
 SplitBlocking(block: str, axis: str, fraction: float)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L797">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L804">source</a>
 
 Cut block *block* of the blocking across *axis* at the node nearest
 *fraction* of it, and every block sharing a cut edge with it (ADR 0042).
@@ -475,7 +475,7 @@ The low part keeps the label; the high part is `b<n>`, *n* counting up.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L809">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L816">source</a>
 
 ## `DeleteBlocks` <Badge type="tip" text="dataclass" /> {#DeleteBlocks}
 
@@ -483,7 +483,7 @@ apply(project: Project, ctx: Context) -> Undo
 DeleteBlocks(blocks: tuple[str, ...])
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L817">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L824">source</a>
 
 Remove blocks *blocks* from the blocking; the faces they leave become
 boundary faces (ADR 0042).
@@ -493,7 +493,7 @@ boundary faces (ADR 0042).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L826">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L833">source</a>
 
 ## `Ogrid` <Badge type="tip" text="dataclass" /> {#Ogrid}
 
@@ -507,7 +507,7 @@ Ogrid(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L834">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L841">source</a>
 
 Insert an O-grid in the blocking (ADR 0043): a layer of blocks on the
 faces of the block set *blocks* (every block when empty), *faces* or all
@@ -519,7 +519,7 @@ the set's boundary faces less *exclude* (`(block, face)` pairs); see
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L849">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L856">source</a>
 
 ## `MoveVertex` <Badge type="tip" text="dataclass" /> {#MoveVertex}
 
@@ -527,7 +527,7 @@ apply(project: Project, ctx: Context) -> Undo
 MoveVertex(block: str, vertex: str, xyz: tuple[float, float, float])
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L860">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L867">source</a>
 
 Move a blocking vertex (ADR 0045): vertex *vertex* (`v0`..`v7`) of
 block *block* to *xyz*, projected onto its association (own or inherited)
@@ -538,7 +538,7 @@ when it has one, so an associated vertex slides on its geometry.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L872">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L879">source</a>
 
 ## `SymmetryPlane` <Badge type="tip" text="dataclass" /> {#SymmetryPlane}
 
@@ -546,7 +546,7 @@ apply(project: Project, ctx: Context) -> Undo
 SymmetryPlane(point: tuple[float, float, float], normal: tuple[float, float, float])
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L883">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L890">source</a>
 
 Declare a symmetry plane of the current blocking (ADR 0053): *point*
 on it, *normal* to it. `premesh` makes the boundary faces lying on it
@@ -558,7 +558,7 @@ lines leaving the wall from the plane in the plane.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L895">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L902">source</a>
 
 ## `AssociateBlocking` <Badge type="tip" text="dataclass" /> {#AssociateBlocking}
 
@@ -572,7 +572,7 @@ AssociateBlocking(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L903">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L910">source</a>
 
 Associate a face, edge or vertex of a blocking block with geometry
 (ADR 0042): as `associate` (ADR 0039), on the blocking. Entities without
@@ -583,14 +583,14 @@ an association of their own inherit one on `premesh`.
 ```python
 to_source() -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L917">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L924">source</a>
 
 ### `AssociateBlocking.apply` <Badge type="info" text="method" /> {#AssociateBlocking-apply}
 
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L921">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L928">source</a>
 
 ## `Premesh` <Badge type="tip" text="dataclass" /> {#Premesh}
 
@@ -598,7 +598,7 @@ apply(project: Project, ctx: Context) -> Undo
 Premesh(exact: bool = False)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L933">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L940">source</a>
 
 Make the current component's mesh from its blocking (ADR 0042):
 edges, faces and blocks by TFI, projected onto their associations
@@ -609,7 +609,7 @@ edges, faces and blocks by TFI, projected onto their associations
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L942">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L949">source</a>
 
 ## `WriteGeo` <Badge type="tip" text="dataclass" /> {#WriteGeo}
 
@@ -617,7 +617,7 @@ apply(project: Project, ctx: Context) -> Undo
 WriteGeo(stem: str, per_block: bool = False)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L963">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L970">source</a>
 
 Write `.geo` files (output only).
 
@@ -632,7 +632,7 @@ single non-cubed-sphere block, else `<stem>_<label>.geo` per block
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L980">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L987">source</a>
 
 ## `WriteAdjacency` <Badge type="tip" text="dataclass" /> {#WriteAdjacency}
 
@@ -640,7 +640,7 @@ apply(project: Project, ctx: Context) -> None
 WriteAdjacency(path: str)
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L997">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1004">source</a>
 
 Write the `.adjacency.json` sidecar (output only).
 
@@ -649,7 +649,7 @@ Write the `.adjacency.json` sidecar (output only).
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1006">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1013">source</a>
 
 ## `WriteCgns` <Badge type="tip" text="dataclass" /> {#WriteCgns}
 
@@ -657,7 +657,7 @@ apply(project: Project, ctx: Context) -> None
 WriteCgns(path: str, components: tuple[str, ...] = ())
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1030">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1037">source</a>
 
 Write a CGNS file: a base per component, a zone per block (ADR 0035; output only).
 
@@ -666,7 +666,7 @@ Write a CGNS file: a base per component, a zone per block (ADR 0035; output only
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1040">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1047">source</a>
 
 ## `WritePlot3d` <Badge type="tip" text="dataclass" /> {#WritePlot3d}
 
@@ -674,7 +674,7 @@ apply(project: Project, ctx: Context) -> None
 WritePlot3d(path: str, components: tuple[str, ...] = ())
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1049">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1056">source</a>
 
 Write a multi-block Plot3D grid file of the components' blocks (ADR 0035; output only).
 
@@ -683,7 +683,7 @@ Write a multi-block Plot3D grid file of the components' blocks (ADR 0035; output
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1059">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1066">source</a>
 
 ## `BuildPrimitive` <Badge type="tip" text="dataclass" /> {#BuildPrimitive}
 
@@ -691,7 +691,7 @@ apply(project: Project, ctx: Context) -> None
 BuildPrimitive(kind: str, params: dict[str, Any] = field(default_factory=dict))
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1069">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1076">source</a>
 
 Build a parametric primitive (`shore primitive`); replaces the mesh.
 
@@ -700,14 +700,14 @@ Build a parametric primitive (`shore primitive`); replaces the mesh.
 ```python
 to_source() -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1078">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1085">source</a>
 
 ### `BuildPrimitive.apply` <Badge type="info" text="method" /> {#BuildPrimitive-apply}
 
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1081">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1088">source</a>
 
 ## `BuildTipCap` <Badge type="tip" text="dataclass" /> {#BuildTipCap}
 
@@ -729,7 +729,7 @@ BuildTipCap(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1097">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1104">source</a>
 
 Wing-tip cap from a C-grid body `.geo` (`shore cap-tip`); replaces the mesh.
 
@@ -738,7 +738,7 @@ Wing-tip cap from a C-grid body `.geo` (`shore cap-tip`); replaces the mesh.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1118">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1125">source</a>
 
 ## `BuildCollar` <Badge type="tip" text="dataclass" /> {#BuildCollar}
 
@@ -767,7 +767,7 @@ BuildCollar(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1133">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1140">source</a>
 
 Collar block around the junction of the loaded body and *other* (ADR 0010).
 
@@ -792,7 +792,7 @@ component.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1178">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1185">source</a>
 
 ## `LoadBlocks` <Badge type="tip" text="dataclass" /> {#LoadBlocks}
 
@@ -800,7 +800,7 @@ apply(project: Project, ctx: Context) -> Undo
 LoadBlocks(geo_paths: tuple[str, ...], adjacency: tuple[str, ...] = ())
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1243">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1250">source</a>
 
 Blocks from `.geo` files, wired from adjacency sidecars; replaces the mesh.
 
@@ -809,7 +809,7 @@ Blocks from `.geo` files, wired from adjacency sidecars; replaces the mesh.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1253">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1260">source</a>
 
 ## `Split` <Badge type="tip" text="dataclass" /> {#Split}
 
@@ -817,7 +817,7 @@ apply(project: Project, ctx: Context) -> Undo
 Split(splits: tuple[tuple[str, str, tuple[int, ...]], ...])
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1268">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1275">source</a>
 
 Split blocks by `(label, axis, at)` directives (`shore split`).
 
@@ -826,7 +826,7 @@ Split blocks by `(label, axis, at)` directives (`shore split`).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1276">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1283">source</a>
 
 ## `WriteGrd` <Badge type="tip" text="dataclass" /> {#WriteGrd}
 
@@ -834,7 +834,7 @@ apply(project: Project, ctx: Context) -> Undo
 WriteGrd(path: str, geo_paths: tuple[str, ...])
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1290">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1297">source</a>
 
 Pack `.geo` files into an Xall `.grd` (`shore grd`, output only).
 
@@ -846,7 +846,7 @@ the `.geo` print precision exactly as the file pipeline does.
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1304">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1311">source</a>
 
 ## `WriteCcPar` <Badge type="tip" text="dataclass" /> {#WriteCcPar}
 
@@ -865,7 +865,7 @@ WriteCcPar(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1311">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1318">source</a>
 
 Xall `cc.par` from an adjacency sidecar (`shore cc-par`, output only).
 
@@ -878,7 +878,7 @@ list of marker-box JSON entries.
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1334">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1341">source</a>
 
 ## `WriteXall` <Badge type="tip" text="dataclass" /> {#WriteXall}
 
@@ -895,7 +895,7 @@ WriteXall(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1366">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1373">source</a>
 
 The Xall files of the whole run, every component (ADR 0016, 0017; output only).
 
@@ -919,7 +919,7 @@ All of it is checked before anything is written.
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1401">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1408">source</a>
 
 ## `WriteProcInput` <Badge type="tip" text="dataclass" /> {#WriteProcInput}
 
@@ -933,7 +933,7 @@ WriteProcInput(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1492">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1499">source</a>
 
 Xall `proc.input` from a `.grd` (`shore proc-input`, output only).
 
@@ -945,4 +945,4 @@ Xall `proc.input` from a `.grd` (`shore proc-input`, output only).
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1509">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1516">source</a>

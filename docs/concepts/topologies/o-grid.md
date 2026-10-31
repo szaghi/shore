@@ -23,7 +23,7 @@ around j with modular indexing; the i boundaries use one-sided tangents.
 
 ::: warning The poles are not covered
 The first and last i-rows are rings at colatitude `theta_cap` (default
-9°) from each pole, not points. The two polar regions inside those rings
+9°; the cubed sphere's is 30°) from each pole, not points. The two polar regions inside those rings
 have no cells. The O-grid is therefore an open band around the body: in
 an overset assembly the poles must be covered by another grid. Use the
 [cubed sphere](cubed-sphere) for a closed wall grid.

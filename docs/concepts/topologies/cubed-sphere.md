@@ -76,8 +76,8 @@ At each cap corner three block edges meet: two cap edges and one
 meridian. The per-j pin makes their first cells equal; it applies when
 the cap step and the equator's natural step are within a factor 2.
 Outside that window the equator falls back to its unpinned law with one
-`UserWarning`. The defaults (`--ni 40 --nj 60`, `theta_cap` 9°) are
-outside it; `--theta-cap-deg 30` is inside. The rule is in
+`UserWarning`. The defaults (`--ni 40 --nj 60`, `theta_cap` 30°) are
+inside it; the old 9° default was outside. The rule is in
 [k=0 construction](/concepts/k0-construction#compatibility-window-and-fallback).
 
 <Figure name="junction-3edge" ext="svg" caption="A cap corner: the two cap edges and the meridian share one first cell." />
@@ -88,7 +88,7 @@ outside it; `--theta-cap-deg 30` is inside. The rule is in
 
 | Parameter | CLI | Default | Effect |
 |---|---|---|---|
-| `theta_cap` | `--theta-cap` / `--theta-cap-deg` | $0.05\,\pi$ (9°) | colatitude of the cap corners; sets the cap size |
+| `theta_cap` | `--theta-cap` / `--theta-cap-deg` | $\pi/6$ (30°, [ADR 0054](/adr/0054-default-cap-30-degrees)) | colatitude of the cap corners; sets the cap size |
 | `j_spacing`, `j_beta` | `--surface-j-spacing`, `--surface-j-beta` | `uniform`, 3.0 | cap-edge distribution (`uniform` or `tanh2` toward the corners), inherited by the equator seams |
 | `i_spacing`, `i_beta` | `--surface-i-spacing`, `--surface-i-beta` | `uniform`, 3.0 | meridian interior (`tanh` toward the south seam, `tanh2` toward both) |
 | k law | `--volume-k-spacing`, `--ds`, `--growth`, ... | geometric, 0.001, 1.15 | the step schedule shared by the six blocks |

@@ -57,19 +57,17 @@ features:
 pipx install shore-mesh
 shore body sphere -o sphere.stl
 shore mesh sphere.stl --ni 33 --nj 64 --nk 25 --ds 0.01 --growth 1.15 \
-    --theta-cap-deg 35 -o sphere --journal sphere.py
+    -o sphere --journal sphere.py
 ```
 
 ```python [Python]
-import numpy as np
 from shore.project import Project
 from shore.shapes import sphere
 
 sphere().export("sphere.stl")
 p = Project()
 p.load_geometry("sphere.stl")
-p.build_topology("cubed_sphere", nk=25, ni=33, nj=64, ds=0.01, growth=1.15,
-                 theta_cap=np.deg2rad(35))
+p.build_topology("cubed_sphere", nk=25, ni=33, nj=64, ds=0.01, growth=1.15)
 p.march()
 p.write_geo("sphere")
 p.save_journal("sphere.py")

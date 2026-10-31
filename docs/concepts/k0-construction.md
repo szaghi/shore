@@ -112,9 +112,10 @@ $$
 \qquad n_c = \frac{n_j}{4} + 1 .
 $$
 
-The defaults (`--ni 40 --nj 60`, $\theta_{cap} = 9°$) give a ratio of
-about 0.2: they are **outside** the window and the CLI warns. With
-`--theta-cap-deg 30` the ratio is about 0.9 and every column is pinned.
+With `--ni 40 --nj 60` and $\theta_{cap} = 9°$ (the default before
+[ADR 0054](/adr/0054-default-cap-30-degrees)) the ratio is about 0.2:
+outside the window, and the CLI warns. With the default 30° the ratio is
+about 0.9 and every column is pinned.
 
 ## Final layout
 

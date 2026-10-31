@@ -62,7 +62,7 @@ is automatic.
 
 | Option | Default | Description |
 |---|---|---|
-| `--theta-cap FLOAT` | $0.05\pi$ (≈ 9°) | Polar exclusion angle in radians (cap corners sit at this colatitude) |
+| `--theta-cap FLOAT` | $\pi/6$ (30°) for `cubed_sphere`, $0.05\pi$ (≈ 9°) otherwise | Cap angle in radians: the cap corners' colatitude (cubed sphere, [ADR 0054](/adr/0054-default-cap-30-degrees)) or the polar opening (O-grid) |
 | `--theta-cap-deg FLOAT` | — | Same as `--theta-cap` but in degrees (mutually exclusive) |
 
 ::: tip Cap / equator compatibility

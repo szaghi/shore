@@ -17,13 +17,14 @@ shore body sphere -o sphere.stl --subdivisions 4
 
 ```bash
 shore mesh sphere.stl --ni 33 --nj 64 --nk 25 --ds 0.01 --growth 1.15 \
-    --theta-cap-deg 35 -o sphere --journal sphere.py
+    -o sphere --journal sphere.py
 ```
 
 This builds the default topology, a six-block **cubed sphere** (four
 equatorial blocks and two polar caps), and marches 24 layers out from the
 wall: first cell `--ds 0.01`, each next one `--growth 1.15` times thicker.
-`--theta-cap-deg` sets the size of the polar caps. It writes
+The polar caps reach 30° from the poles (`--theta-cap-deg`, the default
+since [ADR 0054](/adr/0054-default-cap-30-degrees)). It writes
 `sphere_sub0.geo` … `sphere_cap_south.geo` and the journal `sphere.py`.
 
 ::: tip Nodes, not cells
@@ -61,7 +62,7 @@ from shore.project import Project
 
 p = Project()
 p.load_geometry('sphere.stl')
-p.build_topology('cubed_sphere', nk=25, ds=0.01, ni=33, nj=64, theta_cap=0.6108652381980153, ...)
+p.build_topology('cubed_sphere', nk=25, ds=0.01, ni=33, nj=64, theta_cap=0.5235987755982988, ...)
 p.march()
 p.write_geo('sphere')
 ```
@@ -75,7 +76,7 @@ from shore.project import Project
 
 p = Project()
 p.load_geometry("sphere.stl")
-p.build_topology("cubed_sphere", nk=25, ni=33, nj=64, ds=0.01, growth=1.15, theta_cap=0.61)
+p.build_topology("cubed_sphere", nk=25, ni=33, nj=64, ds=0.01, growth=1.15)
 p.march()
 p.write_geo("sphere")
 ```

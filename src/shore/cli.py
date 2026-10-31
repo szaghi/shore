@@ -197,7 +197,10 @@ _VERBOSE = Annotated[bool, typer.Option("--verbose", "-v", help="Show rich progr
 _THETA_CAP = Annotated[
     float | None,
     typer.Option(
-        "--theta-cap", help="Polar exclusion angle in radians [default 0.05*pi (~9 deg)]."
+        "--theta-cap",
+        help="Cap angle in radians: the cap corners' colatitude (cubed sphere) or the "
+        "polar opening (O-grid). Default: pi/6 (30 deg) for the cubed sphere, "
+        "0.05*pi (~9 deg) otherwise.",
     ),
 ]
 _THETA_CAP_DEG = Annotated[
@@ -1031,7 +1034,12 @@ def mesh(
         )
 
     # --- build topology + march ---
-    _theta_topo = theta if theta is not None else 0.05 * np.pi
+    from shore.mesh.topology import CUBED_SPHERE_THETA_CAP, LEGACY_THETA_CAP
+
+    if theta is not None:
+        _theta_topo = theta
+    else:  # the topology's default (ADR 0054)
+        _theta_topo = CUBED_SPHERE_THETA_CAP if topology == "cubed_sphere" else LEGACY_THETA_CAP
     options: dict[str, object] = {}
     if topology == "ch":
         # Freestream is optional: pass it only if any component was given.

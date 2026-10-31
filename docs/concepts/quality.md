@@ -86,6 +86,7 @@ The same cubed-sphere grid, marched with the default algebraic scheme and
 with the hyperbolic scheme:
 
 ```python
+import math
 import warnings
 
 from shore import quality
@@ -99,7 +100,8 @@ sphere(radius=1.0, subdivisions=4).export("ball.stl")
 for scheme in ("algebraic", "hyperbolic"):
     p = Project()
     p.load_geometry("ball.stl")
-    p.build_topology("cubed_sphere", nk=21, ds=0.005, growth=1.15, ni=33, nj=64)
+    p.build_topology("cubed_sphere", nk=21, ds=0.005, growth=1.15, ni=33, nj=64,
+                     theta_cap=math.radians(9))  # the default before ADR 0054
     try:
         p.march(march_scheme=scheme)
     except MarchingError as err:
@@ -116,8 +118,9 @@ algebraic  refused: Folded cell (scaled Jacobian -0.089) in cap_north at layer k
 hyperbolic min SJ 0.488  folded 0  wall angle mean/max 0.40/4.22
 ```
 
-With the default 9° cap the algebraic march folds the corner cells of the
-polar caps (the 3-block junctions) in its outer layers. Since
+With a 9° cap (the default before [ADR 0054](/adr/0054-default-cap-30-degrees);
+now 30°) the algebraic march folds the corner cells of the polar caps (the
+3-block junctions) in its outer layers. Since
 [ADR 0052](/adr/0052-no-silent-cap-folds) the cubed-sphere march judges
 every new cell by its scaled Jacobian, corner cells included, and refuses
 the grid; before, its one-corner guard left those cells out and returned

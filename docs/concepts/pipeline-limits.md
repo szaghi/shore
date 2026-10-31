@@ -46,8 +46,9 @@ The cubed sphere pins the first and last meridional interval of the
 equator to the cap edge (C1 spacing across the seam) only when the two
 steps are within a factor 2 of each other. Outside that window the equator
 falls back to its unpinned law and emits one `UserWarning`. The default
-`theta_cap` (9°) with the default `--ni 40 --nj 60` is **outside** the
-window; `--theta-cap-deg 30` is inside. See
+cap, 30° since [ADR 0054](/adr/0054-default-cap-30-degrees), with the
+default `--ni 40 --nj 60` is inside the window; the old 9° default was
+outside it. See
 [k=0 construction](/concepts/k0-construction#compatibility-window-and-fallback)
 for the rule.
 

@@ -336,9 +336,11 @@ class TestSeamStepMatching:
                 topology=CubedSphereTopology(),
                 # Cap step ~ tan(9 deg)/3 ~ 3 deg; equator natural step
                 # (uniform) ~ 162/9 ~ 18 deg.  Ratio ~6x = incompatible.
+                # (9 deg was the default cap before ADR 0054: now explicit.)
                 ni=10,
                 nj=12,
                 nk=3,
+                theta_cap=float(0.05 * np.pi),
             )
 
 

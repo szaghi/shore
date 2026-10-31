@@ -99,7 +99,6 @@ def reference(ball):
 
 
 class TestCubedSphereDefault:
-    @PENDING
     def test_c1_python_default(self, ball, reference):
         from shore.quality import scaled_jacobian
 
@@ -112,7 +111,6 @@ class TestCubedSphereDefault:
         assert min(float(scaled_jacobian(b.nodes).min()) for b in p.mesh.blocks) > 0.0
         same(nodes(p.mesh.blocks), reference)
 
-    @PENDING
     def test_c2_cli_default(self, ball, reference, tmp_path):
         from shore.cli import app
         from shore.io.geo import read_geo
@@ -126,7 +124,6 @@ class TestCubedSphereDefault:
             g = read_geo(tmp_path / f"s_{label}.geo")
             np.testing.assert_allclose(g, grid, rtol=0, atol=1e-10)
 
-    @PENDING
     def test_c3_mesh_from_stl(self, ball, reference):
         from shore.mesh import CubedSphereTopology, Mesh, Spacing1D
 
@@ -157,7 +154,6 @@ class TestFormat:
         p = Project.load(legacy)  # replays, checks the saved grids bit for bit
         assert len(p.mesh.blocks) == 6
 
-    @PENDING
     def test_c6_resaved_explicit(self, legacy, tmp_path):
         from shore.project import Project
 
@@ -169,7 +165,6 @@ class TestFormat:
         q = Project.load(tmp_path / "again")
         same(nodes(q.mesh.blocks), nodes(p.mesh.blocks))
 
-    @PENDING
     def test_c7_new_format(self, ball, tmp_path):
         p = default_project(ball, nk=5, ds=0.05, ni=9, nj=16)
         p.save(tmp_path / "new")

@@ -114,7 +114,6 @@ def face_graph(mesh):
 
 
 class TestSave:
-    @PENDING
     def test_l1_face_graphs_saved(self, saved):
         for name in ("main", "collar"):
             assert (saved / "grids" / name / "adjacency.json").is_file()

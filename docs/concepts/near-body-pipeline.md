@@ -46,7 +46,7 @@ are shared.
 |---|---|
 | Body | A closed surface. STL is loaded with trimesh; CAD files are tessellated for ray casting and the hits are snapped to the exact surface ([ADR 0002](/adr/0002-geometry-backend)). The ray-cast topologies need a body **star-shaped from the anchor** ([limits](/concepts/pipeline-limits)). |
 | Resolution | `ni`, `nj`, `nk` node counts. Under `cubed_sphere`, `nj` is the equator-ring node count and each sub-block gets `nj // 4` cells ([`shore mesh`](/reference/mesh)). |
-| Cap angle | `theta_cap`, default $0.05\,\pi$ (9°): the colatitude of the cap corners (cubed sphere) or of the first and last rows (O-grid). OH pins it to $\pi/4$. |
+| Cap angle | `theta_cap`: the colatitude of the cap corners (cubed sphere, default $\pi/6$ = 30°, [ADR 0054](/adr/0054-default-cap-30-degrees)) or of the first and last rows (O-grid, default $0.05\,\pi$ = 9°). OH pins it to $\pi/4$. |
 | Spacing | surface i/j laws, wall-normal k law ([Spacing laws](/concepts/spacing-laws)). |
 | Marching | `march_scheme` (`algebraic` default, `hyperbolic`), `smooth_mode` (`limited` default, `legacy`) ([Marching](/concepts/hyperbolic-marching)). |
 

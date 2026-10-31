@@ -90,10 +90,11 @@ from shore.project.commands import (
     WriteXall,
     input_root,
     legacy_collar_volume,
+    legacy_theta_cap,
     recording,
 )
 
-PROJECT_FORMAT = 3
+PROJECT_FORMAT = 4
 DEFAULT_COMPONENT = "main"
 JOURNAL_HEADER = (
     "# SHORE journal: replay with `shore run <this file>`.\n"
@@ -269,7 +270,14 @@ class Project:
         **params: Any,
     ) -> None:
         """Build the blocks of *topology* on *geometry* (see
-        ``shore.pipeline.build_topology``)."""
+        ``shore.pipeline.build_topology``). A cubed sphere without
+        ``theta_cap`` gets its default (30 deg, ADR 0054; 0.05 pi while a
+        project saved before format 4 replays), journaled explicitly."""
+        if topology == "cubed_sphere" and "theta_cap" not in params:
+            from shore.mesh.topology import CUBED_SPHERE_THETA_CAP, LEGACY_THETA_CAP
+
+            legacy = legacy_theta_cap.get()
+            params = {**params, "theta_cap": LEGACY_THETA_CAP if legacy else CUBED_SPHERE_THETA_CAP}
         self.execute(
             BuildTopology(
                 topology,
@@ -784,7 +792,7 @@ class Project:
         except (OSError, tomllib.TOMLDecodeError) as err:
             raise MeshInputError(f"{d}: not a SHORE project ({err})") from err
         version = meta.get("format")
-        if version not in (1, 2, PROJECT_FORMAT):
+        if version not in (1, 2, 3, PROJECT_FORMAT):
             raise MeshInputError(f"{d}: unsupported project format {version!r}")
         if not replay and not _saved_face_graphs(d, meta):
             raise MeshInputError(
@@ -794,9 +802,12 @@ class Project:
             )
         # before format 3 collars defaulted to the "stations" volume (ADR 0026)
         legacy = legacy_collar_volume.set(version < 3)
+        # before format 4 the cubed sphere's default cap was 0.05 pi (ADR 0054)
+        legacy_cap = legacy_theta_cap.set(version < 4)
         try:
             return cls._load(d, meta, version) if replay else cls._load_saved(d, meta)
         finally:
+            legacy_theta_cap.reset(legacy_cap)
             legacy_collar_volume.reset(legacy)
 
     @classmethod
@@ -908,7 +919,7 @@ def _original_name(source: Path) -> str:
 
 def _saved_face_graphs(d: Path, meta: dict[str, Any]) -> bool:
     """Whether every non-empty component of a saved project has its face graph."""
-    if meta.get("format") != PROJECT_FORMAT:
+    if meta.get("format", 0) < 3:  # face graphs saved since format 3 (ADR 0033)
         return False
     return all(
         (d / "grids" / name / "adjacency.json").is_file()

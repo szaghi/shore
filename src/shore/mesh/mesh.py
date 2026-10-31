@@ -408,15 +408,21 @@ class Mesh:
         elif theta_cap is not None:
             _theta = float(theta_cap)
         else:
-            _theta = float(0.05 * np.pi)
+            _theta = None
 
         from shore.mesh.topology import (
+            CUBED_SPHERE_THETA_CAP,
+            LEGACY_THETA_CAP,
             CGridTopology,
             CHTopology,
             CubedSphereTopology,
             OGridTopology,
             OHTopology,
         )
+
+        if _theta is None:  # the topology's default (ADR 0054)
+            cubed = isinstance(topology, CubedSphereTopology)
+            _theta = CUBED_SPHERE_THETA_CAP if cubed else LEGACY_THETA_CAP
 
         if isinstance(topology, (CGridTopology, CHTopology)):
             kind = type(topology).__name__

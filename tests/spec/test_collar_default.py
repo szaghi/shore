@@ -86,7 +86,6 @@ def project(d, **kw):
 
 
 class TestDefault:
-    @PENDING
     def test_d1_format_3(self, tmp_path):
         write_bodies(tmp_path)
         project(tmp_path).save(tmp_path / "p")

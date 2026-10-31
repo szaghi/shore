@@ -17,6 +17,13 @@ from shore.topology.ch_channel import outer_quads_for_cgrid, resolve_frame
 from shore.topology.oh_channel import build_channel_block
 from shore.topology.sphere_cap import _adjust_nj
 
+#: The cubed sphere's default cap angle (ADR 0054): 30 deg marches the cap
+#: corners without folds and joins cap and equator with C1 spacing on the
+#: bodies and sizes measured; 0.05 pi folded them (ADR 0052).
+CUBED_SPHERE_THETA_CAP = float(np.pi / 6)
+#: The cap angle before ADR 0054, still the O-grid's polar opening.
+LEGACY_THETA_CAP = float(0.05 * np.pi)
+
 
 class Topology(ABC):
     """Abstract topology builder.
@@ -270,7 +277,7 @@ class CubedSphereTopology(Topology):
         spacing_k: Spacing1D | None = None,
         mesh: object | None = None,
         projector: object | None = None,
-        theta_cap: float = 0.05 * np.pi,
+        theta_cap: float = CUBED_SPHERE_THETA_CAP,
         i_spacing: str = "uniform",
         i_beta: float = 3.0,
         j_spacing: str = "uniform",

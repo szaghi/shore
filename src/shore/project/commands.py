@@ -63,6 +63,13 @@ legacy_collar_volume: contextvars.ContextVar[bool] = contextvars.ContextVar(
 )
 
 
+#: Set while a project saved before format 4 replays: its cubed spheres built
+#: without ``theta_cap`` were built when the default was 0.05 pi (ADR 0054).
+legacy_theta_cap: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "shore_legacy_theta_cap", default=False
+)
+
+
 #: Set while a project loads without replay (ADR 0033): ``Project.execute``
 #: records the commands instead of applying them (geometries and component
 #: switches excepted).

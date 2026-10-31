@@ -76,7 +76,7 @@ output  = "body.geo"                 # optional, output stem for the 6 .geo file
 ni            = 40                   # latitude (equator meridional)
 nj            = 60                   # longitude (multiple of 4)
 nk            = 30                   # wall-normal layers
-theta_cap_deg = 30.0                 # polar exclusion (degrees); default 0.05*pi rad (9 deg)
+theta_cap_deg = 30.0                 # cap angle (degrees); default 30 (cubed sphere), 9 (O-grid)
 # theta_cap   = 0.5236               # alternative: in radians (mutually exclusive)
 topology      = "cubed_sphere"       # 'cubed_sphere' (default) or 'ogrid' only
 

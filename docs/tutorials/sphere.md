@@ -65,8 +65,9 @@ $(\pi - 2\theta_{cap})/32 = 0.060$ rad are within a factor of 2, so the
 equator meridians are pinned to the cap edges with a continuous first
 interval (C1).
 
-::: warning Do not keep the default cap angle
-Left at its default (0.157 rad, 9°), the caps are small and their cells
+::: warning Do not make the cap small
+With a 9° cap (0.157 rad, the default before ADR 0054; the default is now
+30°), the caps are small and their cells
 much finer than the equator's. With these counts SHORE warns and falls back
 to an unpinned distribution:
 
@@ -250,8 +251,8 @@ executed as Python: replay only journals you trust.
 - `shore mesh` / `Project.build_topology` + `march` build a cubed sphere;
   `--nj` is the equator-ring node count, split four ways.
 - `--theta-cap` decides whether the cap and equator spacings join with C1
-  continuity; with the 9° default the march folds cap-corner cells and is
-  refused.
+  continuity; with a 9° cap (the old default) the march folds cap-corner
+  cells and is refused.
 - `ds`, `growth` and `nk` fix the wall spacing and the thickness; a tanh law
   fixes the thickness instead.
 - `shore check` finds folded cells; `shore.quality.summary` finds skewed and

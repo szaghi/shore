@@ -58,7 +58,7 @@ has the details and the one-line installer.
 ```bash
 shore body sphere -o sphere.stl --subdivisions 4
 shore mesh sphere.stl --ni 33 --nj 64 --nk 25 --ds 0.01 --growth 1.15 \
-    --theta-cap-deg 35 -o sphere --journal sphere.py
+    -o sphere --journal sphere.py
 shore check sphere_sub0.geo
 shore run sphere.py              # replays the journal, bit for bit
 ```
@@ -70,7 +70,7 @@ from shore.project import Project
 
 p = Project()
 p.load_geometry("sphere.stl")
-p.build_topology("cubed_sphere", nk=25, ni=33, nj=64, ds=0.01, growth=1.15, theta_cap=0.61)
+p.build_topology("cubed_sphere", nk=25, ni=33, nj=64, ds=0.01, growth=1.15)
 p.march()
 p.write_geo("sphere")
 p.save_journal("sphere.py")
