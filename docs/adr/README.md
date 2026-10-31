@@ -62,6 +62,7 @@ by a later record that supersedes it.
 | [0052](./0052-no-silent-cap-folds.md) | Refuse folded cells in the cubed-sphere march, corner cells included | Accepted |
 | [0053](./0053-blocking-symmetry-planes.md) | Symmetry planes of a blocking | Accepted |
 | [0054](./0054-default-cap-30-degrees.md) | The cubed sphere's default cap: 30 degrees | Accepted |
+| [0055](./0055-background-primitives-have-no-wall.md) | Background primitives have no wall | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
