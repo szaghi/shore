@@ -125,9 +125,10 @@ now 30°) the algebraic march folds the corner cells of the polar caps (the
 every new cell by its scaled Jacobian, corner cells included, and refuses
 the grid; before, its one-corner guard left those cells out and returned
 16 folded cells here. A larger cap (`theta_cap` 30° or more) or the
-hyperbolic scheme marches this body cleanly. The other topologies still
-use the one-corner guard: run `summary` on every grid you hand to a
-solver.
+hyperbolic scheme marches this body cleanly. The O-grid and C-grid marches
+run the same check ([ADR 0056](/adr/0056-no-silent-folds-other-marchers));
+grids that are not marched (primitives, blockings, collars) are not
+guarded this way: run `summary` on every grid you hand to a solver.
 
 ## What the acceptance specs require
 

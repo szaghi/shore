@@ -104,15 +104,12 @@ def min_marched(p):
 
 
 class TestRefused:
-    @PENDING
     def test_g1_ogrid_box(self, bodies):
         refused(project(bodies / "box.stl", "ogrid", **OGRID_BOX))
 
-    @PENDING
     def test_g2_cgrid_wing(self, bodies):
         refused(project(bodies / "wing.stl", "cgrid", nk=20, growth=1.2, **CGRID))
 
-    @PENDING
     def test_g3_cli(self, bodies, tmp_path):
         from shore.cli import app
 

@@ -270,8 +270,15 @@ def _check_jacobian(
     return jmin
 
 
-def _check_folds(layer: np.ndarray, new_layer: np.ndarray, label: str, k: int) -> None:
-    """Raise if a cell between *layer* and *new_layer* is folded (ADR 0052).
+def _check_folds(
+    layer: np.ndarray,
+    new_layer: np.ndarray,
+    label: str,
+    k: int,
+    periodic_j: bool = False,
+    hint: str = "",
+) -> None:
+    """Raise if a cell between *layer* and *new_layer* is folded (ADR 0052, 0056).
 
     Every cell counts, the block's corner cells at the 3-block junctions
     included, by its minimum corner scaled Jacobian (``shore.quality``):
@@ -281,13 +288,19 @@ def _check_folds(layer: np.ndarray, new_layer: np.ndarray, label: str, k: int) -
     """
     from shore.quality import scaled_jacobian
 
-    sj = scaled_jacobian(np.stack([layer, new_layer], axis=2))[..., 0]
+    two = np.stack([layer, new_layer], axis=2)
+    if periodic_j:  # the cells across the j wrap count too
+        two = np.concatenate([two, two[:, :1]], axis=1)
+    sj = scaled_jacobian(two)[..., 0]
     if sj.min() > 0.0:
         return
     i, j = np.unravel_index(int(np.argmin(sj)), sj.shape)
     raise MarchingError(
         f"Folded cell (scaled Jacobian {float(sj.min()):.3f}) in {label} at layer "
         f"k={k + 1}, cell ({i}, {j}), {int((sj <= 0.0).sum())} folded in the layer. "
-        "Cubed-sphere folds start at the cap corners: use a larger cap "
-        "(theta_cap 30 deg or more), march_scheme='hyperbolic', or a smaller growth."
+        + (
+            hint
+            or "Cubed-sphere folds start at the cap corners: use a larger cap "
+            "(theta_cap 30 deg or more), march_scheme='hyperbolic', or a smaller growth."
+        )
     )

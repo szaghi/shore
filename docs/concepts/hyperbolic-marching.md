@@ -170,15 +170,16 @@ J = (\mathbf{e}_i \times \mathbf{e}_j)\cdot\mathbf{e}_k ,
 $$
 
 on the open-block field (`_jacobian_field_open`) or the j-periodic one.
-On the cubed sphere this check leaves out the four corner cells of each
-block (the 3-block junctions) with a tolerance of $-10^{-6}$; a second
-check ([ADR 0052](/adr/0052-no-silent-cap-folds)) then takes every cell,
+This check takes one corner per cell with a tolerance of $-10^{-6}$, and on
+the cubed sphere it leaves out the four corner cells of each block (the
+3-block junctions); a second check ([ADR 0052](/adr/0052-no-silent-cap-folds)) then takes every cell,
 corner cells included, by its minimum corner scaled Jacobian
 (`shore.quality.scaled_jacobian`) and refuses any cell at or below 0. It is
 scale-free, so thin wall cells count like thick ones. A failing layer
-raises `MarchingError` at once; on the cubed sphere the message names the
-folded cell and the remedies (a larger cap, the hyperbolic scheme, a
-smaller growth). The other topologies use the one-corner check only.
+raises `MarchingError` at once, with the folded cell and the remedies in
+the message. The O-grid (cells across the j wrap included) and the C-grid
+marches, CH's wrap among them, run the same second check since
+[ADR 0056](/adr/0056-no-silent-folds-other-marchers).
 
 ## Removed: normal blending
 

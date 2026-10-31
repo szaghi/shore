@@ -935,6 +935,10 @@ class Mesh:
                 exclude_corners=False,
                 tol=-1e-6,
             )
+            hint = "Use march_scheme='hyperbolic', a smaller growth or more smoothing."
+            for lbl, old, new in (("cgrid.upper", u_k, new_u), ("cgrid.body", b_k, new_b),
+                                  ("cgrid.lower", l_k, new_l)):  # fmt: skip
+                _check_folds(old, new, lbl, k, hint=hint)  # ADR 0056
             jmin = float(min(jmin_u, jmin_b, jmin_l))
 
             # Commit.
@@ -1010,6 +1014,13 @@ class Mesh:
                 exclude_corners=False,
                 tol=-1e-6,
             )
+            _check_folds(
+                layer,
+                new_layer,
+                "cgrid",
+                k,
+                hint="Use march_scheme='hyperbolic', a smaller growth or more smoothing.",
+            )  # ADR 0056
 
             block.nodes[:, :, k + 1, :] = new_layer
 
@@ -1062,6 +1073,14 @@ class Mesh:
                 exclude_corners=False,
                 tol=-1e-6,
             )
+            _check_folds(
+                layer,
+                new_layer,
+                "ogrid",
+                k,
+                periodic_j=True,
+                hint="Use march_scheme='hyperbolic', a smaller growth or more smoothing.",
+            )  # ADR 0056
 
             block.nodes[:, :, k + 1, :] = new_layer
 
