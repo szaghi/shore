@@ -2,6 +2,11 @@
 title: Changelog
 ---
 
+## [0.8.0] — 2026-11-01
+### Added
+- **gui**: Give the GUI every CLI capability
+
+
 ## [0.7.1] — 2026-11-01
 ### Fixed
 - **project**: Check replayed grids to a tolerance, not bit for bit
