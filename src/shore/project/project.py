@@ -22,8 +22,9 @@ On disk a project is a directory (format 3; 1 and 2 still load)::
 
 ``Project.load`` checks the input copies against their hashes, replays
 ``journal.py`` with the inputs resolved against the project directory
-(wherever it now is), and requires every grid to be bit-identical to the
-saved one, so a load is also a determinism check. Format-1 projects (one
+(wherever it now is), and requires every grid to match the saved one to
+``GRID_TOLERANCE`` (1e-10 of the block's size, ADR 0061: the last bits depend
+on the machine), so a load is also a determinism check. Format-1 projects (one
 mesh, inputs at their journaled paths) still load. ``load(replay=False)``
 (ADR 0033) skips the rebuild: the journal is recorded (geometries loaded,
 components selected), and each component's blocks are read from its grids and
@@ -928,17 +929,33 @@ def _saved_face_graphs(d: Path, meta: dict[str, Any]) -> bool:
     )
 
 
+#: How far a replayed node may lie from its saved grid, as a fraction of the
+#: block's largest bounding-box extent (ADR 0061): the last bits of a replay
+#: depend on the machine (the BLAS kernel picked per CPU), so projects are not
+#: compared bit for bit.
+GRID_TOLERANCE = 1e-10
+
+
 def _check_grids(d: Path, grids: Path, mesh: Mesh | None, labels: list[str]) -> None:
     blocks = mesh.blocks if mesh is not None else []
     if [b.label for b in blocks] != labels:
         raise MeshInputError(f"{d}: replayed blocks {[b.label for b in blocks]} != {labels}")
     for i, block in enumerate(blocks):
         with np.load(grids / f"{i:04d}.npz") as saved:
-            if not np.array_equal(saved["nodes"], block.nodes):
-                raise MeshInputError(
-                    f"{d}: replay of block '{block.label}' differs from the saved grid"
-                    " (journal not deterministic, or inputs changed)"
-                )
+            nodes = saved["nodes"]
+        if nodes.shape != block.nodes.shape:
+            raise MeshInputError(
+                f"{d}: replay of block '{block.label}' differs from the saved grid: "
+                f"shape {block.nodes.shape} != {nodes.shape} (inputs changed?)"
+            )
+        size = float(np.ptp(nodes.reshape(-1, 3), axis=0).max()) if nodes.size else 0.0
+        deviation = float(np.abs(block.nodes - nodes).max()) if nodes.size else 0.0
+        if not deviation <= GRID_TOLERANCE * size:
+            raise MeshInputError(
+                f"{d}: replay of block '{block.label}' differs from the saved grid by "
+                f"{deviation / size if size else deviation:.3e} of its size (> "
+                f"{GRID_TOLERANCE:.0e}): journal not deterministic, or inputs changed"
+            )
 
 
 def _sha256(path: Path) -> str:

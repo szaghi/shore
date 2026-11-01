@@ -249,10 +249,22 @@ class TestPersistence:
         grid = d / "grids" / "main" / "0000.npz"
         with np.load(grid) as g:
             nodes = g["nodes"].copy()
-        nodes[0, 0, 0, 0] += 1e-12
+        nodes[0, 0, 0, 0] += 1e-6
         np.savez(grid, nodes=nodes)
         with pytest.raises(MeshInputError, match="differs from the saved grid"):
             Project.load(d)
+
+    def test_load_accepts_last_bit_differences(self, sphere_stl, tmp_path):
+        """Below GRID_TOLERANCE (1e-10 of the block's size), as across machines (ADR 0061)."""
+        p = _sphere_project(sphere_stl)
+        p.march()
+        d = p.save(tmp_path / "proj")
+        grid = d / "grids" / "main" / "0000.npz"
+        with np.load(grid) as g:
+            nodes = g["nodes"].copy()
+        nodes[0, 0, 0, 0] += 1e-14
+        np.savez(grid, nodes=nodes)
+        assert Project.load(d).mesh is not None
 
     def test_not_a_project(self, tmp_path):
         with pytest.raises(MeshInputError, match="not a SHORE project"):

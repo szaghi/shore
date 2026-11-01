@@ -45,7 +45,7 @@ p.save_journal("journal.py")  # `shore run journal.py` replays it
 
 # #region save
 p.save("proj")  # project.toml, journal.py, inputs/, grids/<component>/
-q = Project.load("proj")  # replays the journal and checks every grid bit for bit
+q = Project.load("proj")  # replays the journal and checks every grid (to 1e-10)
 r = Project.load("proj", replay=False)  # reads the saved grids: no march
 same = np.array_equal(q.components["main"].blocks[0].nodes, r.components["main"].blocks[0].nodes)
 print("replay == saved grids:", same)

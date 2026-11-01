@@ -43,7 +43,7 @@ p.save("sphere.shore")  # project.toml, journal.py, inputs/, adjacency.json, gri
 print(sorted(f.name for f in Path("sphere.shore").iterdir()))
 
 t0 = time.perf_counter()
-q = Project.load("sphere.shore")  # replays the journal, checks every grid bit for bit
+q = Project.load("sphere.shore")  # replays the journal, checks every grid (to 1e-10)
 t1 = time.perf_counter()
 r = Project.load("sphere.shore", replay=False)  # reads the saved grids instead
 t2 = time.perf_counter()

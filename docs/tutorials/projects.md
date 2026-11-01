@@ -92,7 +92,7 @@ The two loads differ:
 | | `Project.load(dir)` | `Project.load(dir, replay=False)` |
 |---|---|---|
 | Inputs | checked against their SHA-256 | checked against their SHA-256 |
-| Grids | rebuilt by replaying the journal, then required to equal the saved ones bit for bit | read from `grids/`, rewired from the saved face graphs |
+| Grids | rebuilt by replaying the journal, then required to match the saved ones to 1e-10 of their size | read from `grids/`, rewired from the saved face graphs |
 | Cost | the whole build again (marches, premesh) | reading the files |
 | Afterwards | undo and redo work as in the original session | the loaded history cannot be undone, and a loaded mesh cannot be marched |
 

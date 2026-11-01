@@ -44,8 +44,9 @@ The project directory holds:
 | `adjacency.json` | the face graph of the current component |
 
 - `Project.load(dir)` checks the input hashes, replays the journal and
-  requires every rebuilt grid to equal the saved one bit for bit; a changed
-  grid raises `MeshInputError`.
+  requires every rebuilt grid to match the saved one to 1e-10 of the block's
+  size (ADR 0061: the last bits depend on the machine); a changed grid raises
+  `MeshInputError` with its deviation.
 - The directory is portable: inputs are copied in and the journal refers to
   them relative to the project.
 

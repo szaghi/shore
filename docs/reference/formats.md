@@ -253,7 +253,8 @@ commands = 5
   journal says.
 - `Project.load(DIR)` checks every input's SHA-256, replays the
   journal (inputs resolved against `DIR`) and requires every replayed
-  grid to equal the saved `.npz` bit for bit.
+  grid to match the saved `.npz` to 1e-10 of the block's size (ADR 0061:
+  the last bits depend on the machine).
 - `Project.load(DIR, replay=False)` (`--no-replay`) records the journal
   instead, loads only geometries and component switches, and reads each
   component's blocks from `grids/<component>/` and its face graph: no

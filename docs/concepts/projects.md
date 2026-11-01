@@ -7,8 +7,9 @@ title: Projects and journals
 A `Project` is the stateful document behind every way of driving SHORE: the
 Python API, the CLI and the GUI. Every change to it is a **command**; the
 project keeps the commands it applied, can undo and redo them, and writes
-them out as a **journal**, a plain Python script that rebuilds the same grid
-bit for bit. This is the model of Pointwise's Glyph, ICEM's replay files and
+them out as a **journal**, a plain Python script that rebuilds the same grid:
+bit for bit on the same machine, and to 1e-10 of each block's size on another
+one, whose BLAS kernels can change the last bits ([ADR 0061](/adr/0061-reproducible-checks)). This is the model of Pointwise's Glyph, ICEM's replay files and
 Cubit's journals ([ADR 0004](/adr/0004-command-layer)): a grid is
 reproducible, scriptable and testable because every action is a recorded
 command.
@@ -86,7 +87,7 @@ p.redo()
 p.save("ball.shore")
 
 print(Path("ball.shore/journal.py").read_text())
-q = Project.load("ball.shore")  # replays the journal, checks every grid bit for bit
+q = Project.load("ball.shore")  # replays the journal, checks every grid (to 1e-10)
 r = Project.load("ball.shore", replay=False)  # grids and face graphs read back
 print(sorted(q.components), sorted(r.components))  # ['background', 'main'] twice
 ```
@@ -140,7 +141,7 @@ sequenceDiagram
     U->>P: Project.load(dir)
     D->>P: check input hashes
     D->>P: replay journal.py
-    P->>P: compare every grid bit for bit
+    P->>P: compare every grid to 1e-10
 ```
 
 `p.save(dir)` writes a directory (format 3; formats 1 and 2 still load):

@@ -78,7 +78,6 @@ def load(project):
 
 
 class TestLoad:
-    @PENDING
     def test_l1_tiny_differences_load(self, saved):
         move(saved, 1e-13)
         assert len(load(saved).mesh.blocks) == 6
@@ -90,7 +89,6 @@ class TestLoad:
         with pytest.raises(MeshInputError, match="differs"):
             load(saved)
 
-    @PENDING
     def test_l3_message(self, saved):
         from shore.exceptions import MeshInputError
 

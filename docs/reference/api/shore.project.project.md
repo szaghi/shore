@@ -31,8 +31,9 @@ grids/<component>/adjacency.json  each component's face graph (ADR 0033)
 ```
 `Project.load` checks the input copies against their hashes, replays
 `journal.py` with the inputs resolved against the project directory
-(wherever it now is), and requires every grid to be bit-identical to the
-saved one, so a load is also a determinism check. Format-1 projects (one
+(wherever it now is), and requires every grid to match the saved one to
+`GRID_TOLERANCE` (1e-10 of the block's size, ADR 0061: the last bits depend
+on the machine), so a load is also a determinism check. Format-1 projects (one
 mesh, inputs at their journaled paths) still load. `load(replay=False)`
 (ADR 0033) skips the rebuild: the journal is recorded (geometries loaded,
 components selected), and each component's blocks are read from its grids and
@@ -43,7 +44,7 @@ rewired from its face graph.
 ```python
 Project(undo_root: str | Path | None = None)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L113">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L114">source</a>
 
 Meshing project: geometries, components and the command history that made them.
 
@@ -52,7 +53,7 @@ Meshing project: geometries, components and the command history that made them.
 ```python
 mesh: Mesh | None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L131">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L132">source</a>
 
 The current component's mesh.
 
@@ -61,7 +62,7 @@ The current component's mesh.
 ```python
 build: BuildState | None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L140">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L141">source</a>
 
 What later commands need from the command that made the current mesh.
 
@@ -70,7 +71,7 @@ What later commands need from the command that made the current mesh.
 ```python
 blocking: Blocking | None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L149">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L150">source</a>
 
 The current component's blocking (ADR 0042).
 
@@ -79,7 +80,7 @@ The current component's blocking (ADR 0042).
 ```python
 blockings: dict[str, Blocking | None]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L158">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L159">source</a>
 
 Each component's blocking (`None` without one), in creation order.
 
@@ -88,14 +89,14 @@ Each component's blocking (`None` without one), in creation order.
 ```python
 require_blocking(command: str) -> Blocking
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L162">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L163">source</a>
 
 ### `Project.body` <Badge type="info" text="property" /> {#Project-body}
 
 ```python
 body: Body | None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L168">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L169">source</a>
 
 The geometry named `"body"` (the default of every command).
 
@@ -104,7 +105,7 @@ The geometry named `"body"` (the default of every command).
 ```python
 geometries: Mapping[str, Body]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L173">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L174">source</a>
 
 Loaded geometries by name (read-only).
 
@@ -113,7 +114,7 @@ Loaded geometries by name (read-only).
 ```python
 components: dict[str, Mesh | None]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L178">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L179">source</a>
 
 Each component's mesh (`None` while empty), in creation order.
 
@@ -122,21 +123,21 @@ Each component's mesh (`None` while empty), in creation order.
 ```python
 current_component: str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L183">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L184">source</a>
 
 ### `Project.require_geometry` <Badge type="info" text="method" /> {#Project-require_geometry}
 
 ```python
 require_geometry(name: str, command: str) -> Body
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L186">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L187">source</a>
 
 ### `Project.geometry_digest` <Badge type="info" text="method" /> {#Project-geometry_digest}
 
 ```python
 geometry_digest(name: str) -> str | None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L195">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L196">source</a>
 
 SHA-256 of the file geometry *name* was loaded from (None if not loaded).
 
@@ -145,7 +146,7 @@ SHA-256 of the file geometry *name* was loaded from (None if not loaded).
 ```python
 set_geometry(name: str, body: Body | None, digest: str | None = None) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L199">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L200">source</a>
 
 Register (or, with `None`, remove) geometry *name*; for commands.
 
@@ -154,7 +155,7 @@ Register (or, with `None`, remove) geometry *name*; for commands.
 ```python
 discard_built_on(name: str) -> dict[str, tuple[Mesh | None, BuildState | None]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L209">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L210">source</a>
 
 Empty the components whose mesh was built on geometry *name*; return
 their previous state for `restore_components`. For commands.
@@ -164,14 +165,14 @@ their previous state for `restore_components`. For commands.
 ```python
 restore_components(old: dict[str, tuple[Mesh | None, BuildState | None]]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L223">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L224">source</a>
 
 ### `Project.select_component` <Badge type="info" text="method" /> {#Project-select_component}
 
 ```python
 select_component(name: str) -> bool
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L228">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L229">source</a>
 
 Make *name* current, creating it if new; True if it was created. For commands.
 
@@ -180,7 +181,7 @@ Make *name* current, creating it if new; True if it was created. For commands.
 ```python
 drop_component(name: str) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L236">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L237">source</a>
 
 Remove component *name* (not the current one). For commands.
 
@@ -195,7 +196,7 @@ load_geometry(
     name: str = 'body',
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L243">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L244">source</a>
 
 Load geometry *name* from STL or STEP/IGES/BREP (ADR 0016).
 
@@ -204,7 +205,7 @@ Load geometry *name* from STL or STEP/IGES/BREP (ADR 0016).
 ```python
 use_component(name: str) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L254">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L255">source</a>
 
 Make component *name* current, creating it empty if new (ADR 0016).
 
@@ -225,7 +226,7 @@ build_topology(
     **params: Any,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L258">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L259">source</a>
 
 Build the blocks of *topology* on *geometry* (see
 `shore.pipeline.build_topology`). A cubed sphere without
@@ -246,7 +247,7 @@ march(
     cancel: CancelToken | None = None,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L296">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L297">source</a>
 
 Extrude the blocks from the wall; *progress* / *cancel* are hooks.
 
@@ -258,7 +259,7 @@ refused when the command runs (a journal loaded without replay keeps it).
 ```python
 snap(exact: bool = False) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L320">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L321">source</a>
 
 Project associated nodes onto their geometry (any project geometry, ADR 0039).
 
@@ -277,7 +278,7 @@ redistribute(
     interior: str = 'uniform',
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L324">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L325">source</a>
 
 Apply a spacing law along *edge* of *block* to the lines of its axis,
 through the seams (`Redistribute`, ADR 0041); then `snap` if needed.
@@ -293,7 +294,7 @@ associate(
     indices: Sequence[int] = (),
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L342">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L343">source</a>
 
 Associate face, edge or vertex *entity* of *block* (current component)
 with entities *indices* of kind *kind* of geometry *geometry*, or clear
@@ -313,7 +314,7 @@ create_blocking(
     vmax: Sequence[float] | None = None,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L355">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L356">source</a>
 
 Start the blocking with one block of *ni* x *nj* x *nk* nodes around
 *geometry* (bounding box grown by *margin* x its extent per side) or
@@ -324,7 +325,7 @@ between *vmin* and *vmax* (`CreateBlocking`, ADR 0042).
 ```python
 split_blocking(block: str, axis: str, fraction: float) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L372">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L373">source</a>
 
 Cut *block* across *axis* at *fraction*, through its sheet (`SplitBlocking`).
 
@@ -333,7 +334,7 @@ Cut *block* across *axis* at *fraction*, through its sheet (`SplitBlocking`).
 ```python
 delete_blocks(blocks: Sequence[str]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L376">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L377">source</a>
 
 Remove blocking blocks *blocks* (`DeleteBlocks`).
 
@@ -349,7 +350,7 @@ ogrid(
     nodes: int = 5,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L380">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L381">source</a>
 
 Insert an O-grid on the faces of blocking blocks *blocks* (all when
 empty): *faces*, or the set's boundary less *exclude* (`(block, face)`
@@ -360,7 +361,7 @@ pairs), sized by *factor*, *nodes* across (`Ogrid`, ADR 0043).
 ```python
 move_vertex(block: str, vertex: str, xyz: Sequence[float]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L398">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L399">source</a>
 
 Move blocking vertex *vertex* (`v0`..`v7`) of *block* to *xyz*,
 onto its association if it has one (`MoveVertex`, ADR 0045).
@@ -376,7 +377,7 @@ associate_blocking(
     indices: Sequence[int] = (),
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L407">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L408">source</a>
 
 Associate face, edge or vertex *entity* of blocking block *block* with
 geometry, as `associate` does for mesh blocks (`AssociateBlocking`).
@@ -386,7 +387,7 @@ geometry, as `associate` does for mesh blocks (`AssociateBlocking`).
 ```python
 symmetry_plane(point: Sequence[float], normal: Sequence[float]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L421">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L422">source</a>
 
 Declare a symmetry plane of the blocking through *point*, normal to
 *normal* (`SymmetryPlane`, ADR 0053).
@@ -396,7 +397,7 @@ Declare a symmetry plane of the blocking through *point*, normal to
 ```python
 premesh(exact: bool = False) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L434">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L435">source</a>
 
 Make the component's mesh from its blocking (`Premesh`, ADR 0042).
 
@@ -405,7 +406,7 @@ Make the component's mesh from its blocking (`Premesh`, ADR 0042).
 ```python
 orthogonalize(strength: float = 1.0) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L438">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L439">source</a>
 
 Make the grid lines leave the walls along their normal
 (`Orthogonalize`, ADR 0048).
@@ -415,7 +416,7 @@ Make the grid lines leave the walls along their normal
 ```python
 wall_layer(first_step: float) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L443">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L444">source</a>
 
 Cluster the nodes towards the walls, the first cell *first_step* long
 (`WallLayer`, ADR 0050).
@@ -432,7 +433,7 @@ surface_grid(
     geometry: str = 'body',
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L448">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L449">source</a>
 
 Rebuild *face* of *block* from its boundary on SURFACE entity *surface*
 of *geometry* (TFI + elliptic smoothing in (u, v), ADR 0007).
@@ -442,7 +443,7 @@ of *geometry* (TFI + elliptic smoothing in (u, v), ADR 0007).
 ```python
 build_primitive(kind: str, **params: Any) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L461">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L462">source</a>
 
 Build a parametric primitive (`box`, `annulus`, `flat_caps`,
 `h_grid_rect`, `h_grid_tube`); see `shore.pipeline.build_primitive`.
@@ -474,7 +475,7 @@ build_collar(
     volume: str | None = None,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L466">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L467">source</a>
 
 Collar block around the junction of *geometry* and *other*, a
 geometry name or a file path (ADR 0010, 0016); with *plane* the
@@ -489,7 +490,7 @@ component's mesh. See `BuildCollar`.
 ```python
 build_tip_cap(body_geo: str | Path, **options: Any) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L522">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L523">source</a>
 
 Wing-tip cap from a C-grid body `.geo`; options as `BuildTipCap`.
 
@@ -501,7 +502,7 @@ load_blocks(
     adjacency: list[str | Path] | tuple = (),
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L526">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L527">source</a>
 
 Replace the mesh with blocks read from `.geo` files (+ sidecars).
 
@@ -510,7 +511,7 @@ Replace the mesh with blocks read from `.geo` files (+ sidecars).
 ```python
 split(splits: list[tuple[str, str, list[int] | tuple[int, ...]]]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L532">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L533">source</a>
 
 Split blocks by `(label, axis, at)` directives.
 
@@ -519,7 +520,7 @@ Split blocks by `(label, axis, at)` directives.
 ```python
 write_geo(stem: str | Path, per_block: bool = False) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L538">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L539">source</a>
 
 Write the `.geo` files (see `WriteGeo` for the naming rules).
 
@@ -528,7 +529,7 @@ Write the `.geo` files (see `WriteGeo` for the naming rules).
 ```python
 write_grd(path: str | Path, geo_paths: list[str | Path]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L542">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L543">source</a>
 
 Pack `.geo` files into an Xall `.grd`.
 
@@ -537,7 +538,7 @@ Pack `.geo` files into an Xall `.grd`.
 ```python
 write_cc_par(adjacency: str | Path, path: str | Path, **options: Any) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L546">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L547">source</a>
 
 Write an Xall `cc.par`; options as `WriteCcPar`.
 
@@ -546,7 +547,7 @@ Write an Xall `cc.par`; options as `WriteCcPar`.
 ```python
 write_proc_input(grd: str | Path, path: str | Path, **options: Any) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L554">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L555">source</a>
 
 Write an Xall `proc.input`; options as `WriteProcInput`.
 
@@ -555,7 +556,7 @@ Write an Xall `proc.input`; options as `WriteProcInput`.
 ```python
 write_adjacency(path: str | Path) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L558">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L559">source</a>
 
 Write the `.adjacency.json` sidecar.
 
@@ -564,7 +565,7 @@ Write the `.adjacency.json` sidecar.
 ```python
 write_cgns(path: str | Path, components: Sequence[str] = ()) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L562">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L563">source</a>
 
 Write a CGNS file of *components* (all with a mesh when empty): a base
 per component, a zone per block, 1-to-1 connections and BCs from the
@@ -575,7 +576,7 @@ face graph (ADR 0035). Needs `h5py` (`shore-mesh[cgns]`).
 ```python
 write_plot3d(path: str | Path, components: Sequence[str] = ()) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L568">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L569">source</a>
 
 Write the blocks of *components* (all with a mesh when empty) as one
 multi-block Plot3D grid file (ADR 0035).
@@ -595,7 +596,7 @@ write_xall(
     numerical_beach: float = -1.0,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L573">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L574">source</a>
 
 Write the Xall files of every component, merged; per-component and
 run-wide options as `WriteXall` (ADR 0016, 0017).
@@ -610,7 +611,7 @@ execute(
     cancel: CancelToken | None = None,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L602">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L603">source</a>
 
 Apply *command*, record it, and clear the redo stack.
 
@@ -622,7 +623,7 @@ component switches are applied; the other commands are recorded.
 ```python
 undo() -> Command
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L649">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L650">source</a>
 
 Revert the last state-changing command (and any outputs after it).
 
@@ -631,7 +632,7 @@ Revert the last state-changing command (and any outputs after it).
 ```python
 redo() -> Command
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L665">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L666">source</a>
 
 Re-apply the last undone command.
 
@@ -640,7 +641,7 @@ Re-apply the last undone command.
 ```python
 history: list[Command]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L675">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L676">source</a>
 
 Applied commands, oldest first (undone ones excluded).
 
@@ -649,14 +650,14 @@ Applied commands, oldest first (undone ones excluded).
 ```python
 require_mesh() -> tuple[Mesh, BuildState]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L679">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L680">source</a>
 
 ### `Project.journal` <Badge type="info" text="method" /> {#Project-journal}
 
 ```python
 journal() -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L686">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L687">source</a>
 
 The history as a replayable Python script.
 
@@ -665,14 +666,14 @@ The history as a replayable Python script.
 ```python
 save_journal(path: str | Path) -> Path
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L690">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L691">source</a>
 
 ### `Project.save` <Badge type="info" text="method" /> {#Project-save}
 
 ```python
 save(directory: str | Path) -> Path
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L696">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L697">source</a>
 
 Write the project directory, inputs included (see module docstring).
 
@@ -681,7 +682,7 @@ Write the project directory, inputs included (see module docstring).
 ```python
 load(directory: str | Path, *, replay: bool = True) -> Project
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L781">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L782">source</a>
 
 Replay a project directory's journal and verify its saved grids.
 
@@ -695,7 +696,7 @@ loaded history cannot be undone, and a loaded mesh cannot be marched.
 ```python
 close() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L875">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L876">source</a>
 
 Delete the on-disk undo snapshots.
 
@@ -704,7 +705,7 @@ Delete the on-disk undo snapshots.
 ```python
 run_journal(path: str | Path, input_dir: str | Path | None = None) -> Project
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L883">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L884">source</a>
 
 Execute a journal script and return the `Project` it built (`p`).
 

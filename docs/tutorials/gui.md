@@ -186,7 +186,7 @@ shore cgns proj -o wing_body.cgns
 ```
 
 or `Project.load("proj")` in Python, which replays the journal and requires
-every grid to equal the saved one bit for bit. The GUI spec checks exactly
+every grid to match the saved one (to 1e-10 of its size). The GUI spec checks exactly
 this (case I1), and also replays the session's journal on the edited model
 (span 2.7, radius 0.55) to a valid grid on the new body (case I2), as step
 10 of the headless tutorial does.
