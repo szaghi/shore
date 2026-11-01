@@ -5,18 +5,33 @@ A form is a list of fields; submitting it calls ``Session.run(method,
 specs are Qt-free; the window renders them as widgets.
 
 Values are typed by their field: text, int, float, bool, a choice, a path
-(file or directory), an optional float, or a Python literal (``ast.
-literal_eval``) for structured arguments such as topology options or
-primitive parameters.
+(file or directory), an optional int or float, a list (a Python list literal,
+or space-separated words), or a Python literal (``ast.literal_eval``) for
+structured arguments such as topology options or primitive parameters.
+
+``FORMS`` holds the forms over Project methods: the hand-written ones and,
+since ADR 0062, one generated from the signature of every other Project
+command. ``ALL_FORMS`` adds the session's own forms (``run_journal``,
+``view_file``) and a form per CLI command (``shore.gui.cli_forms``), run
+in-process on the session's project.
 """
 
 from __future__ import annotations
 
 import ast
+import inspect
+import shlex
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-Kind = Literal["text", "int", "float", "optfloat", "bool", "choice", "file", "dir", "literal"]
+from shore.gui.cli_forms import EXCLUDED, MAPPED, cli_forms
+
+Kind = Literal[
+    "text", "int", "optint", "float", "optfloat", "bool", "choice", "file", "dir", "list", "literal"
+]
+Target = Literal["project", "session", "cli"]
+
+__all__ = ["ALL_FORMS", "EXCLUDED", "FORMS", "MAPPED", "Field", "Form", "form"]
 
 
 @dataclass(frozen=True)
@@ -29,6 +44,8 @@ class Field:
     keyword: bool = True  # passed as name=value; False: positional
     spread: bool = False  # a literal dict spread into keyword arguments
     omit_default: bool = True  # leave the argument out when it equals the default
+    help: str = ""  # the tooltip (the CLI option's help)
+    convert: str = ""  # a named converter of the value (``CONVERTERS``)
 
     def parse(self, raw: Any) -> Any:
         """The typed value of *raw* (a widget's text, a bool, or a value)."""
@@ -43,6 +60,12 @@ class Field:
             return float(text)
         if self.kind == "optfloat":
             return None if text == "" else float(text)
+        if self.kind == "optint":
+            return None if text == "" else int(text)
+        if self.kind == "list":
+            if text.startswith(("[", "(")):
+                return list(ast.literal_eval(text))
+            return shlex.split(text)
         if self.kind == "bool":
             return text.lower() in ("1", "true", "yes", "on")
         if self.kind == "literal":
@@ -56,6 +79,10 @@ class Form:
     title: str
     fields: tuple[Field, ...] = field(default_factory=tuple)
     long: bool = False  # run on a worker thread, with progress and cancel
+    target: Target = "project"  # Project.<method>, Session.<method>, or a CLI command
+    cli: tuple[str, ...] = ()  # the CLI command path of a "cli" form
+    group: str = "Project"  # where the form sits in the Commands menu
+    help: str = ""
 
     def arguments(self, values: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
         """Positional and keyword arguments of ``Project.<method>`` from *values*."""
@@ -63,6 +90,8 @@ class Form:
         kwargs: dict[str, Any] = {}
         for f in self.fields:
             value = f.parse(values[f.name]) if f.name in values else f.default
+            if f.convert:
+                value = CONVERTERS[f.convert](value)
             if not f.keyword:
                 args.append(value)
             elif f.spread:
@@ -207,15 +236,151 @@ FORMS: tuple[Form, ...] = (
         long=True,
     ),
     Form(
-        "write_xall", "Write Xall run", (Field("directory", "dir", "", keyword=False),), long=True
+        "write_xall",
+        "Write Xall run",
+        (
+            Field("directory", "dir", "", keyword=False),
+            Field(
+                "options",
+                "file",
+                "",
+                label="options TOML ([run], [components.<name>])",
+                spread=True,
+                convert="xall_options",
+                help="As shore xall --options.",
+            ),
+        ),
+        long=True,
+        group="Export",
     ),
-    Form("write_cgns", "Write CGNS", (Field("path", "file", "", keyword=False),)),
-    Form("write_plot3d", "Write Plot3D", (Field("path", "file", "", keyword=False),)),
+    Form(
+        "write_cgns",
+        "Write CGNS",
+        (
+            Field("path", "file", "", keyword=False),
+            Field("components", "list", [], label="components (empty: all)"),
+        ),
+        group="Export",
+    ),
+    Form(
+        "write_plot3d",
+        "Write Plot3D",
+        (
+            Field("path", "file", "", keyword=False),
+            Field("components", "list", [], label="components (empty: all)"),
+        ),
+        group="Export",
+    ),
 )
 
 
+def _xall_options(path: Any) -> dict[str, Any]:
+    from pathlib import Path
+
+    from shore.cli import _xall_options as read
+
+    return read(Path(path)) if path else {}
+
+
+#: Value converters named by ``Field.convert``.
+CONVERTERS: dict[str, Any] = {"xall_options": _xall_options}
+
+#: Field names whose values are paths, for the generated Project forms.
+_PATHS = frozenset(
+    {"path", "stem", "body_geo", "other", "adjacency", "grd", "directory", "geo_paths"}
+)
+
+
+def _kind(name: str, annotation: Any) -> Kind:
+    text = str(annotation)
+    if "bool" in text:
+        return "bool"
+    if text.startswith("int | None"):
+        return "optint"
+    if text == "int":
+        return "int"
+    if text.startswith("float | None"):
+        return "optfloat"
+    if text == "float":
+        return "float"
+    if name in _PATHS and ("list" in text or "Sequence" in text or "tuple" in text):
+        return "list"
+    if name in _PATHS:
+        return "file"
+    if text in ("str", "str | None"):
+        return "text"
+    return "literal"
+
+
+def _project_form(method: str) -> Form:
+    """A form from ``Project.<method>``'s signature (ADR 0062)."""
+    from shore.project import Project
+
+    call = getattr(Project, method)
+    fields: list[Field] = []
+    for p in list(inspect.signature(call).parameters.values())[1:]:
+        if p.kind is inspect.Parameter.VAR_KEYWORD:
+            fields.append(Field(p.name, "literal", None, label=f"{p.name} as a dict", spread=True))
+            continue
+        kind = _kind(p.name, p.annotation)
+        required = p.default is inspect.Parameter.empty
+        default = None if required else p.default
+        if kind == "list":
+            default = list(default) if default else []
+        elif kind == "file" and default is None:
+            default = ""
+        keyword = not required or p.kind is inspect.Parameter.KEYWORD_ONLY
+        fields.append(Field(p.name, kind, default, keyword=keyword, omit_default=not required))
+    doc = (call.__doc__ or "").strip().splitlines()
+    title = method.replace("_", " ").capitalize()
+    return Form(method, title, tuple(fields), long=True, help=doc[0] if doc else "")
+
+
+def _command_methods() -> list[str]:
+    import dataclasses
+
+    from shore.project import commands
+
+    return sorted(
+        {
+            c.method
+            for c in vars(commands).values()
+            if isinstance(c, type)
+            and dataclasses.is_dataclass(c)
+            and isinstance(getattr(c, "method", None), str)
+        }
+    )
+
+
+_HAND = {f.method for f in FORMS}
+SESSION_FORMS: tuple[Form, ...] = (
+    Form(
+        "run_journal",
+        "Run journal",
+        (Field("path", "file", "", label="journal (.py)", keyword=False),),
+        long=True,
+        target="session",
+        group="Project",
+        help="As shore run: the journal's project becomes the session's.",
+    ),
+    Form(
+        "view_file",
+        "View file",
+        (Field("path", "file", "", label=".geo blocks or .npz surface", keyword=False),),
+        target="session",
+        group="Inspect",
+        help="As shore view: a .geo file loads as blocks, a .npz surface is shown.",
+    ),
+)
+#: Forms over Project methods: the hand-written ones and one per other
+#: Project command (ADR 0037's G12: every one calls ``Project.<method>``).
+FORMS = FORMS + tuple(_project_form(m) for m in _command_methods() if m not in _HAND)
+#: Every form: Project, session and CLI (ADR 0062).
+ALL_FORMS: tuple[Form, ...] = FORMS + SESSION_FORMS + cli_forms()
+
+
 def form(method: str) -> Form:
-    for f in FORMS:
+    for f in ALL_FORMS:
         if f.method == method:
             return f
     raise KeyError(method)

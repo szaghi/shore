@@ -663,6 +663,18 @@ class Project:
                 return command
         raise ParameterError("Nothing to undo.")
 
+    def rollback(self, length: int) -> None:
+        """Revert and forget every command after the first *length* (ADR 0062).
+
+        For a group of commands that failed part-way (a CLI command run on
+        this project): the state-changing ones are restored, newest first,
+        and none of them stays in the history or the redo stack.
+        """
+        while len(self._done) > length:
+            command, undo = self._done.pop()
+            if command.mutates and undo is not None:
+                undo.restore()
+
     def redo(self) -> Command:
         """Re-apply the last undone command."""
         if not self._redo:

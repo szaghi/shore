@@ -133,7 +133,6 @@ def journal_line(path, method):
 
 
 class TestCoverage:
-    @PENDING
     def test_p1_every_cli_command(self, qapp):
         from shore.gui.forms import EXCLUDED, MAPPED, form
 
@@ -150,7 +149,6 @@ class TestCoverage:
         assert set(MAPPED) | set(EXCLUDED) <= set(leaves())
         assert "gui" in EXCLUDED
 
-    @PENDING
     def test_p2_every_project_command(self, qapp):
         import dataclasses
 
@@ -172,7 +170,6 @@ class TestCoverage:
                 missing.append(m)
         assert missing == []
 
-    @PENDING
     def test_p3_fields_carry_cli_defaults(self, qapp):
         from shore.gui.forms import form
 
@@ -186,7 +183,6 @@ class TestCoverage:
 
 class TestProjectCommands:
     @pytest.mark.parametrize("kind", list(PRIMITIVES))
-    @PENDING
     def test_p4_primitives(self, qapp, tmp_path, kind):
         argv = PRIMITIVES[kind]
         cli("primitive", kind, *argv, "-o", tmp_path / "cli", "--journal", tmp_path / "j.py")
@@ -196,7 +192,6 @@ class TestProjectCommands:
         line = journal_line(tmp_path / "j.py", "build_primitive")
         assert line in w.session.journal_lines()
 
-    @PENDING
     def test_p5_mesh(self, qapp, tmp_path, sphere_stl):
         from shore.io.geo import read_geo
 
@@ -214,7 +209,6 @@ class TestProjectCommands:
         for f in sorted((tmp_path / "cli").glob("*.geo")):
             np.testing.assert_array_equal(read_geo(f), read_geo(tmp_path / "gui" / f.name))
 
-    @PENDING
     def test_p6_generators(self, qapp, tmp_path):
         (tmp_path / "gui").mkdir()
         cli("body", "sphere", "-o", tmp_path / "s.stl")
@@ -229,7 +223,6 @@ class TestProjectCommands:
         for name in ("s.stl", "n.dat"):
             assert (tmp_path / name).read_bytes() == (tmp_path / "gui" / name).read_bytes()
 
-    @PENDING
     def test_p7_xall_file_tools(self, qapp, tmp_path):
         box = PRIMITIVES["box"]
         cli("primitive", "box", *box, "-o", tmp_path / "b", "--adjacency-json", tmp_path / "b.json")
@@ -258,7 +251,6 @@ class TestProjectCommands:
                 tmp_path / f"gui.{ext}"
             ).read_bytes(), ext
 
-    @PENDING
     def test_p8_failure_changes_nothing(self, qapp, tmp_path):
         w = window()
         run(w, "cli:primitive box", {**as_values(PRIMITIVES["box"]), "output": str(tmp_path / "b")})
@@ -276,7 +268,6 @@ class TestProjectCommands:
 
 
 class TestMapped:
-    @PENDING
     def test_p9_write_xall_with_options(self, qapp, tmp_path):
         toml = tmp_path / "x.toml"
         toml.write_text("[run]\nnp = 2\n\n[components.main]\nfree_face_bc = 9\n")
@@ -297,7 +288,6 @@ class TestMapped:
                 tmp_path / "gui" / name
             ).read_bytes(), name
 
-    @PENDING
     def test_p10_run_journal(self, qapp, tmp_path):
         cli(
             "primitive",
@@ -313,7 +303,6 @@ class TestMapped:
         assert len(w.session.project.mesh.blocks) == 1
         assert journal_line(tmp_path / "j.py", "build_primitive") in w.session.journal_lines()
 
-    @PENDING
     def test_p11_view_file(self, qapp, tmp_path, sphere_stl):
         cli("primitive", "box", *PRIMITIVES["box"], "-o", tmp_path / "b")
         cli("project", sphere_stl, "--ni", "9", "--nj", "16", "-o", tmp_path / "surf.npz")
@@ -328,7 +317,6 @@ class TestMapped:
 
 
 class TestMenu:
-    @PENDING
     def test_p12_menu(self, qapp):
         from shore.gui.forms import ALL_FORMS
 

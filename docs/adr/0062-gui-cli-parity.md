@@ -56,6 +56,10 @@ and new options. **The owner asked for every CLI feature in the GUI
    - `gui` is excluded.
 4. **Every Project command has a form.** The hand-written forms the
    existing specs use stay; forms are added for the commands that had none.
+   - `FORMS` keeps only the forms over Project methods: ADR 0037's G12
+     requires every one to call `Project.<method>`.
+   - `ALL_FORMS` adds the session's forms and the CLI's.
+   - `form(key)` finds any of them.
 5. **The forms are grouped.** A group combo in the Command dock and a
    Commands menu follow the CLI's structure: Project, mesh, primitive,
    body, profile, Xall files, inspect.

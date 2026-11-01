@@ -42,7 +42,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from shore.gui.forms import FORMS, Field, Form, form
+from shore.gui.cli_forms import argv as cli_argv
+from shore.gui.forms import ALL_FORMS, Field, Form, form
 from shore.gui.session import BlockKey, Session, SkeletonKey
 from shore.gui.viewport import (
     GeometryPick,
@@ -112,6 +113,7 @@ class MainWindow(QMainWindow):
         self.last_error: BaseException | None = None
         self.last_pick: PickResult | None = None
         self._shown: list[BlockKey] = []
+        self._cli_output = ""
 
         self.canvas = create_canvas(self, offscreen=offscreen_viewport)
         self.viewport = PygfxViewport(self.canvas)
@@ -545,11 +547,18 @@ class MainWindow(QMainWindow):
     def _build_forms(self) -> None:
         panel = QWidget()
         layout = QVBoxLayout(panel)
+        self.group = QComboBox()
+        self.group.addItem("All", "")
+        for g in dict.fromkeys(f.group for f in ALL_FORMS):
+            self.group.addItem(g, g)
+        self.group.currentIndexChanged.connect(lambda _: self._fill_commands())
+        layout.addWidget(self.group)
         self.command = QComboBox()
-        for f in FORMS:
-            self.command.addItem(f.title, f.method)
         self.command.currentIndexChanged.connect(lambda _: self._show_form())
         layout.addWidget(self.command)
+        self._form_help = QLabel()
+        self._form_help.setWordWrap(True)
+        layout.addWidget(self._form_help)
         self._form_host = QWidget()
         self._form_layout = QFormLayout(self._form_host)
         layout.addWidget(self._form_host)
@@ -566,15 +575,55 @@ class MainWindow(QMainWindow):
         dock.setWidget(panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self._editors: dict[str, Any] = {}
+        self._fill_commands()
+        self._build_commands_menu()
+
+    def _fill_commands(self) -> None:
+        """The command combo: every form, or the forms of the chosen group."""
+        group = self.group.currentData()
+        self.command.blockSignals(True)
+        self.command.clear()
+        for f in ALL_FORMS:
+            if not group or f.group == group:
+                self.command.addItem(f.title, f.method)
+                if f.help:
+                    self.command.setItemData(
+                        self.command.count() - 1, f.help, Qt.ItemDataRole.ToolTipRole
+                    )
+        self.command.blockSignals(False)
         self._show_form()
+
+    def _build_commands_menu(self) -> None:
+        """Every form under Commands, a submenu per group (ADR 0062)."""
+        self.commands_menu = self.menuBar().addMenu("Commands")
+        menus: dict[str, Any] = {}
+        for f in ALL_FORMS:
+            if f.group not in menus:
+                menus[f.group] = self.commands_menu.addMenu(f.group)
+            action = menus[f.group].addAction(f.title)
+            action.setData(f.method)
+            if f.help:
+                action.setToolTip(f.help)
+            action.triggered.connect(lambda _=False, m=f.method: self.select_form(m))
+
+    def select_form(self, method: str) -> None:
+        """Show the form of *method* in the Command dock."""
+        self.group.setCurrentIndex(0)
+        self.command.setCurrentIndex(self.command.findData(method))
 
     def _show_form(self) -> None:
         while self._form_layout.rowCount():
             self._form_layout.removeRow(0)
         self._editors = {}
-        f = form(self.command.currentData())
+        method = self.command.currentData()
+        if method is None:
+            return
+        f = form(method)
+        self._form_help.setText(f.help)
         for field in f.fields:
             editor = self._editor(field)
+            if field.help:
+                editor.setToolTip(field.help)
             self._editors[field.name] = editor
             self._form_layout.addRow(field.label or field.name, editor)
 
@@ -588,13 +637,15 @@ class MainWindow(QMainWindow):
             combo.addItems(list(field.choices))
             combo.setCurrentText(str(field.default))
             return combo
-        edit = QLineEdit(
-            ""
-            if field.default is None
-            else repr(field.default)
-            if field.kind == "literal"
-            else str(field.default)
-        )
+        if field.default is None:
+            text = ""
+        elif field.kind == "list":
+            text = " ".join(map(str, field.default))
+        elif field.kind == "literal":
+            text = repr(field.default)
+        else:
+            text = str(field.default)
+        edit = QLineEdit(text)
         if field.kind in ("file", "dir"):
             kind = "dir" if field.kind == "dir" else "file"
             action = edit.addAction(
@@ -683,10 +734,14 @@ class MainWindow(QMainWindow):
         # node values change in place (a march fills the layers): always re-upload
         self.viewport.set_blocks([(key, b.nodes) for key, b in blocks])
         geometries = list(self.session.project.geometries.items())
+        overlays = list(self.session.overlays.items())
         shown = [(name, id(body)) for name, body in geometries]
+        shown += [(name, id(d)) for name, d in overlays]
         if shown != self._geometry_shown:
             self._geometry_shown = shown
-            self.viewport.set_geometries([(n, b.geometry.display()) for n, b in geometries])
+            self.viewport.set_geometries(
+                [(n, b.geometry.display()) for n, b in geometries] + overlays
+            )
             self.geometry_tree.clear()
             for name, body in geometries:
                 d = body.geometry.display()
@@ -852,7 +907,10 @@ class MainWindow(QMainWindow):
         """Run the form of *method* with *values* (field name -> text or value)."""
         f = form(method)
         try:
-            args, kwargs = f.arguments(values or {})
+            if f.target == "cli":
+                args, kwargs = [cli_argv(f, values or {})], {}
+            else:
+                args, kwargs = f.arguments(values or {})
         except Exception as exc:
             self._report(exc)
             return
@@ -866,8 +924,9 @@ class MainWindow(QMainWindow):
             self._report(RuntimeError("a command is already running"))
             return
         self.log.appendPlainText(f"run {f.method}")
+        call = self._target(f)
         if not f.long:
-            self._guard(lambda: self.session.run(f.method, *args, **kwargs))
+            self._guard(lambda: call(*args, **kwargs))
             return
         self._busy = True
         self._cancel = CancelToken() if f.method == "march" else None
@@ -879,7 +938,10 @@ class MainWindow(QMainWindow):
         self.session._listeners = []  # refresh once, on the UI thread, when done
 
         def work(progress: Callable[[float, str], None]) -> None:
-            self.session.run(f.method, *args, progress=progress, cancel=cancel, **kwargs)
+            if f.target == "project":
+                self.session.run(f.method, *args, progress=progress, cancel=cancel, **kwargs)
+            else:
+                call(*args, **kwargs)
 
         task = _Task(work)
         # bound methods of this window: Qt queues the calls to the UI thread
@@ -888,6 +950,19 @@ class MainWindow(QMainWindow):
         self._task = task  # keep the signals object alive until done
         self._pool.start(task)
 
+    def _target(self, f: Form) -> Callable[..., Any]:
+        """What a form calls: a Project command, a Session method or the CLI."""
+        if f.target == "cli":
+
+            def run_cli(argv: list[str]) -> None:
+                output = self.session.run_cli(argv)
+                self._cli_output = output
+
+            return run_cli
+        if f.target == "session":
+            return getattr(self.session, f.method)
+        return lambda *a, **k: self.session.run(f.method, *a, **k)
+
     def _task_done(self, exc: object) -> None:
         self.session._listeners = self._held_listeners
         self._busy = False
@@ -895,6 +970,9 @@ class MainWindow(QMainWindow):
         self._task = None
         self._progress.setVisible(False)
         self._report(exc if isinstance(exc, BaseException) else None)
+        output, self._cli_output = self._cli_output, ""
+        if output.strip():
+            self.log.appendPlainText(output.rstrip())
         self.refresh()
 
     def _on_progress(self, fraction: float, message: str) -> None:

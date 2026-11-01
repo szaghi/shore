@@ -348,6 +348,10 @@
         "link": "/reference/api/shore.gui"
       },
       {
+        "text": "gui.cli_forms",
+        "link": "/reference/api/shore.gui.cli_forms"
+      },
+      {
         "text": "gui.forms",
         "link": "/reference/api/shore.gui.forms"
       },

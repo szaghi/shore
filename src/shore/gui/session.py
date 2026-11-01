@@ -11,7 +11,7 @@ synchronous.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +49,8 @@ class Session:
         self.project = project if project is not None else Project()
         self.directory = directory  # where the project was opened from / saved to
         self._listeners: list[Listener] = []
+        #: surfaces shown but not part of the project (``view_file`` on a .npz)
+        self.overlays: dict[str, Any] = {}
 
     # -- listeners -------------------------------------------------------------
 
@@ -85,6 +87,58 @@ class Session:
             call(*args, **kwargs)
         finally:
             self._changed()
+
+    def run_cli(self, command: Sequence[str]) -> str:
+        """Run a CLI command (``["mesh", "body.stl", "--nk", "6"]``) on this
+        project (ADR 0062) and return its output.
+
+        Its Project commands land in this project's history, each one
+        undoable. A command that fails (exit code not 0) is rolled back:
+        the project is as it was, and the error carries the command's output.
+        """
+        from typer.testing import CliRunner
+
+        from shore.cli import app, using_project
+
+        before = len(self.project.history)
+        try:
+            with using_project(self.project):
+                result = CliRunner().invoke(app, [str(a) for a in command])
+            if result.exit_code != 0:
+                self.project.rollback(before)
+                detail = result.output.strip()
+                if not detail and result.exception is not None:
+                    detail = f"{type(result.exception).__name__}: {result.exception}"
+                raise RuntimeError(f"shore {' '.join(map(str, command[:2]))}: {detail}")
+            return result.output
+        finally:
+            self._changed()
+
+    def run_journal(self, path: str | Path) -> None:
+        """Replace the project with the one a journal builds (``shore run``)."""
+        from shore.project import run_journal
+
+        new = run_journal(path)
+        old, self.project, self.directory = self.project, new, None
+        old.close()
+        self._changed()
+
+    def view_file(self, path: str | Path) -> None:
+        """Show a file as ``shore view`` does: a ``.geo`` file loads as the
+        current component's blocks (``load_blocks``, one journal line); a
+        ``.npz`` surface (key ``"k0"``) is shown only, outside the project."""
+        import numpy as np
+
+        p = Path(path)
+        if p.suffix == ".geo":
+            self.run("load_blocks", [str(p)])
+            return
+        if p.suffix != ".npz":
+            raise ValueError(f"view_file: a .geo or .npz file is needed, got {p.name}")
+        with np.load(p) as data:
+            nodes = np.asarray(data["k0"], dtype=np.float64)
+        self.overlays[p.stem] = surface_display(nodes)
+        self._changed()
 
     def undo(self) -> None:
         try:
@@ -218,3 +272,24 @@ class Session:
         if mesh is None:
             return None
         return next((b for b in mesh.blocks if b.label == key.label), None)
+
+
+def surface_display(nodes: Any) -> Any:
+    """A structured surface ``(ni, nj, 3)`` as a ``geometry.base.Display``:
+    two triangles per quad, one body entity."""
+    import numpy as np
+
+    from shore.geometry.base import Display, EntityKind
+
+    ni, nj = nodes.shape[:2]
+    idx = np.arange(ni * nj).reshape(ni, nj)
+    a, b, c, d = idx[:-1, :-1], idx[1:, :-1], idx[1:, 1:], idx[:-1, 1:]
+    tris = np.concatenate(
+        [np.stack([a, b, c], -1).reshape(-1, 3), np.stack([a, c, d], -1).reshape(-1, 3)]
+    )
+    return Display(
+        points=nodes.reshape(-1, 3),
+        triangles=tris,
+        triangle_entity=np.zeros(len(tris), dtype=np.int64),
+        surface_kind=EntityKind.BODY,
+    )

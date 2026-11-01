@@ -13,6 +13,7 @@ in `shore.gui.window` and the renderer behind `shore.gui.viewport`.
 
 **Modules**
 
+- [`shore.gui.cli_forms`](./shore.gui.cli_forms) — GUI forms generated from the CLI
 - [`shore.gui.forms`](./shore.gui.forms) — Command forms of the GUI
 - [`shore.gui.session`](./shore.gui.session) — The GUI's owner of a project
 - [`shore.gui.viewport`](./shore.gui.viewport) — The GUI's renderer interface

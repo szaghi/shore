@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from shore.gui.forms import FORMS, Field, form
+from shore.gui.forms import ALL_FORMS, FORMS, Field, form
 from shore.gui.session import Session
 from shore.gui.viewport import (
     FACES,
@@ -122,7 +122,7 @@ class TestWindow:
 
         w = MainWindow(offscreen_viewport=True, ask_path=lambda *a: None)
         assert [w.command.itemData(i) for i in range(w.command.count())] == [
-            f.method for f in FORMS
+            f.method for f in ALL_FORMS
         ]
         w.command.setCurrentIndex(w.command.findData("march"))
         assert set(w._form_values()) == {f.name for f in form("march").fields}
@@ -227,3 +227,49 @@ class TestAssociationWindow:
         w.clear_association()
         assert w.last_error is None and "k_lo" not in w.session.associations(key)
         assert w.session.journal_lines()[-1] == "p.associate('ogrid', 'k_lo', 'body', 'none')"
+
+
+class TestCliForms:
+    """Forms generated from the CLI (ADR 0062)."""
+
+    def test_argv_from_values(self):
+        from shore.gui.cli_forms import argv
+
+        f = form("cli:primitive h-grid-tube")
+        assert argv(f, {}) == ["primitive", "h-grid-tube"]
+        cmd = argv(f, {"n_circ": "16", "length": "2", "output": "/tmp/t"})
+        assert cmd[:2] == ["primitive", "h-grid-tube"]
+        assert cmd[cmd.index("--n-circ") + 1] == "16" and cmd[cmd.index("--length") + 1] == "2.0"
+
+    def test_flags_and_lists(self):
+        from shore.gui.cli_forms import argv
+
+        f = form("cli:profile naca")
+        assert "--open-te" in argv(f, {"designation": "0012", "closed_te": False})
+        g = form("cli:grd")
+        assert argv(g, {"inputs": "a.geo b.geo", "output": "x.grd"})[1:3] == ["a.geo", "b.geo"]
+
+    def test_owned_options_left_out(self):
+        for f in ALL_FORMS:
+            if f.target == "cli":
+                assert not {"project", "component", "no_replay", "journal"} & {
+                    x.name for x in f.fields
+                }
+
+    def test_run_cli_failure_rolls_back(self, tmp_path):
+        from shore.gui.session import Session
+
+        s = Session()
+        s.run_cli(
+            ["primitive", "box", "--ni", "3", "--nj", "3", "--nk", "3", "-o", str(tmp_path / "b")]
+        )
+        n = len(s.project.history)
+        with pytest.raises(RuntimeError, match="n_circ"):
+            s.run_cli(["primitive", "h-grid-tube", "--n-circ", "10", "-o", str(tmp_path / "t")])
+        assert len(s.project.history) == n
+
+    def test_view_file_rejects_other_files(self, tmp_path):
+        from shore.gui.session import Session
+
+        with pytest.raises(ValueError, match=r"\.geo or \.npz"):
+            Session().view_file(tmp_path / "x.stl")

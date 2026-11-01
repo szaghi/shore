@@ -627,12 +627,25 @@ undo() -> Command
 
 Revert the last state-changing command (and any outputs after it).
 
+### `Project.rollback` <Badge type="info" text="method" /> {#Project-rollback}
+
+```python
+rollback(length: int) -> None
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L666">source</a>
+
+Revert and forget every command after the first *length* (ADR 0062).
+
+For a group of commands that failed part-way (a CLI command run on
+this project): the state-changing ones are restored, newest first,
+and none of them stays in the history or the redo stack.
+
 ### `Project.redo` <Badge type="info" text="method" /> {#Project-redo}
 
 ```python
 redo() -> Command
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L666">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L678">source</a>
 
 Re-apply the last undone command.
 
@@ -641,7 +654,7 @@ Re-apply the last undone command.
 ```python
 history: list[Command]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L676">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L688">source</a>
 
 Applied commands, oldest first (undone ones excluded).
 
@@ -650,14 +663,14 @@ Applied commands, oldest first (undone ones excluded).
 ```python
 require_mesh() -> tuple[Mesh, BuildState]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L680">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L692">source</a>
 
 ### `Project.journal` <Badge type="info" text="method" /> {#Project-journal}
 
 ```python
 journal() -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L687">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L699">source</a>
 
 The history as a replayable Python script.
 
@@ -666,14 +679,14 @@ The history as a replayable Python script.
 ```python
 save_journal(path: str | Path) -> Path
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L691">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L703">source</a>
 
 ### `Project.save` <Badge type="info" text="method" /> {#Project-save}
 
 ```python
 save(directory: str | Path) -> Path
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L697">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L709">source</a>
 
 Write the project directory, inputs included (see module docstring).
 
@@ -682,7 +695,7 @@ Write the project directory, inputs included (see module docstring).
 ```python
 load(directory: str | Path, *, replay: bool = True) -> Project
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L782">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L794">source</a>
 
 Replay a project directory's journal and verify its saved grids.
 
@@ -696,7 +709,7 @@ loaded history cannot be undone, and a loaded mesh cannot be marched.
 ```python
 close() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L876">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L888">source</a>
 
 Delete the on-disk undo snapshots.
 
@@ -705,7 +718,7 @@ Delete the on-disk undo snapshots.
 ```python
 run_journal(path: str | Path, input_dir: str | Path | None = None) -> Project
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L884">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/project.py#L896">source</a>
 
 Execute a journal script and return the `Project` it built (`p`).
 

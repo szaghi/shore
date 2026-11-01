@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import contextlib
+import contextvars
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -125,16 +127,49 @@ _NO_REPLAY = Annotated[
 ]
 
 
+_INJECTED: contextvars.ContextVar[Project | None] = contextvars.ContextVar(
+    "shore_cli_project", default=None
+)
+
+
+@contextlib.contextmanager
+def using_project(project: Project) -> Iterator[Project]:
+    """Run CLI commands on *project* instead of a fresh one (ADR 0062).
+
+    The GUI runs its CLI forms in-process inside this context: every
+    command's project (``_open_project`` without ``--project``, and the
+    commands that build one of their own) is *project*, so its Project
+    commands land in the GUI's session and journal.
+    """
+    token = _INJECTED.set(project)
+    try:
+        yield project
+    finally:
+        _INJECTED.reset(token)
+
+
+def _new_project() -> Project:
+    """A fresh project, or the injected one (``using_project``)."""
+    injected = _INJECTED.get()
+    return injected if injected is not None else Project()
+
+
 def _open_project(
     directory: Path | None, component: str | None, default: str, replay: bool = True
 ) -> Project:
     """The project in *directory* (or a new one) with component selected.
 
-    Without *directory*: a throwaway project, as before ADR 0018.
+    Without *directory*: a throwaway project, as before ADR 0018, or the
+    injected one (ADR 0062), with *component* selected when given.
     """
     from shore.exceptions import MeshInputError, ParameterError
 
     if directory is None:
+        injected = _INJECTED.get()
+        if injected is not None:
+            if component is not None and injected.current_component != component:
+                injected.use_component(component)
+            return injected
         if component is not None:
             raise ParameterError("--component needs --project.")
         return Project()
@@ -2708,7 +2743,7 @@ def cap_tip(
     # Load the body block, extract the spanwise-extreme cross-section
     # at the wall (k=0).
     # ------------------------------------------------------------
-    proj = Project()
+    proj = _new_project()
     try:
         proj.build_tip_cap(
             body_geo,
@@ -2860,7 +2895,7 @@ def split(
     from shore.pipeline import common_base_stem
 
     base_stem = common_base_stem([p.stem for p in inputs])
-    proj = Project()
+    proj = _new_project()
     try:
         proj.load_blocks(inputs, adjacency or ())
     except Exception as exc:
@@ -2953,7 +2988,7 @@ def grd(
             _err.print(f"[red]Error:[/red] input is not a .geo file: {p}")
             raise typer.Exit(1) from None
 
-    proj = Project()
+    proj = _new_project()
     try:
         proj.write_grd(output, inputs)
     except Exception as exc:
@@ -3140,7 +3175,7 @@ def cc_par(
             _err.print(f"[red]Error:[/red] --boxes: {_esc(str(exc))}")
             raise typer.Exit(1) from None
 
-    proj = Project()
+    proj = _new_project()
     try:
         proj.write_cc_par(
             adjacency,
@@ -3390,7 +3425,7 @@ def proc_input(
         if "body" in v:
             body_assignment[k] = int(v["body"])
 
-    proj = Project()
+    proj = _new_project()
     try:
         proj.write_proc_input(grd, output, np=np, meta=overrides, header_comment=header_comment)
     except Exception as exc:

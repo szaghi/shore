@@ -127,6 +127,7 @@ these pages by hand. The command-line interface is documented under
 | Module | Summary |
 |---|---|
 | [`shore.gui`](./shore.gui) | SHORE's desktop GUI  |
+| [`shore.gui.cli_forms`](./shore.gui.cli_forms) | GUI forms generated from the CLI  |
 | [`shore.gui.forms`](./shore.gui.forms) | Command forms of the GUI  |
 | [`shore.gui.session`](./shore.gui.session) | The GUI's owner of a project  |
 | [`shore.gui.viewport`](./shore.gui.viewport) | The GUI's renderer interface  |

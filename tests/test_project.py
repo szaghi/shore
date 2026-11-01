@@ -433,3 +433,28 @@ class TestResaveNames:
         assert sorted(f.name for f in (tmp_path / "b" / "inputs").iterdir()) == ["00_ball.stl"]
         assert "inputs/00_ball.stl" in (tmp_path / "b" / "journal.py").read_text()
         Project.load(tmp_path / "b")  # still loads
+
+
+class TestRollback:
+    """Project.rollback (ADR 0062): revert and forget the commands after a point."""
+
+    def test_rollback_restores_and_forgets(self, sphere_stl):
+        p = _sphere_project(sphere_stl)
+        n = len(p.history)
+        before = p.mesh.blocks[0].nodes.copy()
+        p.march()
+        p.rollback(n)
+        assert len(p.history) == n
+        np.testing.assert_array_equal(p.mesh.blocks[0].nodes, before)
+        with pytest.raises(ParameterError, match="Nothing to redo"):
+            p.redo()
+
+    def test_rollback_keeps_earlier_commands(self, sphere_stl, tmp_path):
+        p = _sphere_project(sphere_stl)
+        p.march()
+        n = len(p.history)
+        marched = p.mesh.blocks[0].nodes.copy()
+        p.write_geo(tmp_path / "s")  # an output command only
+        p.rollback(n)
+        assert len(p.history) == n
+        np.testing.assert_array_equal(p.mesh.blocks[0].nodes, marched)

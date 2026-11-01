@@ -1231,3 +1231,26 @@ class TestBlendRemoval:
         r = runner.invoke(app, args)
         assert r.exit_code == 1
         assert "removed" in r.output
+
+
+class TestUsingProject:
+    """shore.cli.using_project (ADR 0062): CLI commands on a given project."""
+
+    def test_commands_land_in_the_injected_project(self, tmp_path):
+        from shore.cli import using_project
+        from shore.project import Project
+
+        p = Project()
+        with using_project(p):
+            r = _invoke(
+                "primitive", "box", "--ni", "3", "--nj", "3", "--nk", "3", "-o", str(tmp_path / "b")
+            )
+        assert r.exit_code == 0, r.output
+        assert p.mesh is not None and len(p.mesh.blocks) == 1
+        assert any(c.method == "build_primitive" for c in p.history)
+
+    def test_without_injection_a_fresh_project(self, tmp_path):
+        r = _invoke(
+            "primitive", "box", "--ni", "3", "--nj", "3", "--nk", "3", "-o", str(tmp_path / "b")
+        )
+        assert r.exit_code == 0, r.output

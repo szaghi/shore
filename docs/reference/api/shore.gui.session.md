@@ -48,7 +48,7 @@ One project, its saved location and the GUI's change listeners.
 ```python
 subscribe(listener: Listener) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L55">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L57">source</a>
 
 Call *listener* after every change of the project.
 
@@ -63,7 +63,7 @@ run(
     **kwargs: Any,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L65">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L67">source</a>
 
 Call `Project.<method>`: one command, one journal line.
 
@@ -71,26 +71,60 @@ The project is unchanged if the command raises (the command layer
 restores a failed or cancelled march, and a command that fails while
 building leaves no state behind).
 
+### `Session.run_cli` <Badge type="info" text="method" /> {#Session-run_cli}
+
+```python
+run_cli(command: Sequence[str]) -> str
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L91">source</a>
+
+Run a CLI command (`["mesh", "body.stl", "--nk", "6"]`) on this
+project (ADR 0062) and return its output.
+
+Its Project commands land in this project's history, each one
+undoable. A command that fails (exit code not 0) is rolled back:
+the project is as it was, and the error carries the command's output.
+
+### `Session.run_journal` <Badge type="info" text="method" /> {#Session-run_journal}
+
+```python
+run_journal(path: str | Path) -> None
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L117">source</a>
+
+Replace the project with the one a journal builds (`shore run`).
+
+### `Session.view_file` <Badge type="info" text="method" /> {#Session-view_file}
+
+```python
+view_file(path: str | Path) -> None
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L126">source</a>
+
+Show a file as `shore view` does: a `.geo` file loads as the
+current component's blocks (`load_blocks`, one journal line); a
+`.npz` surface (key `"k0"`) is shown only, outside the project.
+
 ### `Session.undo` <Badge type="info" text="method" /> {#Session-undo}
 
 ```python
 undo() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L89">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L143">source</a>
 
 ### `Session.redo` <Badge type="info" text="method" /> {#Session-redo}
 
 ```python
 redo() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L95">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L149">source</a>
 
 ### `Session.open` <Badge type="info" text="method" /> {#Session-open}
 
 ```python
 open(directory: str | Path, *, replay: bool = True) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L101">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L155">source</a>
 
 Replace the project with a saved one (ADR 0016; ADR 0033 without replay).
 
@@ -99,21 +133,21 @@ Replace the project with a saved one (ADR 0016; ADR 0033 without replay).
 ```python
 new() -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L109">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L163">source</a>
 
 ### `Session.save` <Badge type="info" text="method" /> {#Session-save}
 
 ```python
 save(directory: str | Path | None = None) -> Path
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L115">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L169">source</a>
 
 ### `Session.journal_lines` <Badge type="info" text="method" /> {#Session-journal_lines}
 
 ```python
 journal_lines() -> list[str]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L126">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L180">source</a>
 
 The journal's command lines (without the header).
 
@@ -122,7 +156,7 @@ The journal's command lines (without the header).
 ```python
 blocks() -> list[tuple[BlockKey, HexBlock]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L130">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L184">source</a>
 
 Every block of every component with a mesh, components in project order.
 
@@ -131,7 +165,7 @@ Every block of every component with a mesh, components in project order.
 ```python
 skeleton() -> list[tuple[SkeletonKey, Any]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L139">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L193">source</a>
 
 Every blocking edge of every component, with its nodes on the
 straight line between its skeleton vertices (`Blocking.polylines`).
@@ -141,7 +175,7 @@ straight line between its skeleton vertices (`Blocking.polylines`).
 ```python
 skeleton_markers(kind: str) -> list[tuple[SkeletonKey, Any]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L151">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L205">source</a>
 
 A marker per blocking face (`kind="face"`: ``SkeletonKey(component,
 block, face)`, the face named by its first block) or block (`"block"``:
@@ -152,7 +186,7 @@ block, face)`, the face named by its first block) or block (`"block"``:
 ```python
 tree() -> list[tuple[str, bool, list[tuple[str, tuple[int, int, int], dict[str, str]]]]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L164">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L218">source</a>
 
 `(component, is current, [(block label, shape, {face: BC name})])`.
 
@@ -161,7 +195,7 @@ tree() -> list[tuple[str, bool, list[tuple[str, tuple[int, int, int], dict[str, 
 ```python
 associations(key: BlockKey) -> dict[str, str]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L178">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L232">source</a>
 
 `{entity: label}` for the associated faces, edges and vertices
 (`"v0"`..) of a block; labels like `"body"` or `"part: surface 2, 5"`.
@@ -171,7 +205,7 @@ associations(key: BlockKey) -> dict[str, str]
 ```python
 association_label(association: Any) -> str
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L199">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L253">source</a>
 
 `"geometry"` for a body, else `"geometry: kind i, j"` (indices
 re-found from the association's fingerprints in the current geometry).
@@ -181,4 +215,14 @@ re-found from the association's fingerprints in the current geometry).
 ```python
 block(key: BlockKey) -> HexBlock | None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L216">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L270">source</a>
+
+## `surface_display` <Badge type="info" text="function" /> {#surface_display}
+
+```python
+surface_display(nodes: Any) -> Any
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/gui/session.py#L277">source</a>
+
+A structured surface `(ni, nj, 3)` as a `geometry.base.Display`:
+two triangles per quad, one body entity.
