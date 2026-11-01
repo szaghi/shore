@@ -342,7 +342,7 @@ CGridTipCap(
 )
 ```
 Bases: `Topology`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1418">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1420">source</a>
 
 C-grid wing-tip cap topology — 3 (sharp) or 4 (blunt) overset blocks.
 
@@ -411,7 +411,7 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1561">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1563">source</a>
 
 Build the tip cap blocks from a cross-section polyline.
 
@@ -438,7 +438,7 @@ OHTopology(
 )
 ```
 Bases: `Topology`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1819">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1823">source</a>
 
 Style-2 conforming hybrid: cubed-sphere wrap + 6-block H-channel.
 
@@ -497,7 +497,7 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1894">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1898">source</a>
 
 Build the 12-block OH topology.
 
@@ -511,7 +511,7 @@ chan_north, chan_south]``.
 ```python
 fill_channel_blocks(blocks: list[HexBlock]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2039">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2043">source</a>
 
 Build channel block interiors after the wrap has been marched.
 
@@ -550,7 +550,7 @@ CHTopology(
 )
 ```
 Bases: `Topology`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2179">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2183">source</a>
 
 Hybrid C-grid wrap + H-channel far-field for sharp- or blunt-TE bodies.
 
@@ -640,7 +640,7 @@ the C-grid wrap marcher and then calls :meth:`fill_channel_blocks`.
 ```python
 is_blunt: bool
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2333">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2337">source</a>
 
 True when build() detected a blunt TE (CH-4).
 
@@ -663,7 +663,7 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2337">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2341">source</a>
 
 Build the CH topology block list.
 
@@ -675,7 +675,7 @@ Build the CH topology block list.
 ```python
 fill_channel_blocks(blocks: list[HexBlock]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L3026">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L3030">source</a>
 
 Populate every channel block's interior after wrap marching.
 

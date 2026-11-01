@@ -40,6 +40,23 @@ The resulting block is **not marched**.  It is a pure parametric fill,
 fully determined by the body's j=0 cross-section polyline plus
 `tip_inset` and the cap j-spacing law.
 
+## `check_cap_blocks` <Badge type="info" text="function" /> {#check_cap_blocks}
+
+```python
+check_cap_blocks(blocks: list) -> None
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L45">source</a>
+
+Refuse a wing-tip cap with a folded cell or a block without cells (ADR 0058).
+
+The caps are built, not marched, so no marcher guard sees them. Every
+block must have at least one cell along each axis and every cell a
+minimum corner scaled Jacobian above 0 (`shore.quality`).
+
+**Raises**
+
+- `ParameterError` — Naming the first invalid block and its worst cell.
+
 ## `build_cap_blocks` <Badge type="info" text="function" /> {#build_cap_blocks}
 
 ```python
@@ -59,7 +76,7 @@ build_cap_blocks(
     te_cut_lower_idx: int | None = None,
 ) -> dict[str, np.ndarray]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L45">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L78">source</a>
 
 Build the cap sub-blocks at one wing tip of a C-grid.
 
@@ -110,7 +127,7 @@ find_symmetric_le_cuts(
     span_axis_world: int,
 ) -> tuple[int, int]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L489">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L522">source</a>
 
 Find the upper / lower LE-cut indices in a body cross-section.
 
@@ -140,7 +157,7 @@ the cap-fill builder for the chord-cut SHARED face.
 ```python
 detect_te_thickness(cross_section: np.ndarray, span_axis_world: int) -> float
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L565">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L598">source</a>
 
 Return the TE thickness of a cross-section polyline.
 
@@ -156,7 +173,7 @@ auto_round_sharp_te(
     span_axis_world: int,
 ) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L580">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L613">source</a>
 
 Synthesise a blunt cross-section by splitting the sharp TE node.
 

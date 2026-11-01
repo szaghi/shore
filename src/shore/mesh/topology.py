@@ -865,6 +865,7 @@ class CGridTopology(Topology):
         from shore.surface.cgrid import round_body_te_in_surface
         from shore.topology.cgrid_cap import (
             build_cap_blocks,
+            check_cap_blocks,
             find_symmetric_le_cuts,
         )
 
@@ -1122,6 +1123,7 @@ class CGridTopology(Topology):
                 axis_map=AxisMap.identity("j_lo"),
             )
 
+        check_cap_blocks(cap_blocks)
         return cgrid_blocks + cap_blocks
 
     # ------------------------------------------------------------------
@@ -1591,6 +1593,7 @@ class CGridTipCap(Topology):
         from shore.topology.cgrid_cap import (
             auto_round_sharp_te,
             build_cap_blocks,
+            check_cap_blocks,
             detect_te_thickness,
         )
 
@@ -1813,6 +1816,7 @@ class CGridTipCap(Topology):
             partner=cap_te_upper.face("j_lo"),
             axis_map=AxisMap.identity("j_lo"),
         )
+        check_cap_blocks(blocks)
         return blocks
 
 

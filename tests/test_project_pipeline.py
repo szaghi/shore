@@ -194,7 +194,7 @@ class TestCliJournals:
             args = [a.replace("{out}", str(out)).replace("{grd}", str(grd)) for a in args]
             _replay_matches(work, args, out)
 
-    def test_cap_tip(self, tmp_path, naca0012_stl):
+    def test_cap_tip_refused(self, tmp_path, naca0012_stl):
         body = tmp_path / "body"
         body.mkdir()
         r = _invoke(
@@ -205,11 +205,11 @@ class TestCliJournals:
         assert r.exit_code == 0, r.output
         out = tmp_path / "out"
         out.mkdir()
-        _replay_matches(
-            tmp_path,
-            ["cap-tip", str(body / "w_body.geo"), "--tip", "jlo", "-o", str(out / "c")],
-            out,
-        )
+        # The caps of this construction fold: refused, nothing written (ADR 0058).
+        r = _invoke("cap-tip", str(body / "w_body.geo"), "--tip", "jlo", "-o", str(out / "c"))
+        assert r.exit_code == 1
+        assert "tip cap block" in r.output
+        assert not list(out.glob("*.geo"))
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,39 @@ from shore.exceptions import ParameterError
 from shore.volume.spacing import build_i_coords
 
 
+def check_cap_blocks(blocks: list) -> None:
+    """Refuse a wing-tip cap with a folded cell or a block without cells (ADR 0058).
+
+    The caps are built, not marched, so no marcher guard sees them. Every
+    block must have at least one cell along each axis and every cell a
+    minimum corner scaled Jacobian above 0 (``shore.quality``).
+
+    Raises
+    ------
+    ParameterError
+        Naming the first invalid block and its worst cell.
+    """
+    from shore.quality import scaled_jacobian
+
+    for b in blocks:
+        shape = tuple(int(n) for n in b.nodes.shape[:3])
+        if min(shape) < 2:
+            raise ParameterError(
+                f"Tip cap block {b.label} has no cells (nodes {shape}): the cap "
+                "construction cannot close this section; no cap was built (ADR 0058)."
+            )
+        sj = scaled_jacobian(b.nodes)
+        if sj.min() > 0.0:
+            continue
+        i, j, k = np.unravel_index(int(np.argmin(sj)), sj.shape)
+        raise ParameterError(
+            f"Folded cell (scaled Jacobian {float(sj.min()):.3f}) in tip cap block "
+            f"{b.label} at cell ({i}, {j}, {k}), {int((sj <= 0.0).sum())} of {sj.size} "
+            "folded: the cap construction cannot close this section; no cap was "
+            "built (ADR 0058)."
+        )
+
+
 def build_cap_blocks(
     cross_section: np.ndarray,
     le_cut_upper_idx: int,

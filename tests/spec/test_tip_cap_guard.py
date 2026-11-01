@@ -122,7 +122,6 @@ def geo_files_valid(directory):
 
 class TestCaps:
     @pytest.mark.parametrize("te", ["sharp", "blunt"])
-    @PENDING
     def test_p1_conformal_caps(self, wings, te):
         from shore.project import Project
 
@@ -131,14 +130,12 @@ class TestCaps:
         extra = {"blocks": 4} if te == "blunt" else {}
         valid_or_refused(lambda: p.build_topology("cgrid", cap_tips="both", **CGRID, **extra), p)
 
-    @PENDING
     def test_p2_tip_cap_api(self, body_geo):
         from shore.project import Project
 
         p = Project()
         valid_or_refused(lambda: p.build_tip_cap(body_geo, tip="jlo"), p)
 
-    @PENDING
     def test_p3_tip_cap_cli(self, body_geo, tmp_path):
         from shore.cli import app
 
@@ -152,7 +149,6 @@ class TestCaps:
             assert r.exit_code == 1
             assert not list(out.glob("*.geo"))
 
-    @PENDING
     def test_p4_mesh_cli(self, wings, tmp_path):
         from shore.cli import app
 

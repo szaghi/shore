@@ -123,7 +123,7 @@ configure the C-grid wrap geometry around an airfoil / hydrofoil.
 | `--span-axis TEXT` | `z` | `x` / `y` / `z` — span world axis. |
 | `--te-dihedral-deg FLOAT` | 30.0 | Sharpness threshold for TE detection. |
 | `--cgrid-blocks INTEGER` | 3 | `cgrid` only: 3 (Xall-correct sharp-TE), 4 (Xall-correct blunt-TE), or 1 (legacy single-block). Ignored for `--topology ch`. |
-| `--cap-tips TEXT` | `none` | `cgrid` only: `none` / `jlo` / `jhi` / `both` — wing-tip cap blocks at the requested spanwise extreme(s). See [`shore cap-tip`](cap-tip) for a standalone CLI. |
+| `--cap-tips TEXT` | `none` | `cgrid` only: `none` / `jlo` / `jhi` / `both` — wing-tip cap blocks at the requested spanwise extreme(s); refused since ADR 0058, their blocks fold. See [`shore cap-tip`](cap-tip) for a standalone CLI. |
 | `--cap-te-thickness*`, `--cap-le-frac`, `--cap-te-frac`, `--cap-tip-inset`, `--cap-n-cap-j`, `--cap-j-spacing-cgrid`, `--cap-j-beta-cgrid`, `--cap-nk` | various | `cgrid + caps` only — cap-block geometry. See [C-grid topology](/concepts/topologies/c-grid#tip-caps-closed-finite-wing). |
 
 ### CH hybrid options (`--topology ch`)

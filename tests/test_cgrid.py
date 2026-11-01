@@ -1205,77 +1205,11 @@ class TestCGridConformalCaps:
             warnings.simplefilter("ignore")
             return topo.build(**kwargs)
 
-    def test_returns_4_cgrid_plus_12_cap_blocks_for_both(self, naca0012_stl):
-        """4 C-grid + 6 cap_jlo + 6 cap_jhi = 16 blocks total."""
-        blocks = self._build(naca0012_stl, cap_tips="both")
-        assert len(blocks) == 16
-        labels = [b.label for b in blocks]
-        assert labels[:4] == ["upper", "body", "lower", "wake_base"]
-        # 6 jlo cap blocks: le, upper, lower, te_upper, te_lower, wake_base.
-        jlo_labels = sorted(b.label for b in blocks if b.label.startswith("cap_jlo_"))
-        assert jlo_labels == [
-            "cap_jlo_le",
-            "cap_jlo_lower",
-            "cap_jlo_te_lower",
-            "cap_jlo_te_upper",
-            "cap_jlo_upper",
-            "cap_jlo_wake_base",
-        ]
-
-    def test_returns_4_plus_6_blocks_for_jlo_only(self, naca0012_stl):
-        blocks = self._build(naca0012_stl, cap_tips="jlo")
-        assert len(blocks) == 10
-        labels = [b.label for b in blocks]
-        assert labels[:4] == ["upper", "body", "lower", "wake_base"]
-        for lbl in labels[4:]:
-            assert lbl.startswith("cap_jlo_")
-
-    def test_body_te_is_rounded(self, naca0012_stl):
-        """After build, the body's TE is split apart by the requested thickness."""
-        # Use an absolute thickness so we know exactly what to compare to.
-        blocks = self._build(
-            naca0012_stl,
-            cap_tips="both",
-            cap_te_thickness=0.005,
-        )
-        body = blocks[1]
-        # body[0] = upper-TE column (i=0); body[-1] = lower-TE column (i=ni-1).
-        for j in range(body.nodes.shape[1]):
-            sep = float(np.linalg.norm(body.nodes[0, j, 0, :] - body.nodes[-1, j, 0, :]))
-            np.testing.assert_allclose(sep, 0.005, atol=1e-12)
-
-    def test_cap_airfoil_wall_matches_body_bit_exact(self, naca0012_stl):
-        """Cap airfoil-wall nodes coincide bit-exactly with body wall nodes at the tip."""
-        blocks = self._build(naca0012_stl, cap_tips="jlo")
-        body = blocks[1]
-        # cap_jlo_le: the LE-wrap.  Its (j_hi, k_hi) airfoil-wall edge
-        # should equal body.nodes[le_up : le_lo + 1, 0, 0, :].
-        labels = {b.label: b for b in blocks}
-        cap_le = labels["cap_jlo_le"]
-        cap_upper = labels["cap_jlo_upper"]
-        cap_lower = labels["cap_jlo_lower"]
-        cap_te_upper = labels["cap_jlo_te_upper"]
-        cap_te_lower = labels["cap_jlo_te_lower"]
-
-        # The tip is jlo (j=0).
-        body_wall_at_tip = body.nodes[:, 0, 0, :]  # (ni_body, 3)
-
-        # cap_upper: i sweeps body i = le_up → te_up (reversed); the wall
-        # edge equals body_wall_at_tip[le_up, ..., te_up].  We verify that
-        # cap_upper[0, -1, -1, :] sits on the body wall and cap_upper[-1, -1, -1, :]
-        # also does — but to do that we need to know the LE/TE cut indices
-        # which the topology computed internally.  We invert the geometry:
-        # for each i, cap_upper[i, -1, -1, :] should coincide with some
-        # body wall point.  Easier: assert that every cap airfoil-wall node
-        # is bit-exactly equal to *some* body wall node by membership.
-        body_set = {tuple(p) for p in body_wall_at_tip}
-        for cap_blk in (cap_le, cap_upper, cap_lower, cap_te_upper, cap_te_lower):
-            wall_edge = cap_blk.nodes[:, -1, -1, :]
-            for p in wall_edge:
-                assert tuple(p) in body_set, (
-                    f"Cap airfoil-wall node {p} on {cap_blk.label} is not "
-                    f"bit-coincident with any body wall node at the tip."
-                )
+    @pytest.mark.parametrize("cap_tips", ["both", "jlo", "jhi"])
+    def test_caps_refused(self, naca0012_stl, cap_tips):
+        """The caps of this construction fold, so the build is refused (ADR 0058)."""
+        with pytest.raises(ParameterError, match=r"tip cap block cap_j"):
+            self._build(naca0012_stl, cap_tips=cap_tips)
 
     def test_blocks_1_plus_caps_rejected(self, naca0012_stl):
         with pytest.raises(ValueError, match="blocks=1"):
