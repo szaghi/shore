@@ -2,6 +2,11 @@
 title: Changelog
 ---
 
+## [0.7.1] — 2026-11-01
+### Fixed
+- **project**: Check replayed grids to a tolerance, not bit for bit
+
+
 ## [0.7.0] — 2026-11-01
 ### Added
 - **primitive**: Give the H-grid tube an O-H cross-section ⚠ BREAKING CHANGE
