@@ -65,6 +65,7 @@ by a later record that supersedes it.
 | [0055](./0055-background-primitives-have-no-wall.md) | Background primitives have no wall | Accepted |
 | [0056](./0056-no-silent-folds-other-marchers.md) | Refuse folded cells in the O-grid and C-grid marches | Accepted |
 | [0057](./0057-right-handed-ch-outflow.md) | Right-handed CH outflow blocks (and the tip caps, recorded) | Accepted |
+| [0058](./0058-no-silent-tip-cap-folds.md) | Refuse folded wing-tip caps | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
