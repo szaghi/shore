@@ -4,6 +4,27 @@ All notable changes to SHORE are documented here.
 Versions follow [Semantic Versioning](https://semver.org/).
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] — 2026-11-01
+### Added
+- **mesh**: Declare symmetry planes of a blocking
+
+- **mesh**: Default the cubed sphere's cap to 30 degrees ⚠ BREAKING CHANGE
+
+- **topology**: Put the wing-tip caps on the tip face as O-H overset blocks ⚠ BREAKING CHANGE
+
+
+### Fixed
+- **mesh**: Refuse folded cells in the cubed-sphere march
+
+- **primitive**: Give background primitives no wall
+
+- **mesh**: Refuse folded cells in the O-grid and C-grid marches
+
+- **mesh**: Make the CH outflow blocks right-handed
+
+- **topology**: Refuse folded or empty wing-tip cap blocks
+
+
 ## [0.5.0] — 2026-10-30
 ### Added
 - **project**: Load saved projects without replaying their journal
