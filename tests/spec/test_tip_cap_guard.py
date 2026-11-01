@@ -31,8 +31,11 @@ Cases
 - P2 ``Project.build_tip_cap`` from a C-grid body block ``.geo``.
 - P3 ``shore cap-tip`` on the same file.
 - P4 ``shore mesh --topology cgrid --cap-tips both``.
-- P5 a C-grid without caps is unchanged, bit for bit
+- P5 a C-grid without caps is unchanged, to 1e-10
   (``data/tip_cap_guard_clean.npz``, made at the base commit).
+
+Re-frozen 2026-11-01 (ADR 0061, approved by the owner): P5 compares to 1e-10
+instead of bit for bit (the BLAS kernel picked per CPU changes the last bits).
 
 Out of scope of this spec: what a valid cap looks like (ADR 0059).
 """
@@ -176,4 +179,4 @@ class TestUnchanged:
         gold = np.load(DATA / "tip_cap_guard_clean.npz")
         assert sorted(gold.files) == sorted(b.label for b in p.mesh.blocks)
         for b in p.mesh.blocks:
-            assert np.array_equal(b.nodes, gold[b.label]), b.label
+            np.testing.assert_allclose(b.nodes, gold[b.label], rtol=0, atol=1e-10, err_msg=b.label)

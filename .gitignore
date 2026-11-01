@@ -19,6 +19,7 @@ docs/public/coverage*.json
 # examples/tests artifacts
 *.geo
 *.stl
+!tests/spec/data/*.stl
 *.vtm
 *.vts
 examples_out/

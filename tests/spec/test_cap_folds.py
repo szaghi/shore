@@ -27,16 +27,24 @@ Cases
 - F1 the old default cap (theta_cap 9 deg) on a sphere, algebraic scheme: 72
   folded cap-corner cells before ADR 0052 (min -0.83), now refused.
 - F2 the same from ``shore mesh``: exit 1, no ``.geo`` written.
-- F3 a capsule with a 45 deg cap, hyperbolic scheme: 8 folds (min -0.006).
+- F3 a capsule with a 50 deg cap, hyperbolic scheme: min -0.32 (on the frozen
+  capsule ``data/cap_folds_capsule.stl``; -0.30 on trimesh 5's).
 - F4 a sphere at 1e-3 first cells: only 4 folded cells (min -0.085).
 - F5 (x 4) clean cases still march, with every cell positive.
 - F6 a clean case equals the grid marched before ADR 0052
-  (``data/cap_folds_clean.npz``, made at the base commit), bit for bit.
+  (``data/cap_folds_clean.npz``, made at the base commit), to 1e-10.
 - F7 the OH hybrid (cubed-sphere wrap, cap pinned at 45 deg) on a sphere
   still marches, every cell positive.
 
 Re-frozen 2026-10-31 (ADR 0054, approved by the owner): the default cap
 became 30 deg, so F1, F2 and F4 give the old default, 9 deg, explicitly.
+
+Re-frozen 2026-11-01 (ADR 0061, approved by the owner): the capsule is the
+frozen ``data/cap_folds_capsule.stl`` (``shapes.capsule`` with trimesh 4.11.5;
+trimesh 5 tessellates it differently, and F3's 45 deg case, worst -0.006,
+stopped folding); F3 moves to 50 deg, where the fold is clear on both
+tessellations; F6 compares to 1e-10 instead of bit for bit (the BLAS kernel
+picked per CPU changes the last bits).
 
 Out of scope of this spec: the default ``theta_cap`` (unchanged here; ADR
 0052 proposes 30 deg separately, a re-freeze of ADR 0034's R8 golden), the
@@ -46,6 +54,7 @@ that keeps cells valid instead of refusing.
 
 from __future__ import annotations
 
+import shutil
 import warnings
 from pathlib import Path
 
@@ -63,11 +72,11 @@ FOLD = r"(?i)fold"
 
 @pytest.fixture(scope="module")
 def bodies(tmp_path_factory):
-    from shore.shapes import capsule, sphere
+    from shore.shapes import sphere
 
     d = tmp_path_factory.mktemp("cap_folds")
     sphere(radius=1.0, subdivisions=4).export(d / "sphere.stl")
-    capsule(radius=0.5, height=2.0).export(d / "capsule.stl")
+    shutil.copy(DATA / "cap_folds_capsule.stl", d / "capsule.stl")  # frozen tessellation
     return d
 
 
@@ -127,7 +136,7 @@ class TestRefused:
         assert not list(tmp_path.glob("*.geo"))
 
     def test_f3_capsule_45_hyperbolic(self, bodies):
-        refused(project(bodies / "capsule.stl", 45), "hyperbolic")
+        refused(project(bodies / "capsule.stl", 50), "hyperbolic")
 
     def test_f4_few_folds(self, bodies):
         refused(project(bodies / "sphere.stl", 9, ni=41, nj=64, nk=31, ds=1e-3), "algebraic")
@@ -150,7 +159,7 @@ class TestAccepted:
         with np.load(DATA / "cap_folds_clean.npz") as gold:
             assert set(gold.files) == {b.label for b in p.mesh.blocks}
             for b in p.mesh.blocks:
-                assert np.array_equal(b.nodes, gold[b.label])
+                np.testing.assert_allclose(b.nodes, gold[b.label], rtol=0, atol=1e-10)
 
     def test_f7_oh_hybrid(self, bodies):
         from shore.project import Project

@@ -30,7 +30,10 @@ Cases
   and after).
 - H3 (x 2) the grid equals the one before ADR 0057
   (``data/ch_handedness_before.npz``, made at the base commit): the
-  flipped blocks with j reversed, the others bit for bit.
+  flipped blocks with j reversed, the others to 1e-10.
+
+Re-frozen 2026-11-01 (ADR 0061, approved by the owner): H3 compares to 1e-10
+instead of bit for bit (the BLAS kernel picked per CPU changes the last bits).
 
 Out of scope of this spec: the C-grid's wing-tip cap blocks (several are
 mirrored, the LE ones degenerate, the TE ones without cells: a redesign
@@ -114,4 +117,4 @@ class TestHandedness:
             for b in grids[te]:
                 old = gold[f"{te}/{b.label}"]
                 expect = old[:, ::-1] if b.label in FLIPPED else old
-                assert np.array_equal(b.nodes, expect), b.label
+                np.testing.assert_allclose(b.nodes, expect, rtol=0, atol=1e-10, err_msg=b.label)

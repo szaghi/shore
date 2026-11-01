@@ -68,6 +68,7 @@ by a later record that supersedes it.
 | [0058](./0058-no-silent-tip-cap-folds.md) | Refuse folded wing-tip caps | Accepted |
 | [0059](./0059-tip-cap-on-the-tip-face.md) | Wing-tip caps on the tip face: an O-H overset cap | Accepted |
 | [0060](./0060-h-grid-tube-oh.md) | An O-H cross-section for the H-grid tube | Accepted |
+| [0061](./0061-reproducible-checks.md) | Checks that hold across machines and dependency versions | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 

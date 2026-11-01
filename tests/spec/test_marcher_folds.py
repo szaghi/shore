@@ -32,7 +32,11 @@ Cases
 - G4 (x 3) clean cases march, every cell of the marched blocks positive:
   O-grid on a sphere, C-grid with growth 1.1, CH (its wrap).
 - G5 a clean O-grid and a clean C-grid equal their grids marched before
-  ADR 0056 (``data/marcher_folds_clean.npz``, made at the base commit).
+  ADR 0056 (``data/marcher_folds_clean.npz``, made at the base commit), to
+  1e-10.
+
+Re-frozen 2026-11-01 (ADR 0061, approved by the owner): G5 compares to 1e-10
+instead of bit for bit (the BLAS kernel picked per CPU changes the last bits).
 
 Out of scope of this spec: CH's channel and outflow blocks (filled, not
 marched; their handedness is ADR 0057's), mending folds instead of refusing.
@@ -144,4 +148,4 @@ class TestAccepted:
             got |= {f"cgrid/{b.label}": b.nodes for b in cg.mesh.blocks}
             assert set(gold.files) == set(got)
             for key, nodes in got.items():
-                assert np.array_equal(nodes, gold[key]), key
+                np.testing.assert_allclose(nodes, gold[key], rtol=0, atol=1e-10, err_msg=key)
