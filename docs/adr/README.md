@@ -66,6 +66,7 @@ by a later record that supersedes it.
 | [0056](./0056-no-silent-folds-other-marchers.md) | Refuse folded cells in the O-grid and C-grid marches | Accepted |
 | [0057](./0057-right-handed-ch-outflow.md) | Right-handed CH outflow blocks (and the tip caps, recorded) | Accepted |
 | [0058](./0058-no-silent-tip-cap-folds.md) | Refuse folded wing-tip caps | Accepted |
+| [0059](./0059-tip-cap-on-the-tip-face.md) | Wing-tip caps on the tip face: an O-H overset cap | Accepted |
 
 The phased plan that implements them is in [roadmap.md](./roadmap.md).
 
