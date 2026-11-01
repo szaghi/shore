@@ -14,6 +14,7 @@ make clean        # remove dist/, build/, .egg-info, caches
 
 Run a single test: `.venv/bin/pytest tests/test_cap_gnomonic.py -k "TestSeamStepMatching"`
 
+CI's blocking jobs install with `-c ci/constraints.txt` (ADR 0061): the package versions the goldens were made with (a `pip freeze` of the dev venv). The non-blocking `test-latest` job runs the newest versions, so an upstream change (trimesh 5's capsule, a new BLAS kernel) shows there as a warning. Bump the pins deliberately, re-running the specs. Grids made on different machines differ in their last bits (the OpenBLAS kernel per CPU): goldens compare to `atol=1e-10`, `Project.load` to `GRID_TOLERANCE`.
 
 ## Architecture
 
