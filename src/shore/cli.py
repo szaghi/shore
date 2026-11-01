@@ -354,14 +354,13 @@ _CAP_TIPS = Annotated[
     typer.Option(
         "--cap-tips",
         help=(
-            "[cgrid] Conformal wing-tip caps.  'none' (default), "
+            "[cgrid] Wing-tip caps (ADR 0059).  'none' (default), "
             "'jlo' (j=0 station only), 'jhi' (j=n_stations-1 only), "
-            "or 'both'.  When set, the C-grid mesh is augmented with "
-            "5 cap blocks per requested tip + 1 cap_wake_base per tip "
-            "(total +6 blocks per tip, since the C-grid auto-promotes "
-            "to 4-block).  Sharp-TE bodies are auto-rounded over their "
-            "full span by --cap-te-thickness-frac (default 0.2% chord) "
-            "so the cap-body interface is bit-conformal."
+            "or 'both'.  Each cap is 5 overset blocks on the tip face "
+            "(core, upper, le, lower, te), its edge the tip station's wall "
+            "nodes; the stations move onto the tips and the C-grid "
+            "auto-promotes to 4 blocks.  Sharp-TE bodies are rounded over "
+            "their full span by --cap-te-thickness-frac (default 0.2% chord)."
         ),
     ),
 ]
@@ -391,21 +390,49 @@ _CAP_LE_FRAC = Annotated[
     typer.Option("--cap-le-frac", help="[cgrid + caps] LE-cut chord fraction (default 0.05)."),
 ]
 _CAP_TE_FRAC = Annotated[
-    float,
-    typer.Option("--cap-te-frac", help="[cgrid + caps] TE-cut chord fraction (default 0.95)."),
+    float | None,
+    typer.Option(
+        "--cap-te-frac",
+        help=(
+            "[cgrid + caps] Deprecated, ignored since ADR 0059: the cap's te block "
+            "spans the TE base."
+        ),
+    ),
 ]
 _CAP_TIP_INSET = Annotated[
     float | None,
     typer.Option(
         "--cap-tip-inset",
-        help=("[cgrid + caps] Spanwise wall thickness of the cap.  Default = 1e-3 * chord."),
+        help=(
+            "[cgrid + caps] Distance of the caps' wall from the tip station, outwards "
+            "(default 0: the stations are on the tips)."
+        ),
+    ),
+]
+_CAP_CORE_FRAC = Annotated[
+    float,
+    typer.Option(
+        "--cap-core-frac",
+        help=(
+            "[cgrid + caps] The cap core's half-thickness / the section's, in (0, 1) (default 0.5)."
+        ),
+    ),
+]
+_CAP_FLARE_DEG = Annotated[
+    float,
+    typer.Option(
+        "--cap-flare-deg",
+        help=(
+            "[cgrid + caps] Outward lean of the cap's k-lines at the section's edge, "
+            "deg (default 30)."
+        ),
     ),
 ]
 _CAP_N_CAP_J = Annotated[
     int,
     typer.Option(
         "--cap-n-cap-j",
-        help="[cgrid + caps] Cap j-axis (airfoil-thickness) node count (default 12).",
+        help="[cgrid + caps] Cap ring blocks' node count from the core to the wall (default 12).",
     ),
 ]
 _CAP_J_SPACING = Annotated[
@@ -744,12 +771,14 @@ def mesh(
     cap_te_thickness: _CAP_TE_THICKNESS = None,
     cap_te_thickness_frac: _CAP_TE_THICKNESS_FRAC = 0.002,
     cap_le_frac: _CAP_LE_FRAC = 0.05,
-    cap_te_frac: _CAP_TE_FRAC = 0.95,
+    cap_te_frac: _CAP_TE_FRAC = None,
     cap_tip_inset: _CAP_TIP_INSET = None,
     cap_n_cap_j: _CAP_N_CAP_J = 12,
     cap_j_spacing_cgrid: _CAP_J_SPACING = "tanh",
     cap_j_beta_cgrid: _CAP_J_BETA = 4.0,
     cap_nk: _CAP_NK = None,
+    cap_core_frac: _CAP_CORE_FRAC = 0.5,
+    cap_flare_deg: _CAP_FLARE_DEG = 30.0,
     ch_chord_min: _CH_CHORD_MIN = None,
     ch_chord_max: _CH_CHORD_MAX = None,
     ch_normal_min: _CH_NORMAL_MIN = None,
@@ -1094,13 +1123,16 @@ def mesh(
             "cap_te_thickness": cap_te_thickness,
             "cap_te_thickness_frac": cap_te_thickness_frac,
             "cap_le_frac": cap_le_frac,
-            "cap_te_frac": cap_te_frac,
             "cap_tip_inset": cap_tip_inset,
             "cap_n_cap_j": cap_n_cap_j,
             "cap_j_spacing": cap_j_spacing_cgrid,
             "cap_j_beta": cap_j_beta_cgrid,
             "cap_nk": cap_nk,
+            "cap_core_frac": cap_core_frac,
+            "cap_flare_deg": cap_flare_deg,
         }
+        if cap_te_frac is not None:  # deprecated (ADR 0059): passed on so it warns
+            params["cap_te_frac"] = cap_te_frac
     elif topology == "ch":
         params = {
             "ni_body": ni_body,
@@ -2523,21 +2555,16 @@ def cap_tip(
         float,
         typer.Option(
             "--le-frac",
-            help="Chord fraction for the LE-cut (0 < le_frac < te_frac; default 0.05).",
+            help="Chord fraction of the LE cuts, which bound the cap's le block (default 0.05).",
         ),
     ] = 0.05,
     te_frac: Annotated[
-        float,
+        float | None,
         typer.Option(
             "--te-frac",
-            help=(
-                "Chord fraction for the TE-cut (le_frac < te_frac < 1; default 0.95).  "
-                "Splits the chord band into a 'mid' region (cap_upper / cap_lower) "
-                "and a 'TE' region (cap_te_upper / cap_te_lower).  Lower te_frac "
-                "values give the TE region more chordwise resolution."
-            ),
+            help="Deprecated, ignored since ADR 0059: the cap's te block spans the TE base.",
         ),
-    ] = 0.95,
+    ] = None,
     te_thickness: Annotated[
         float | None,
         typer.Option(
@@ -2577,14 +2604,29 @@ def cap_tip(
         typer.Option(
             "--tip-inset",
             help=(
-                "Spanwise wall thickness of the cap.  Default = "
-                "1e-3 * chord (auto-detected from the cross-section)."
+                "Distance of the cap's wall from the body's tip station, outwards.  "
+                "Default: the tip face of a wing meshed by `shore mesh` without caps "
+                "(stations 2% of the span inside the tips)."
             ),
         ),
     ] = None,
+    core_frac: Annotated[
+        float,
+        typer.Option(
+            "--core-frac",
+            help="The cap core's half-thickness / the section's, in (0, 1) (default 0.5).",
+        ),
+    ] = 0.5,
+    flare_deg: Annotated[
+        float,
+        typer.Option(
+            "--flare-deg",
+            help="Outward lean of the cap's k-lines at the section's edge, deg (default 30).",
+        ),
+    ] = 30.0,
     n_cap_j: Annotated[
         int,
-        typer.Option("--n-cap-j", help="Cap j-axis (airfoil-thickness) node count."),
+        typer.Option("--n-cap-j", help="Cap ring blocks' node count from the core to the wall."),
     ] = 12,
     nk: Annotated[
         int | None,
@@ -2628,18 +2670,13 @@ def cap_tip(
 ) -> None:
     """Build a wing-tip cap from a C-grid body block's .geo file.
 
-    The cap is an independent H-style structured component (5 blocks;
-    a blunt TE adds a wake-base block) that closes the wing's airfoil cross-
-    section at one spanwise extreme.  It composes against the C-grid
-    body wrap as a chimera component via ``shore cc-par`` — the cap's
-    k_lo face is WALL (the actual wing-tip closure), k_hi is FREE
-    (chimera fringe receiving from the body wrap).
-
-    Sharp / blunt is **inferred** from the body block's TE shape: if
-    the body's i=0 and i=ni-1 nodes coincide at every spanwise station,
-    sharp.  Otherwise blunt — which currently requires the full
-    wake_base block; emit a clear error pointing the user at the
-    Python API in that case (CLI blunt support pending).
+    The cap (ADR 0059) is an overset component of 5 blocks (cap_core and
+    the ring cap_upper / cap_le / cap_lower / cap_te) on the wing's tip
+    face: its k_lo face is the tip wall, its other outer faces are FREE
+    (chimera fringes, see ``shore cc-par``). Its edge is the body's wall
+    nodes at the tip station, moved out by --tip-inset onto the tip face;
+    its layers follow the body's k-lines there. A sharp TE is rounded in
+    the cap only (--te-thickness-frac).
     """
     if tip not in ("jlo", "jhi"):
         _err.print(f"[red]Error:[/red] --tip must be 'jlo' or 'jhi', got {tip!r}.")
@@ -2655,12 +2692,6 @@ def cap_tip(
         raise typer.Exit(1) from None
     if not (0.0 < le_frac < 1.0):
         _err.print(f"[red]Error:[/red] --le-frac must be in (0, 1), got {le_frac}.")
-        raise typer.Exit(1) from None
-    if not (0.0 < te_frac < 1.0):
-        _err.print(f"[red]Error:[/red] --te-frac must be in (0, 1), got {te_frac}.")
-        raise typer.Exit(1) from None
-    if not (le_frac < te_frac):
-        _err.print(f"[red]Error:[/red] --le-frac ({le_frac}) must be < --te-frac ({te_frac}).")
         raise typer.Exit(1) from None
     if te_thickness is not None and te_thickness <= 0:
         _err.print(f"[red]Error:[/red] --te-thickness must be > 0, got {te_thickness}.")
@@ -2689,6 +2720,8 @@ def cap_tip(
             auto_round_te=not no_auto_round_te,
             te_thickness=te_thickness,
             te_thickness_frac=te_thickness_frac,
+            core_frac=core_frac,
+            flare_deg=flare_deg,
         )
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")

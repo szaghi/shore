@@ -140,6 +140,7 @@ slice_by_span(
     ni_body: int,
     span_axis: str = 'z',
     te_result: TEDetectionResult | None = None,
+    end_margin: float = 0.02,
 ) -> list[SpanSliceResult]
 ```
 <a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L412">source</a>
@@ -159,7 +160,7 @@ i = ni_body-1 is lower-TE.
 **Parameters**
 
 - **`mesh`** — Watertight body STL.
-- **`n_stations`** — Number of span stations to slice.  Stations are placed uniformly between the body's span-axis min and max, with the first and last stations strictly inside the body (offset by 2% of the span extent) to avoid degenerate slices on the end-cap faces.
+- **`n_stations`** — Number of span stations to slice.  Stations are placed uniformly between the body's span-axis min and max, with the first and last stations strictly inside the body (offset by `end_margin` of the span extent, 2 % by default) to avoid degenerate slices on the end-cap faces.
 - **`ni_body`** — Common point count of the resampled cross-section polyline. Must be `>= 8`.  Even values give symmetric LE/TE placement; odd values place a single node exactly at the LE.
 - **`span_axis`** — `"x"`, `"y"`, or `"z"`.  Default `"z"`.
 - **`te_result`** — Optional `TEDetectionResult` from :func:`detect_te_edges`.  When supplied, the per-station polyline ordering anchors at the TE; without it, the function picks the polyline endpoint closest to the chord-axis maximum as the TE — which works for symmetric airfoils but is fragile for cambered sections.
@@ -183,7 +184,7 @@ CCurveResult(
     span_coord: float,
 )
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L758">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L761">source</a>
 
 Per-station C-curve: body wrap with upper + lower wake branches.
 
@@ -205,7 +206,7 @@ build_c_curve(
     wake_growth: float = 1.15,
 ) -> CCurveResult
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L791">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L794">source</a>
 
 Add upper + lower wake branches to a station body polyline.
 
@@ -250,7 +251,7 @@ CGridK0Result(
     te_result: TEDetectionResult,
 )
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L949">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L952">source</a>
 
 3D k=0 surface layer of a C-grid topology.
 
@@ -266,7 +267,7 @@ CGridK0Result(
 ```python
 ni_total: int
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L975">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L978">source</a>
 
 Total i-direction node count of the concatenated layer.
 
@@ -275,7 +276,7 @@ Total i-direction node count of the concatenated layer.
 ```python
 n_stations: int
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L980">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L983">source</a>
 
 Span-direction station count.
 
@@ -284,7 +285,7 @@ Span-direction station count.
 ```python
 per_block_layers() -> tuple[np.ndarray, np.ndarray, np.ndarray]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L984">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L987">source</a>
 
 Return per-block k=0 layers for the 3-block C-grid topology.
 
@@ -323,9 +324,10 @@ build_cgrid_k0(
     freestream_world: np.ndarray | None = None,
     te_dihedral_deg: float = 30.0,
     wake_growth: float = 1.15,
+    end_margin: float = 0.02,
 ) -> CGridK0Result
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L1021">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L1024">source</a>
 
 Build the C-grid k=0 surface layer from a body STL.
 
@@ -353,6 +355,7 @@ Pipeline:
 - **`freestream_world`** — Length-3 vector giving the freestream direction in world coordinates.  If `None`, defaults to the unit vector along the body's dominant chord axis (the largest non-span body extent), pointing **toward** the TE.
 - **`te_dihedral_deg`** — Dihedral threshold for TE detection.  Default `30°`.
 - **`wake_growth`** — Geometric growth ratio for wake i-spacing.
+- **`end_margin`** — Distance of the first and last stations from the body's span ends, as a fraction of the span (default 0.02). The tip-cap path puts them at the tips (`TIP_STATION_MARGIN`, ADR 0059).
 
 **Returns**
 
@@ -373,7 +376,7 @@ round_body_te_in_surface(
     span_axis: str,
 ) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L1211">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/surface/cgrid.py#L1220">source</a>
 
 Round the body's TE in-place over the full span of a C-grid k=0 surface.
 

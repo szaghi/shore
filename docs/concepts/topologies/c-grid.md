@@ -86,59 +86,55 @@ NACA section.
 
 ## Tip caps
 
-::: danger The tip caps are refused
-Measured on a NACA 0012 wing ([ADR 0057](/adr/0057-right-handed-ch-outflow)):
-- three cap blocks are mirrored, with every cell's scaled Jacobian
-  negative: one tip's `lower` and `wake_base`, the other's `upper`;
-- the LE blocks are degenerate (`jlo`) or twisted (`jhi`);
-- the four `te_*` blocks have a single node along i, so no cells.
+The wrap leaves the span ends open. A cap closes a finite wing's tip
+([ADR 0059](/adr/0059-tip-cap-on-the-tip-face)): an overset grid on the flat
+tip face, made of five blocks.
 
-Since [ADR 0058](/adr/0058-no-silent-tip-cap-folds) a cap build checks every
-cell and refuses a folded or empty block, naming it, so `--cap-tips` and
-`shore cap-tip` fail until the cap is redesigned.
-:::
-
-The wrap leaves the span ends open. A finite wing is closed at a tip by
-an H-style set of cap blocks that fills the airfoil section in the tip
-plane:
-
-| Block | Fills |
+| Block | Covers |
 |---|---|
-| `cap_le` | around the LE, between the two LE cuts (`le_frac`, default 0.05 chord) |
-| `cap_upper`, `cap_lower` | the chord band between the LE cut and the TE cut (`te_frac`, default 0.95), above and below the chord |
-| `cap_te_upper`, `cap_te_lower` | the TE region, between the TE cut and the TE base |
-| `cap_wake_base` | (conformal path, or blunt input) the cap of the `wake_base` block |
+| `core` | the inside of the section, inset by `core_frac` (0.5) of the local half-thickness from both sides |
+| `upper`, `lower` | from the core to the wall on each side (`upper` is the C-grid's i = 0 side), between the LE cuts and the TE |
+| `le` | from the core round the leading edge, between the two LE cuts (`le_frac`, default 0.05 chord) |
+| `te` | from the core across the TE base |
 
-Each cap block has `k_lo` `WALL` (the tip wall) and `j_hi` `WALL` (the
-airfoil surface carried into the cap); the cap blocks are connected to
-each other by `SHARED` faces. Caps are volumetric at build time: marching
-skips them.
+Footprint and volume:
+- **The footprint is an O-H layout.** The ring's lines run straight from
+  the core to the wall nodes, which are the C-grid's own tip-station nodes.
+  The core's corners sit on 45° diagonals from the LE cuts and the TE
+  corners, so where three blocks meet the angles are about 90 / 135 / 135°,
+  and no corner is a straight angle.
+- **The volume grows outwards.** Every block's `k_lo` face is the wall;
+  together the five cover the section exactly. k leaves the tip face along
+  its normal at the wrap's layer distances. The ring's lines lean out by up
+  to `flare_deg` (30°) at the section's edge, so the cap overhangs the side
+  wall.
+- **Faces:** the blocks are right-handed. Faces between cap blocks are
+  `SHARED` (16 per tip); the other outer faces are `FREE` fringes, so the
+  cap is an overset component of the wrap.
 
-<Figure name="cgrid-tip-cap" caption="Tip cap blocks closing the wing section at the tip, over the C-grid wall." />
+Caps are built, not marched, and a cap with a folded cell or an empty block
+is refused ([ADR 0058](/adr/0058-no-silent-tip-cap-folds)).
 
-**Why the TE is rounded.** At a sharp TE the first and last nodes of the
-section coincide, and an H-fill block with a corner there degenerates to
-a singular axis. Both cap paths therefore split the TE node into two,
-`te_thickness` apart across the airfoil (default 0.2 % of chord,
-`te_thickness_frac` 0.002).
+<Figure name="cgrid-tip-cap" caption="The cap's wall closing the wing section at the tip, inside the C-grid's end face." />
 
-There are two paths:
+**Why the TE is rounded.** The `te` block spans the TE base, so a sharp TE
+gets one: its node is split in two, `te_thickness` apart across the
+airfoil (default 0.2 % of the chord, `te_thickness_frac` 0.002).
 
-| | Conformal: `shore mesh --cap-tips jlo\|jhi\|both` | Overset: `shore cap-tip BODY_GEO` |
+There are two ways to build a cap:
+
+| | `shore mesh --cap-tips jlo\|jhi\|both` | `shore cap-tip BODY_GEO` |
 |---|---|---|
 | Body TE | rounded over the whole span; the C-grid is promoted to 4 blocks | left sharp; only the cap is rounded |
-| Blocks | 4 C-grid + 6 cap blocks per tip (16 for `both`) | 5 cap blocks per tip (sharp body) |
-| Cap–body interface | the cap's wall nodes equal the body's tip-station wall nodes | not coincident: the solver interpolates across the fringe |
-| When | building the wing from scratch | adding caps to an existing C-grid without remeshing it |
+| Stations | the first and last sit on the tips | as built: 2 % of the span inside the tips |
+| Blocks | 4 C-grid + 5 cap blocks per tip | 5 cap blocks |
+| The cap's edge | the body's tip-station wall nodes, bit for bit | those nodes moved out onto the tip face (`--tip-inset`) |
+| Layers | the wrap's schedule (`ds`, `growth`) | the body's k-lines at the tip station |
 
-On the conformal path the cap and body nodes are equal at the interface
-but live in separate arrays; the face graph declares no cap–body seam,
-because the two volumes meet along a curve (the section at the tip), not
-a face. The overset path couples them through chimera interpolation. The
-rounding is an aerodynamic approximation at the TE (0.2 % of chord by
-default). Blunt input sections are used as they are. The CLI of the
-overset path builds sharp-TE caps only; blunt caps need the Python API
-(`CGridTipCap(is_blunt=True, ...)` with the wake-base section).
+The cap and the wrap meet along the tip edge, not across a face, so the
+face graph has no cap–body seam: the solver interpolates between them
+through the fringes. With `shore cap-tip` the strip of side wall between
+the tip station and the tip face has no grid of its own.
 
 ## Limits
 

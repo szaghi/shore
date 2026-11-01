@@ -1,17 +1,25 @@
-"""Tests for CGridTipCap: parameter validation and the build refusal.
+"""Tests for CGridTipCap (ADR 0059): the tip cap as its own component.
 
-The caps of this construction fold or have no cells (ADR 0057), so every
-build is refused by ``check_cap_blocks`` (ADR 0058) until the redesign.
+CGridTipCap builds the O-H cap of ``shore.topology.cgrid_cap`` from a
+cross-section polyline: five blocks ``cap_core`` / ``cap_upper`` /
+``cap_le`` / ``cap_lower`` / ``cap_te``, wall at ``k_lo``, SHARED between
+cap blocks, FREE elsewhere; the march is a no-op.
 """
 
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 import pytest
 
 from shore.exceptions import ParameterError
+from shore.mesh.face import FaceBC
 from shore.mesh.mesh import Mesh
 from shore.mesh.topology import CGridTipCap
+from shore.quality import scaled_jacobian
+
+LABELS = ["cap_core", "cap_upper", "cap_le", "cap_lower", "cap_te"]
 
 
 def _naca0012_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
@@ -41,88 +49,6 @@ def _naca0012_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     return pts3d, le_cut_upper, le_cut_lower
 
 
-# ---------------------------------------------------------------------------
-# Construction
-# ---------------------------------------------------------------------------
-
-
-class TestCGridTipCapRefused:
-    """The caps of this construction fold or have no cells (ADR 0057), so
-    every build is refused (ADR 0058) and no mesh is made."""
-
-    def _topo(self, cs, le_up, le_lo, **kw):
-        return CGridTipCap(
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=(0.0, 0.0, -1.0),
-            tip_inset=0.05,
-            n_cap_j=10,
-            is_blunt=False,
-            **kw,
-        )
-
-    def test_blunt_section_refused(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match=r"tip cap block cap_"):
-            Mesh.from_array(surface=cs, topology=self._topo(cs, le_up, le_lo), nk=6)
-
-    def test_sharp_section_refused_after_rounding(self, capsys):
-        cs, le_up, le_lo = _sharp_te_naca_cross_section(41)
-        with pytest.raises(ParameterError, match=r"tip cap block cap_"):
-            Mesh.from_array(surface=cs, topology=self._topo(cs, le_up, le_lo), nk=6)
-        assert "auto-rounding" in capsys.readouterr().err
-
-
-# ---------------------------------------------------------------------------
-# Parameter validation
-# ---------------------------------------------------------------------------
-
-
-class TestCGridTipCapValidation:
-    def test_nk_too_small(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        topo = CGridTipCap(
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=(0.0, 0.0, -1.0),
-            tip_inset=0.05,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        with pytest.raises(ParameterError):
-            Mesh.from_array(surface=cs, topology=topo, nk=1)
-
-    def test_blunt_requires_wake_base(self):
-        _cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="wake_base"):
-            CGridTipCap(
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=(0.0, 0.0, -1.0),
-                tip_inset=0.05,
-                n_cap_j=10,
-                is_blunt=True,
-                wake_base_cross_section=None,
-            )
-
-    def test_invalid_span_dir(self):
-        _cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="span_dir"):
-            CGridTipCap(
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=(0.0, 0.0, 2.0),  # not unit
-                tip_inset=0.05,
-                n_cap_j=10,
-                is_blunt=False,
-            )
-
-
-# ---------------------------------------------------------------------------
-# Auto-round on sharp TE
-# ---------------------------------------------------------------------------
-
-
 def _sharp_te_naca_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     """A *sharp* NACA 0012 cross-section (i=0 and i=ni-1 coincide at TE).
 
@@ -149,31 +75,117 @@ def _sharp_te_naca_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     return pts3d, le_cut_upper, le_cut_lower
 
 
-class TestCGridTipCapAutoRound:
-    def test_auto_round_disabled_rejects_sharp(self):
-        cs, le_up, le_lo = _sharp_te_naca_cross_section(41)
-        topo = CGridTipCap(
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=(0.0, 0.0, -1.0),
-            tip_inset=0.05,
-            n_cap_j=10,
-            is_blunt=False,
-            auto_round_te=False,
+def _topo(cs_fn=_naca0012_cross_section, **kw):
+    cs, le_up, le_lo = cs_fn(41)
+    kw.setdefault("span_dir", (0.0, 0.0, -1.0))
+    kw.setdefault("tip_inset", 0.05)
+    kw.setdefault("n_cap_j", 10)
+    return cs, CGridTipCap(le_cut_upper_idx=le_up, le_cut_lower_idx=le_lo, **kw)
+
+
+def _mesh(nk=6, **kw):
+    cs, topo = _topo(**kw)
+    return Mesh.from_array(surface=cs, topology=topo, nk=nk)
+
+
+class TestConstruction:
+    def test_five_labelled_blocks(self):
+        assert [b.label for b in _mesh().blocks] == LABELS
+
+    def test_valid_cells(self):
+        for b in _mesh().blocks:
+            assert float(scaled_jacobian(b.nodes).min()) > 0.2, b.label
+
+    def test_nk(self):
+        assert {b.nodes.shape[2] for b in _mesh(nk=9).blocks} == {9}
+
+    def test_wall_offset_by_tip_inset(self):
+        for b in _mesh().blocks:  # span_dir -z, inset 0.05: the wall at z = -0.05
+            np.testing.assert_allclose(b.nodes[:, :, 0, 2], -0.05, atol=1e-15)
+            assert np.all(b.nodes[:, :, 1:, 2] < -0.05)
+
+    def test_k_distances(self):
+        dist = np.array([0.0, 0.1, 0.3])
+        core = _mesh(nk=3, k_distances=dist).blocks[0].nodes
+        np.testing.assert_allclose(
+            -0.05 - core[:, :, :, 2], np.broadcast_to(dist, core.shape[:3]), atol=1e-15
         )
-        with pytest.raises(ParameterError, match="sharp TE"):
-            Mesh.from_array(surface=cs, topology=topo, nk=6)
+
+    def test_k_distances_must_match_nk(self):
+        cs, topo = _topo(k_distances=np.array([0.0, 0.1, 0.3]))
+        with pytest.raises(ParameterError, match="k_distances"):
+            Mesh.from_array(surface=cs, topology=topo, nk=4)
+
+
+class TestBCs:
+    def test_wall_shared_free(self):
+        blocks = _mesh().blocks
+        for b in blocks:
+            assert b.face("k_lo").bc is FaceBC.WALL
+            assert b.face("k_hi").bc is FaceBC.FREE
+        shared = sum(f.bc is FaceBC.SHARED for b in blocks for f in b.faces())
+        assert shared == 16
+        walls = sum(f.bc is FaceBC.WALL for b in blocks for f in b.faces())
+        assert walls == 5
+
+
+class TestMarch:
+    def test_march_does_not_modify_blocks(self):
+        m = _mesh()
+        before = [blk.nodes.copy() for blk in m.blocks]
+        m.march()
+        for blk, snap in zip(m.blocks, before, strict=True):
+            np.testing.assert_array_equal(blk.nodes, snap)
+
+    def test_mesh_from_array(self):
+        cs, topo = _topo()
+        m = Mesh.from_array(surface=cs, topology=topo, nk=6)
+        assert m.body is None
+        assert m.topology is topo
+
+
+class TestValidation:
+    def test_nk_too_small(self):
+        with pytest.raises(ParameterError):
+            _mesh(nk=1)
+
+    def test_invalid_span_dir(self):
+        with pytest.raises(ParameterError, match="span_dir"):
+            _topo(span_dir=(0.0, 0.0, 2.0))
+
+    def test_negative_tip_inset(self):
+        with pytest.raises(ParameterError, match="tip_inset"):
+            _topo(tip_inset=-0.1)
+
+    def test_old_te_arguments_warn(self):
+        with pytest.warns(DeprecationWarning, match="ADR 0059"):
+            _topo(is_blunt=True, wake_base_cross_section=np.zeros((3, 3, 3)))
 
     def test_te_thickness_and_frac_mutually_exclusive(self):
-        _cs, le_up, le_lo = _sharp_te_naca_cross_section(41)
         with pytest.raises(ParameterError, match="not both"):
-            CGridTipCap(
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=(0.0, 0.0, -1.0),
-                tip_inset=0.05,
-                n_cap_j=10,
-                is_blunt=False,
-                te_thickness=0.001,
-                te_thickness_frac=0.002,
-            )
+            _topo(te_thickness=0.01, te_thickness_frac=0.002)
+
+
+class TestAutoRound:
+    def test_sharp_section_rounded(self, capsys):
+        m = _mesh(cs_fn=_sharp_te_naca_cross_section)
+        assert "auto-rounding" in capsys.readouterr().err
+        assert [b.label for b in m.blocks] == LABELS
+        for b in m.blocks:
+            assert float(scaled_jacobian(b.nodes).min()) > 0.2, b.label
+
+    def test_explicit_thickness_is_the_base(self):
+        m = _mesh(cs_fn=_sharp_te_naca_cross_section, te_thickness=0.005, te_thickness_frac=None)
+        te = m.blocks[-1].nodes[:, :, 0]
+        wall = te[:, -1] if te.shape[1] == 10 else te[-1]  # the base row, j = n_cap_j - 1
+        np.testing.assert_allclose(np.ptp(wall[:, 1]), 0.005, rtol=1e-9)
+
+    def test_disabled_rejects_sharp(self):
+        with pytest.raises(ParameterError, match="sharp TE"):
+            _mesh(cs_fn=_sharp_te_naca_cross_section, auto_round_te=False)
+
+    def test_blunt_input_not_rounded(self, capsys):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _mesh()
+        assert "auto-rounding" not in capsys.readouterr().err

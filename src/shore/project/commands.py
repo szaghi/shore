@@ -1111,7 +1111,7 @@ class BuildTipCap(Command):
     body_geo: str
     tip: str = "jlo"
     le_frac: float = 0.05
-    te_frac: float = 0.95
+    te_frac: float | None = None  # ignored since ADR 0059; kept so old journals replay
     span_axis: str = "z"
     tip_inset: float | None = None
     nk: int | None = None
@@ -1121,6 +1121,8 @@ class BuildTipCap(Command):
     auto_round_te: bool = True
     te_thickness: float | None = None
     te_thickness_frac: float | None = 0.002
+    core_frac: float = 0.5
+    flare_deg: float = 30.0
 
     def apply(self, project: Project, ctx: Context) -> Undo:
         kwargs = {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}

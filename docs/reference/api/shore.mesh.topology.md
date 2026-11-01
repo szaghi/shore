@@ -12,7 +12,7 @@ Topology ABC and concrete topologies (cubed-sphere, O-grid, C-grid, OH-/CH-hybri
 ```python
 class Topology(ABC)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L28">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L30">source</a>
 
 Abstract topology builder.
 
@@ -25,7 +25,7 @@ performed here.
 ```python
 build(surface: np.ndarray, nk: int, **kwargs) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L37">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L39">source</a>
 
 Build blocks from the k=0 surface layer.
 
@@ -43,7 +43,7 @@ Build blocks from the k=0 surface layer.
 ```python
 class CubedSphereTopology(Topology)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L248">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L250">source</a>
 
 6-block cubed-sphere topology (Sadourny 1972 / Ronchi-Iacono-Paolucci 1996).
 
@@ -86,7 +86,7 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L271">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L273">source</a>
 
 Build 6 blocks from the body's STL via gnomonic cap projection.
 
@@ -113,7 +113,7 @@ Build 6 blocks from the body's STL via gnomonic cap projection.
 ```python
 class OGridTopology(Topology)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L377">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L379">source</a>
 
 Single-block lat-lon O-grid topology.
 
@@ -169,7 +169,7 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L414">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L416">source</a>
 
 Build a single-block O-grid topology from the body's STL.
 
@@ -194,7 +194,7 @@ Build a single-block O-grid topology from the body's STL.
 ```python
 class CGridTopology(Topology)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L520">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L522">source</a>
 
 C-grid topology for sharp-TE bodies (airfoils, hydrofoils).
 
@@ -280,16 +280,18 @@ build(
     cap_te_thickness: float | None = None,
     cap_te_thickness_frac: float = 0.002,
     cap_le_frac: float = 0.05,
-    cap_te_frac: float = 0.95,
+    cap_te_frac: float | None = None,
     cap_tip_inset: float | None = None,
     cap_n_cap_j: int = 12,
     cap_j_spacing: str = 'tanh',
     cap_j_beta: float = 4.0,
     cap_nk: int | None = None,
+    cap_core_frac: float = 0.5,
+    cap_flare_deg: float = 30.0,
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L584">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L586">source</a>
 
 Build a C-grid block list from a body STL.
 
@@ -308,18 +310,21 @@ Build a C-grid block list from a body STL.
 - **`mesh`** — `trimesh.Trimesh` instance.  Required when *surface* is None.
 - **`blocks`** — `3` (default, Xall-correct sharp-TE), `4` (Xall-correct blunt-TE: adds a wake-base block W bridging the TE thickness gap), or `1` (legacy single-block).  See class docstring for the trade-offs.
 - **`nk_w`** — Wake-base block W's resolution across the TE thickness gap.  Used only for `blocks=4`.  Default `3` is adequate for the thin gaps (≤ 1% chord) typical of blunt-TE airfoils.
-- **`cap_tips`** — `"none"` (default), `"jlo"`, `"jhi"`, or `"both"`. When set to anything other than `"none"`, the C-grid mesh is augmented with **conformal** wing-tip cap blocks at the requested spanwise extreme(s).  The cap blocks close the wing-tip airfoil cross-section as a wall, with their airfoil-wall nodes coincident bit-exactly with the body's k=0 wall at the spanwise tip. For sharp-TE bodies the cap-tips path **auto-rounds the body's TE over its full span** by `cap_te_thickness` (or `cap_te_thickness_frac * chord` if not given), so the body wrap and the cap meshes match without any chimera-fringe handover.  `blocks=3` is automatically promoted to `blocks=4` in that case (a stderr note is emitted).  `blocks=1` (legacy) + `cap_tips != "none"` is rejected. For already-blunt bodies the existing TE thickness is used and no rounding is applied.
-- **`cap_te_thickness`** — Absolute TE thickness for body-rounding when `cap_tips != "none"` and the body is sharp.  Mutually exclusive with `cap_te_thickness_frac`.
-- **`cap_te_thickness_frac`** — Same, as a fraction of chord.  Default `0.002` (0.2%).
-- **`cap_le_frac, cap_te_frac`** — Chord fractions for the cap's LE-cut and TE-cut.  Default `0.05` and `0.95`.
-- **`cap_tip_inset`** — Cap spanwise wall thickness.  Default = `1e-3 * chord`.
-- **`cap_n_cap_j`** — Cap j-axis (airfoil-thickness) node count.  Default `12`.
-- **`cap_j_spacing, cap_j_beta`** — Cap j-axis spacing law (`"uniform"` / `"tanh"` / `"tanh2"`) and clustering strength.  Default `"tanh"`, beta `4.0`.
-- **`cap_nk`** — Cap k-axis (spanwise) node count.  Default = `nk` (the body's wall-normal layer count).
+- **`cap_tips`** — `"none"` (default), `"jlo"`, `"jhi"`, or `"both"`: close those wing tips with cap blocks (ADR 0059). Each cap is an overset component: five blocks (`core` and the ring `upper` / `le` / `lower` / `te`) whose wall (`k_lo`) covers the tip face, extruded outwards; see :mod:`shore.topology.cgrid_cap`. The wing's first and last stations are placed on its tips (`TIP_STATION_MARGIN`), and the caps' edges are the tip stations' wall nodes, bit for bit. A sharp TE is rounded over the whole span by `cap_te_thickness` (or `cap_te_thickness_frac * chord`), so the TE block has a base to span; `blocks=3` is then promoted to `blocks=4` (a stderr note). `blocks=1` with caps is rejected. A blunt TE is used as it is.
+- **`cap_te_thickness`** — Absolute TE thickness for rounding a sharp TE. Mutually exclusive with `cap_te_thickness_frac`.
+- **`cap_te_thickness_frac`** — Same, as a fraction of the chord. Default `0.002` (0.2 %).
+- **`cap_le_frac`** — Chord fraction of the LE cuts, which bound the `le` ring block. Default `0.05`.
+- **`cap_te_frac`** — Ignored since ADR 0059, with a `DeprecationWarning` when caps are built: the `te` block spans the TE base.
+- **`cap_tip_inset`** — Distance of the caps' wall from the tip station, outwards along its normal. Default `0`: the station is on the tip.
+- **`cap_n_cap_j`** — Ring blocks' node count from the core to the section's wall. Default `12`.
+- **`cap_j_spacing, cap_j_beta`** — Spacing law of that direction (`"uniform"` / `"tanh"` / `"tanh2"`; `"tanh"` clusters at the wall) and its strength. Default `"tanh"`, beta `4.0`.
+- **`cap_nk`** — Caps' node count along k (outwards from the tip face), at the wrap's wall-normal schedule *spacing_k*. Default `nk`.
+- **`cap_core_frac`** — The core's half-thickness as a fraction of the section's, in (0, 1). Default `0.5`.
+- **`cap_flare_deg`** — Outward lean of the ring's k-lines at the section's edge, in [0, 90) degrees, growing linearly from the core. Default `30`.
 
 **Returns**
 
-- `list[HexBlock]` — For `blocks=3`: `[upper, body, lower]`. For `blocks=4`: `[upper, body, lower, wake_base]`. For `blocks=1`: `[cgrid]`. When `cap_tips != "none"`: the C-grid blocks are followed by 5 cap blocks per requested tip (`cap_jlo_le`, `cap_jlo_upper`, `cap_jlo_lower`, `cap_jlo_te_upper`, `cap_jlo_te_lower` for jlo; mirror for jhi), plus 1 extra `cap_jX_wake_base` block per tip when the body wrap is blunt (`blocks=4`).
+- `list[HexBlock]` — For `blocks=3`: `[upper, body, lower]`. For `blocks=4`: `[upper, body, lower, wake_base]`. For `blocks=1`: `[cgrid]`. When `cap_tips != "none"`: the 4-block C-grid followed by 5 cap blocks per requested tip: `cap_<tip>_core`, `cap_<tip>_upper`, `cap_<tip>_le`, `cap_<tip>_lower`, `cap_<tip>_te`.
 
 ## `CGridTipCap` <Badge type="tip" text="class" /> {#CGridTipCap}
 
@@ -328,7 +333,7 @@ CGridTipCap(
     le_cut_upper_idx: int,
     le_cut_lower_idx: int,
     span_dir: tuple[float, float, float],
-    tip_inset: float,
+    tip_inset: float = 0.0,
     n_cap_j: int = 12,
     cap_j_spacing: str = 'tanh',
     cap_j_beta: float = 4.0,
@@ -339,67 +344,39 @@ CGridTipCap(
     auto_round_te: bool = True,
     te_thickness: float | None = None,
     te_thickness_frac: float | None = 0.002,
+    core_frac: float = 0.5,
+    flare_deg: float = 30.0,
+    k_distances: np.ndarray | None = None,
 )
 ```
 Bases: `Topology`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1420">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1293">source</a>
 
-C-grid wing-tip cap topology — 3 (sharp) or 4 (blunt) overset blocks.
+A wing-tip cap from one tip station of a C-grid, as its own component.
 
-Builds the H-style tip closure for one tip of a C-grid wing as an
-independent chimera component.  The cap is composed of 3 (sharp TE)
-or 4 (blunt TE) hexahedral sub-blocks that fill the airfoil-interior
-cross-section at the wing-tip plane in an "H3 T-fill":
+Builds the cap of :mod:`shore.topology.cgrid_cap` (ADR 0059) from a
+cross-section polyline, the C-grid body's wall nodes at its tip station:
+five blocks `cap_core`, `cap_upper`, `cap_le`, `cap_lower`,
+`cap_te`. Their wall (`k_lo`) covers the section, moved outwards by
+`tip_inset` onto the tip face; k leaves it along the section's normal.
+The faces between cap blocks are SHARED; the others are FREE, so the cap
+meets the C-grid wrap as an overset component (`shore cc-par`).
 
-- `cap_le`    — wraps the leading edge from the upper-LE-cut to the
-                   lower-LE-cut.
-- `cap_upper` — chord-band on the suction side, between LE-cut and
-                   upper-TE-cut, above the chord cut.
-- `cap_lower` — mirror of `cap_upper` on the pressure side.
-- `cap_wake_base` (blunt only) — closes the wake_base block's
-                   spanwise face downstream of the TE base segment.
-
-All sub-blocks share the same axis convention: i = chordwise along
-the airfoil profile (or LE wrap), j = airfoil-thickness direction
-(chord cut → wall), k = spanwise.  k=0 is the outboard wing-tip
-wall (offset from the cross-section by `tip_inset * span_dir`);
-k=nk-1 is the inboard chimera-overlap plane (coincident with the
-body wrap's spanwise-extreme cross-section).
-
-Default face BCs:
-
-- **k_lo**: WALL (the actual wing-tip wall closure).
-- **k_hi**: FREE (chimera fringe receiving from the body wrap).
-- **j_hi**: WALL (the airfoil suction / pressure / LE / TE-base
-  surface, mirrored into the cap).
-- **j_lo**: SHARED between cap_upper and cap_lower (chord cut),
-  otherwise FREE.
-- **i_lo / i_hi**: SHARED at the LE-cuts between cap_le and
-  cap_upper / cap_lower; FREE otherwise (TE-cut chord-perp
-  sliver).
-
-The cap is **fully volumetric at build time** — calling
-:meth:`shore.mesh.Mesh.march` on a CGridTipCap mesh is a no-op.
-The cap is meant to be assembled against a C-grid body wrap as a
-chimera component via `shore cc-par`.
+The cap is volumetric at build time: :meth:`shore.mesh.Mesh.march` on
+a CGridTipCap mesh is a no-op.
 
 **Parameters**
 
-- **`le_cut_upper_idx, le_cut_lower_idx`** — i-indices in the `surface` cross-section polyline at the LE-cut on the suction and pressure sides.  Must satisfy `0 < le_cut_upper_idx < le_cut_lower_idx < ni - 1`.
-- **`span_dir`** — Length-3 unit vector pointing **outward** along the span axis at this tip.
-- **`tip_inset`** — Spanwise thickness of the cap slab.  &gt; 0.
-- **`n_cap_j`** — Node count along the cap's j-axis (airfoil-thickness).  &gt;= 2.
-- **`cap_j_spacing`** — `"uniform"` / `"tanh"` / `"tanh2"`.  `"tanh"` (default) clusters near the airfoil wall.
-- **`cap_j_beta`** — Clustering strength.
-- **`is_blunt`** — Toggles the 4th sub-block `cap_wake_base`.
-- **`wake_base_cross_section`** — Required when `is_blunt=True`.  `(ni_wake, nk_w, 3)` — the wake_base block's spanwise-extreme face from the C-grid.
-- `Future input modes (not implemented yet)`
-- `----------------------------------------`
-- `The current ``build()`` accepts a 1D cross-section polyline as`
-- ```surface``.  In future, ``build()`` will additionally accept a 2D`
-- `sliced STL/STEP cross-section ``(ni, nj_thin, 3)`` so the cap can`
-- `be driven directly by a CAD/STL surface input — the same way the`
-- `body wrap is.  The signature remains the same.`
+- **`le_cut_upper_idx, le_cut_lower_idx`** — i-indices of the LE cuts in the cross-section, symmetric about its middle (`find_symmetric_le_cuts`). They bound the `le` block.
+- **`span_dir`** — Length-3 unit vector pointing **outward** along the span at this tip: it picks the side of the section's plane the cap grows on.
+- **`tip_inset`** — Distance of the cap's wall from the cross-section, outwards along its normal, &gt;= 0: the distance from the station to the tip face.
+- **`n_cap_j`** — Ring blocks' node count from the core to the section's wall, &gt;= 2.
+- **`cap_j_spacing, cap_j_beta`** — That direction's spacing law (`"uniform"` / `"tanh"` / `"tanh2"`; `"tanh"` clusters at the wall) and strength.
+- **`is_blunt, wake_base_cross_section, te_cut_upper_idx, te_cut_lower_idx`** — Ignored since ADR 0059 (a `DeprecationWarning` when given): the `te` block spans the TE base, and nothing closes the wake base.
+- **`auto_round_te, te_thickness, te_thickness_frac`** — A sharp TE is rounded, in the cap only, to `te_thickness` (or `te_thickness_frac` of the chord, default 0.002) so the `te` block has a base; with `auto_round_te=False` it is refused.
+- **`core_frac`** — The core's half-thickness as a fraction of the section's, in (0, 1).
+- **`flare_deg`** — Outward lean of the ring's k-lines at the section's edge, in [0, 90).
+- **`k_distances`** — Distances of the k layers from the wall, `k_distances[0] == 0`, one per node. Default: *spacing_k*'s steps for `nk` nodes.
 
 ### `CGridTipCap.build` <Badge type="info" text="method" /> {#CGridTipCap-build}
 
@@ -411,19 +388,19 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1563">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1416">source</a>
 
-Build the tip cap blocks from a cross-section polyline.
+Build the cap blocks from a cross-section polyline.
 
 **Parameters**
 
-- **`surface`** — `(ni_body, 3)` cross-section polyline at the wing tip. Sweeps upper-TE-cut → suction → LE → pressure → lower-TE-cut.
-- **`nk`** — Spanwise node count for the cap (`nk_cap`).  Must be &gt;= 2.
-- **`spacing_k`** — Reserved for future per-block k-spacing overrides. Currently the cap's k-axis is uniformly spaced from the outboard wall to the cross-section plane.
+- **`surface`** — `(ni_body, 3)` cross-section polyline at the wing tip, from the upper TE round the LE to the lower TE.
+- **`nk`** — The cap's node count along k (outwards). Must be &gt;= 2, and equal to `len(k_distances)` when those are given.
+- **`spacing_k`** — Wall-normal spacing law of the layers when `k_distances` is not given. Default `Spacing1D(law='geometric', ds=1e-3)`.
 
 **Returns**
 
-- `list[HexBlock]` — `[cap_le, cap_upper, cap_lower]` for sharp TE, or `[cap_le, cap_upper, cap_lower, cap_wake_base]` for blunt.
+- `list[HexBlock]` — `[cap_core, cap_upper, cap_le, cap_lower, cap_te]`.
 
 ## `OHTopology` <Badge type="tip" text="class" /> {#OHTopology}
 
@@ -438,7 +415,7 @@ OHTopology(
 )
 ```
 Bases: `Topology`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1823">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1520">source</a>
 
 Style-2 conforming hybrid: cubed-sphere wrap + 6-block H-channel.
 
@@ -497,7 +474,7 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1898">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1595">source</a>
 
 Build the 12-block OH topology.
 
@@ -511,7 +488,7 @@ chan_north, chan_south]``.
 ```python
 fill_channel_blocks(blocks: list[HexBlock]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2043">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1740">source</a>
 
 Build channel block interiors after the wrap has been marched.
 
@@ -550,7 +527,7 @@ CHTopology(
 )
 ```
 Bases: `Topology`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2183">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L1880">source</a>
 
 Hybrid C-grid wrap + H-channel far-field for sharp- or blunt-TE bodies.
 
@@ -640,7 +617,7 @@ the C-grid wrap marcher and then calls :meth:`fill_channel_blocks`.
 ```python
 is_blunt: bool
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2337">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2034">source</a>
 
 True when build() detected a blunt TE (CH-4).
 
@@ -663,7 +640,7 @@ build(
     **kwargs,
 ) -> list[HexBlock]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2341">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2038">source</a>
 
 Build the CH topology block list.
 
@@ -675,7 +652,7 @@ Build the CH topology block list.
 ```python
 fill_channel_blocks(blocks: list[HexBlock]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L3030">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/topology.py#L2727">source</a>
 
 Populate every channel block's interior after wrap marching.
 

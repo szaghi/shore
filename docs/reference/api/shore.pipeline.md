@@ -124,7 +124,7 @@ build_tip_cap(
     *,
     tip: str,
     le_frac: float,
-    te_frac: float,
+    te_frac: float | None,
     span_axis: str,
     tip_inset: float | None,
     nk: int | None,
@@ -134,11 +134,24 @@ build_tip_cap(
     auto_round_te: bool,
     te_thickness: float | None,
     te_thickness_frac: float | None,
+    core_frac: float = 0.5,
+    flare_deg: float = 30.0,
 ) -> tuple[Any, dict[str, Any]]
 ```
 <a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/pipeline.py#L210">source</a>
 
-Wing-tip cap from a C-grid body block `.geo` (`shore cap-tip`).
+Wing-tip cap from a C-grid body block `.geo` (`shore cap-tip`, ADR 0059).
 
-Returns the cap `Mesh` and the values resolved automatically
-(`tip_inset`: 1e-3 chord when *None*; `nk`: the body's when *None*).
+The cap's edge is the body's wall nodes at the tip station; its layers
+follow the body's own k-lines there (their mean arc lengths, resampled
+when *nk* differs). Returns the cap `Mesh` and the values resolved
+automatically:
+
+- `tip_inset` when *None*: the distance from the tip station to the
+  tip face of a wing meshed by `shore mesh` without caps, whose
+  stations sit 2 % of the span inside the tips: `0.02 / 0.96` times
+  the distance between the first and last stations;
+- `nk` when *None*: the body's.
+
+*te_frac* is ignored since ADR 0059 (a `DeprecationWarning` when
+given).

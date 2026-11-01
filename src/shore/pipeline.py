@@ -212,7 +212,7 @@ def build_tip_cap(
     *,
     tip: str,
     le_frac: float,
-    te_frac: float,
+    te_frac: float | None,
     span_axis: str,
     tip_inset: float | None,
     nk: int | None,
@@ -222,17 +222,39 @@ def build_tip_cap(
     auto_round_te: bool,
     te_thickness: float | None,
     te_thickness_frac: float | None,
+    core_frac: float = 0.5,
+    flare_deg: float = 30.0,
 ) -> tuple[Any, dict[str, Any]]:
-    """Wing-tip cap from a C-grid body block ``.geo`` (``shore cap-tip``).
+    """Wing-tip cap from a C-grid body block ``.geo`` (``shore cap-tip``, ADR 0059).
 
-    Returns the cap ``Mesh`` and the values resolved automatically
-    (``tip_inset``: 1e-3 chord when *None*; ``nk``: the body's when *None*).
+    The cap's edge is the body's wall nodes at the tip station; its layers
+    follow the body's own k-lines there (their mean arc lengths, resampled
+    when *nk* differs). Returns the cap ``Mesh`` and the values resolved
+    automatically:
+
+    - ``tip_inset`` when *None*: the distance from the tip station to the
+      tip face of a wing meshed by ``shore mesh`` without caps, whose
+      stations sit 2 % of the span inside the tips: ``0.02 / 0.96`` times
+      the distance between the first and last stations;
+    - ``nk`` when *None*: the body's.
+
+    *te_frac* is ignored since ADR 0059 (a ``DeprecationWarning`` when
+    given).
     """
+    import warnings
+
     from shore.io.geo import read_geo
     from shore.mesh.mesh import Mesh
     from shore.mesh.topology import CGridTipCap
     from shore.topology.cgrid_cap import find_symmetric_le_cuts
 
+    if te_frac is not None:
+        warnings.warn(
+            "build_tip_cap: te_frac is ignored since ADR 0059 (the cap's te block "
+            "spans the TE base).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     body = read_geo(body_geo)
     if body.ndim != 4 or body.shape[3] != 3:
         raise ParameterError(f"body geo has shape {body.shape}; expected (ni, n_stations, nk, 3).")
@@ -255,31 +277,35 @@ def build_tip_cap(
     le_up, le_lo = find_symmetric_le_cuts(
         cross_section, le_frac=le_frac, span_axis_world=span_axis_idx
     )
-    te_up, te_lo = find_symmetric_le_cuts(
-        cross_section, le_frac=te_frac, span_axis_world=span_axis_idx
-    )
     resolved: dict[str, Any] = {}
     if tip_inset is None:
-        extents = cross_section.max(axis=0) - cross_section.min(axis=0)
-        extents[span_axis_idx] = -np.inf
-        tip_inset = 1e-3 * float(extents.max())
+        stations = float(
+            np.mean(np.abs(body[:, -1, 0, span_axis_idx] - body[:, 0, 0, span_axis_idx]))
+        )
+        tip_inset = 0.02 / 0.96 * stations
         resolved["tip_inset"] = tip_inset
+    # The body's k-lines at the tip station: mean arc length per layer.
+    steps = np.linalg.norm(np.diff(body[:, j_extreme, :, :], axis=1), axis=2)
+    arc = np.concatenate([[0.0], np.cumsum(steps, axis=1).mean(axis=0)])
     if nk is None:
         nk = int(body.shape[2])
         resolved["nk"] = nk
+    if nk < 2:
+        raise ParameterError(f"nk must be >= 2, got {nk}")
+    distances = np.interp(np.linspace(0.0, arc.size - 1.0, nk), np.arange(arc.size), arc)
     topo = CGridTipCap(
         le_cut_upper_idx=le_up,
         le_cut_lower_idx=le_lo,
-        te_cut_upper_idx=te_up,
-        te_cut_lower_idx=te_lo,
         span_dir=tuple(span_dir.tolist()),
         tip_inset=tip_inset,
         n_cap_j=n_cap_j,
         cap_j_spacing=cap_j_spacing,
         cap_j_beta=cap_j_beta,
-        is_blunt=False,
         auto_round_te=auto_round_te,
         te_thickness=te_thickness,
         te_thickness_frac=None if te_thickness is not None else te_thickness_frac,
+        core_frac=core_frac,
+        flare_deg=flare_deg,
+        k_distances=distances,
     )
     return Mesh.from_array(surface=cross_section, topology=topo, nk=nk), resolved

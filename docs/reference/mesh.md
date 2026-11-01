@@ -123,8 +123,8 @@ configure the C-grid wrap geometry around an airfoil / hydrofoil.
 | `--span-axis TEXT` | `z` | `x` / `y` / `z` — span world axis. |
 | `--te-dihedral-deg FLOAT` | 30.0 | Sharpness threshold for TE detection. |
 | `--cgrid-blocks INTEGER` | 3 | `cgrid` only: 3 (Xall-correct sharp-TE), 4 (Xall-correct blunt-TE), or 1 (legacy single-block). Ignored for `--topology ch`. |
-| `--cap-tips TEXT` | `none` | `cgrid` only: `none` / `jlo` / `jhi` / `both` — wing-tip cap blocks at the requested spanwise extreme(s); refused since ADR 0058, their blocks fold. See [`shore cap-tip`](cap-tip) for a standalone CLI. |
-| `--cap-te-thickness*`, `--cap-le-frac`, `--cap-te-frac`, `--cap-tip-inset`, `--cap-n-cap-j`, `--cap-j-spacing-cgrid`, `--cap-j-beta-cgrid`, `--cap-nk` | various | `cgrid + caps` only — cap-block geometry. See [C-grid topology](/concepts/topologies/c-grid#tip-caps-closed-finite-wing). |
+| `--cap-tips TEXT` | `none` | `cgrid` only: `none` / `jlo` / `jhi` / `both` — wing-tip caps at the requested spanwise extreme(s): 5 overset blocks per tip on the tip face (ADR 0059); the stations move onto the tips. See [`shore cap-tip`](cap-tip) for a standalone CLI. |
+| `--cap-te-thickness*`, `--cap-le-frac`, `--cap-tip-inset`, `--cap-n-cap-j`, `--cap-j-spacing-cgrid`, `--cap-j-beta-cgrid`, `--cap-nk`, `--cap-core-frac`, `--cap-flare-deg` | various | `cgrid + caps` only: the caps' geometry (`--cap-te-frac` is deprecated and ignored). See [C-grid topology](/concepts/topologies/c-grid#tip-caps). |
 
 ### CH hybrid options (`--topology ch`)
 
@@ -220,8 +220,8 @@ with `nc = nj // 4 + 1`.
 files: `<stem>_upper.geo`, `<stem>_body.geo`, `<stem>_lower.geo`.
 `--cgrid-blocks 4` (blunt-TE) adds `<stem>_wake_base.geo`.
 `--cgrid-blocks 1` (legacy) writes a single `<stem>.geo`. The
-`--cap-tips` option adds 5–6 cap blocks per requested tip (see
-[C-grid](/concepts/topologies/c-grid#tip-caps-closed-finite-wing)).
+`--cap-tips` option adds 5 cap blocks per requested tip (see
+[C-grid](/concepts/topologies/c-grid#tip-caps)).
 
 **`ch`** — 12 `.geo` files (sharp TE) or 14 (blunt TE). See
 [CH hybrid block decomposition](/concepts/topologies/ch-hybrid#block-decomposition)

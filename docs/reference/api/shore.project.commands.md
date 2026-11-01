@@ -716,7 +716,7 @@ BuildTipCap(
     body_geo: str,
     tip: str = 'jlo',
     le_frac: float = 0.05,
-    te_frac: float = 0.95,
+    te_frac: float | None = None,
     span_axis: str = 'z',
     tip_inset: float | None = None,
     nk: int | None = None,
@@ -726,6 +726,8 @@ BuildTipCap(
     auto_round_te: bool = True,
     te_thickness: float | None = None,
     te_thickness_frac: float | None = 0.002,
+    core_frac: float = 0.5,
+    flare_deg: float = 30.0,
 )
 ```
 Bases: `Command`<br>
@@ -738,7 +740,7 @@ Wing-tip cap from a C-grid body `.geo` (`shore cap-tip`); replaces the mesh.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1125">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1127">source</a>
 
 ## `BuildCollar` <Badge type="tip" text="dataclass" /> {#BuildCollar}
 
@@ -767,7 +769,7 @@ BuildCollar(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1140">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1142">source</a>
 
 Collar block around the junction of the loaded body and *other* (ADR 0010).
 
@@ -792,7 +794,7 @@ component.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1185">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1187">source</a>
 
 ## `LoadBlocks` <Badge type="tip" text="dataclass" /> {#LoadBlocks}
 
@@ -800,7 +802,7 @@ apply(project: Project, ctx: Context) -> Undo
 LoadBlocks(geo_paths: tuple[str, ...], adjacency: tuple[str, ...] = ())
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1250">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1252">source</a>
 
 Blocks from `.geo` files, wired from adjacency sidecars; replaces the mesh.
 
@@ -809,7 +811,7 @@ Blocks from `.geo` files, wired from adjacency sidecars; replaces the mesh.
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1260">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1262">source</a>
 
 ## `Split` <Badge type="tip" text="dataclass" /> {#Split}
 
@@ -817,7 +819,7 @@ apply(project: Project, ctx: Context) -> Undo
 Split(splits: tuple[tuple[str, str, tuple[int, ...]], ...])
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1275">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1277">source</a>
 
 Split blocks by `(label, axis, at)` directives (`shore split`).
 
@@ -826,7 +828,7 @@ Split blocks by `(label, axis, at)` directives (`shore split`).
 ```python
 apply(project: Project, ctx: Context) -> Undo
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1283">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1285">source</a>
 
 ## `WriteGrd` <Badge type="tip" text="dataclass" /> {#WriteGrd}
 
@@ -834,7 +836,7 @@ apply(project: Project, ctx: Context) -> Undo
 WriteGrd(path: str, geo_paths: tuple[str, ...])
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1297">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1299">source</a>
 
 Pack `.geo` files into an Xall `.grd` (`shore grd`, output only).
 
@@ -846,7 +848,7 @@ the `.geo` print precision exactly as the file pipeline does.
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1311">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1313">source</a>
 
 ## `WriteCcPar` <Badge type="tip" text="dataclass" /> {#WriteCcPar}
 
@@ -865,7 +867,7 @@ WriteCcPar(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1318">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1320">source</a>
 
 Xall `cc.par` from an adjacency sidecar (`shore cc-par`, output only).
 
@@ -878,7 +880,7 @@ list of marker-box JSON entries.
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1341">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1343">source</a>
 
 ## `WriteXall` <Badge type="tip" text="dataclass" /> {#WriteXall}
 
@@ -895,7 +897,7 @@ WriteXall(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1373">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1375">source</a>
 
 The Xall files of the whole run, every component (ADR 0016, 0017; output only).
 
@@ -919,7 +921,7 @@ All of it is checked before anything is written.
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1408">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1410">source</a>
 
 ## `WriteProcInput` <Badge type="tip" text="dataclass" /> {#WriteProcInput}
 
@@ -933,7 +935,7 @@ WriteProcInput(
 )
 ```
 Bases: `Command`<br>
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1499">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1501">source</a>
 
 Xall `proc.input` from a `.grd` (`shore proc-input`, output only).
 
@@ -945,4 +947,4 @@ Xall `proc.input` from a `.grd` (`shore proc-input`, output only).
 ```python
 apply(project: Project, ctx: Context) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1516">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/project/commands.py#L1518">source</a>

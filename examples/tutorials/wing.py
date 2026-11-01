@@ -1,7 +1,8 @@
-"""Tutorial 2: C-grids around a NACA 0012 wing and a CH far field.
+"""Tutorial 2: C-grids around a NACA 0012 wing, with tip caps and a CH far field.
 
-Writes naca0012.dat, wing.stl, the C-grid blocks wing_<label>.geo and the CH
-hybrid ch_<label>.geo to the current directory.
+Writes naca0012.dat, wing.stl, the C-grid blocks wing_<label>.geo, the
+capped C-grid capped_<label>.geo, the overset tip cap cap_jlo_cap_<label>.geo
+and the CH hybrid ch_<label>.geo to the current directory.
 """
 
 from __future__ import annotations
@@ -49,6 +50,34 @@ p.write_geo("wing")  # wing_upper.geo, wing_body.geo, wing_lower.geo
 p.write_adjacency("wing.adjacency.json")
 report(p.mesh.blocks)
 # #endregion cgrid
+
+# #region capped
+p = Project()
+p.load_geometry("wing.stl", skip_hygiene=True)
+p.build_topology(
+    "cgrid",
+    nk=20,
+    ds=5e-4,
+    growth=1.15,
+    ni_body=120,
+    ni_wake=30,
+    n_stations=5,
+    wake_length=15.0,
+    span_axis="z",
+    cap_tips="both",  # 5 cap blocks per tip; the stations move onto the tips
+)
+p.march(smooth_strength=0.1, smooth_iters=1)
+p.write_geo("capped")
+report(p.mesh.blocks)
+# #endregion capped
+
+# #region tipcap
+p = Project()
+p.build_tip_cap("wing_body.geo", tip="jlo")  # from the C-grid of the cgrid region
+p.write_geo("cap_jlo", per_block=True)
+p.write_adjacency("cap_jlo.adjacency.json")
+report(p.mesh.blocks)
+# #endregion tipcap
 
 # #region ch
 p = Project()

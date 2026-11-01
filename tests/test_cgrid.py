@@ -1197,7 +1197,6 @@ class TestCGridConformalCaps:
             "cap_tips": cap_tips,
             "cap_te_thickness_frac": 0.005,
             "cap_le_frac": 0.05,
-            "cap_te_frac": 0.95,
             "cap_n_cap_j": 8,
         }
         kwargs.update(overrides)
@@ -1205,11 +1204,62 @@ class TestCGridConformalCaps:
             warnings.simplefilter("ignore")
             return topo.build(**kwargs)
 
-    @pytest.mark.parametrize("cap_tips", ["both", "jlo", "jhi"])
-    def test_caps_refused(self, naca0012_stl, cap_tips):
-        """The caps of this construction fold, so the build is refused (ADR 0058)."""
-        with pytest.raises(ParameterError, match=r"tip cap block cap_j"):
-            self._build(naca0012_stl, cap_tips=cap_tips)
+    def test_returns_4_cgrid_plus_10_cap_blocks_for_both(self, naca0012_stl):
+        """4 C-grid + 5 cap_jlo + 5 cap_jhi blocks (ADR 0059)."""
+        blocks = self._build(naca0012_stl, cap_tips="both")
+        labels = [b.label for b in blocks]
+        assert labels[:4] == ["upper", "body", "lower", "wake_base"]
+        parts = ["core", "upper", "le", "lower", "te"]
+        assert labels[4:] == [f"cap_{t}_{p}" for t in ("jlo", "jhi") for p in parts]
+
+    @pytest.mark.parametrize("tip", ["jlo", "jhi"])
+    def test_one_tip(self, naca0012_stl, tip):
+        labels = [b.label for b in self._build(naca0012_stl, cap_tips=tip)]
+        assert len(labels) == 9
+        assert all(lb.startswith(f"cap_{tip}_") for lb in labels[4:])
+
+    def test_body_te_is_rounded(self, naca0012_stl):
+        """After build, the body's TE is split apart by the requested thickness."""
+        blocks = self._build(naca0012_stl, cap_tips="both", cap_te_thickness=0.005)
+        body = blocks[1]
+        for j in range(body.nodes.shape[1]):
+            sep = float(np.linalg.norm(body.nodes[0, j, 0, :] - body.nodes[-1, j, 0, :]))
+            np.testing.assert_allclose(sep, 0.005, atol=1e-12)
+
+    def test_tip_stations_on_the_tips(self, naca0012_stl):
+        """With caps, the first and last stations sit on the STL's span ends."""
+        mesh = trimesh.load(str(naca0012_stl), force="mesh")
+        lo, hi = mesh.bounds[:, 2]
+        body = self._build(naca0012_stl, cap_tips="both")[1]
+        span = hi - lo
+        assert abs(float(body.nodes[:, 0, 0, 2].mean()) - lo) < 1e-4 * span
+        assert abs(float(body.nodes[:, -1, 0, 2].mean()) - hi) < 1e-4 * span
+
+    def test_cap_wall_holds_the_tip_station(self, naca0012_stl):
+        """Every wall node of the body's tip station is a cap wall node, bit for bit."""
+        blocks = self._build(naca0012_stl, cap_tips="both")
+        body = blocks[1]
+        for tip, j in (("jlo", 0), ("jhi", -1)):
+            caps = [b for b in blocks if b.label.startswith(f"cap_{tip}_")]
+            wall = {p.tobytes() for b in caps for p in b.nodes[:, :, 0].reshape(-1, 3)}
+            assert all(p.tobytes() in wall for p in body.nodes[:, j, 0])
+
+    def test_caps_valid_and_wired(self, naca0012_stl):
+        from shore.quality import scaled_jacobian
+
+        blocks = self._build(naca0012_stl, cap_tips="both")
+        caps = [b for b in blocks if b.label.startswith("cap_")]
+        assert min(float(scaled_jacobian(b.nodes).min()) for b in caps) > 0.2
+        shared = sum(f.bc is FaceBC.SHARED for b in caps for f in b.faces())
+        assert shared == 32
+        assert all(b.face("k_lo").bc is FaceBC.WALL for b in caps)
+
+    def test_te_frac_deprecated(self, naca0012_stl):
+        with pytest.warns(DeprecationWarning, match="cap_te_frac"):
+            CGridTopology().build(
+                surface=None, nk=8, ni_body=60, ni_wake=15, n_stations=5, wake_length=5.0,
+                mesh=trimesh.load(str(naca0012_stl), force="mesh"), cap_tips="jlo", cap_te_frac=0.9,
+            )  # fmt: skip
 
     def test_blocks_1_plus_caps_rejected(self, naca0012_stl):
         with pytest.raises(ValueError, match="blocks=1"):

@@ -1,16 +1,12 @@
-"""Standalone example: conformal C-grid + tip caps around a NACA 0012 wing.
+"""Standalone example: C-grid + tip caps around a NACA 0012 wing (ADR 0059).
 
-Closes both spanwise tips of a C-grid wing with the H-style cap blocks,
-where the body's TE is auto-rounded over its full span by
-``cap_te_thickness_frac`` (default 0.2% chord) so the cap-body interface
-is **bit-coincident** — no Chimera fringe needed at the cap-body seam,
-the meshes match exactly.
-
-When ``cap_tips != "none"``, the C-grid auto-promotes its sharp-TE
-3-block layout to the 4-block layout (with a ``wake_base`` block
-bridging the TE thickness gap) and the body's TE is rounded over the
-full span before marching.  The cap blocks are produced by the same
-single ``CGridTopology.build(...)`` call.
+Closes both spanwise tips of a C-grid wing with overset caps on the tip
+faces. When ``cap_tips != "none"``, the C-grid auto-promotes its sharp-TE
+3-block layout to the 4-block layout (with a ``wake_base`` block bridging
+the TE thickness gap), the body's TE is rounded over the full span by
+``cap_te_thickness_frac`` (default 0.2% chord), and the first and last
+stations move onto the tips. The cap blocks come from the same single
+``CGridTopology.build(...)`` call.
 
 Outputs (default ``examples_out/``):
 
@@ -20,14 +16,13 @@ Outputs (default ``examples_out/``):
     wing_body.geo                # C-grid body wrap (rounded TE)
     wing_lower.geo               # C-grid lower-wake block
     wing_wake_base.geo           # C-grid wake-base block (TE bridge)
-    wing_cap_jlo_le.geo          # jlo cap blocks (6 of them)
+    wing_cap_jlo_core.geo        # jlo cap blocks (5 of them)
     wing_cap_jlo_upper.geo
+    wing_cap_jlo_le.geo
     wing_cap_jlo_lower.geo
-    wing_cap_jlo_te_upper.geo
-    wing_cap_jlo_te_lower.geo
-    wing_cap_jlo_wake_base.geo
-    wing_cap_jhi_*.geo           # jhi cap blocks (6, mirror)
-    wing_capped.vtm              # ParaView MultiBlock (16 blocks)
+    wing_cap_jlo_te.geo
+    wing_cap_jhi_*.geo           # jhi cap blocks (5)
+    wing_capped.vtm              # ParaView MultiBlock (14 blocks)
 
 Run from the project root after activating .venv:
 
@@ -39,19 +34,17 @@ The bash sibling (``visualize_naca0012_cap_tip.sh``) does the same via
 
 Cap-block layout per tip
 ------------------------
-Six hex sub-blocks per tip fill the wing-tip airfoil interior:
+Five hex blocks per tip cover the tip face, in an O-H layout:
 
-- ``cap_<tip>_le``       — wraps the LE from upper-LE-cut to lower-LE-cut.
-- ``cap_<tip>_upper``    — chord band on the suction side, mid region.
-- ``cap_<tip>_lower``    — pressure-side mirror.
-- ``cap_<tip>_te_upper`` — TE-region suction side.
-- ``cap_<tip>_te_lower`` — TE-region pressure side.
-- ``cap_<tip>_wake_base`` — closes the body's wake_base block at the tip.
+- ``cap_<tip>_core``  — inside the section, inset from both sides.
+- ``cap_<tip>_upper`` — from the core to the i = 0 side's wall.
+- ``cap_<tip>_le``    — from the core round the leading edge.
+- ``cap_<tip>_lower`` — from the core to the other side's wall.
+- ``cap_<tip>_te``    — from the core across the TE base.
 
-All cap blocks have ``k_lo = WALL`` (wing-tip wall closure), ``k_hi``
-(the inboard chimera-overlap plane) bit-coincident with the body's
-spanwise-extreme cross-section, and internal SHARED seams at the
-LE-cut / TE-cut / chord-cut interfaces.
+All cap blocks have ``k_lo = WALL`` (the tip face) and grow outwards; the
+faces between them are SHARED, the others FREE (overset fringes). The
+cap's edge is the body's tip-station wall nodes, bit for bit.
 """
 
 from __future__ import annotations
@@ -99,7 +92,7 @@ def _build_capped_cgrid(
     smooth_iters: int,
     cap_tips: str,
     cap_le_frac: float,
-    cap_te_frac: float,
+    cap_flare_deg: float,
     cap_te_thickness_frac: float,
     cap_tip_inset: float,
     cap_n_cap_j: int,
@@ -127,7 +120,7 @@ def _build_capped_cgrid(
         blocks=3,
         cap_tips=cap_tips,
         cap_le_frac=cap_le_frac,
-        cap_te_frac=cap_te_frac,
+        cap_flare_deg=cap_flare_deg,
         cap_te_thickness_frac=cap_te_thickness_frac,
         cap_tip_inset=cap_tip_inset,
         cap_n_cap_j=cap_n_cap_j,
@@ -145,7 +138,7 @@ def _build_capped_cgrid(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build a NACA 0012 C-grid + conformal tip caps and write outputs.",
+        description="Build a NACA 0012 C-grid + tip caps and write outputs.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     gen = parser.add_argument_group("generation")
@@ -167,9 +160,9 @@ def main() -> None:
 
     gen.add_argument("--cap-tips", default="both", choices=["none", "jlo", "jhi", "both"])
     gen.add_argument("--cap-le-frac", type=float, default=0.05)
-    gen.add_argument("--cap-te-frac", type=float, default=0.95)
+    gen.add_argument("--cap-flare-deg", type=float, default=30.0)
     gen.add_argument("--cap-te-thickness-frac", type=float, default=0.002)
-    gen.add_argument("--cap-tip-inset", type=float, default=0.02)
+    gen.add_argument("--cap-tip-inset", type=float, default=0.0)
     gen.add_argument("--cap-n-cap-j", type=int, default=12)
 
     parser.add_argument("input", type=Path, nargs="?", default=None,
@@ -204,7 +197,7 @@ def main() -> None:
             smooth_iters=args.smooth_iters,
             cap_tips=args.cap_tips,
             cap_le_frac=args.cap_le_frac,
-            cap_te_frac=args.cap_te_frac,
+            cap_flare_deg=args.cap_flare_deg,
             cap_te_thickness_frac=args.cap_te_thickness_frac,
             cap_tip_inset=args.cap_tip_inset,
             cap_n_cap_j=args.cap_n_cap_j,

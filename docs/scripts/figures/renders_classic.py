@@ -483,10 +483,13 @@ def cgrid_tip_cap(mode: str) -> None:
         nodes = nodes[nodes[:, 0, 0, 0] < 1.35]
         _add(pl, _grid(_wing_view(nodes)), pal, pal.tint(pal.block(k), 0.5), lw=0.4, smooth=False)
     caps = [b for label, b in blocks.items() if label.startswith("cap_jhi")]
-    for k, blk in enumerate(caps):
-        tip = blk.nodes[:, :, 0]
-        tip = _wing_view(tip[tip[:, 0, 0] < 1.35])
-        _add(pl, _grid(tip), pal, pal.block(k + 2), lw=0.6, smooth=False)
+    for k, blk in enumerate(caps):  # the wall on the tip face, and the flared edge
+        _add(pl, _grid(_wing_view(blk.nodes[:, :, 0])), pal, pal.block(k + 2), lw=0.6, smooth=False)
+        if blk.label.endswith("_core"):
+            continue
+        edge = _wing_view(blk.nodes[:, -1, :14])
+        tint = pal.tint(pal.block(k + 2), 0.5)
+        _add(pl, _grid(edge), pal, tint, lw=0.3, smooth=False, opacity=0.6)
     _camera(pl, azim=-112.0, elev=26.0, zoom=1.2)
     shot(pl, "cgrid-tip-cap", mode)
 

@@ -416,6 +416,7 @@ def slice_by_span(
     ni_body: int,
     span_axis: str = "z",
     te_result: TEDetectionResult | None = None,
+    end_margin: float = 0.02,
 ) -> list[SpanSliceResult]:
     """Slice the STL at ``n_stations`` planes perpendicular to span.
 
@@ -437,8 +438,8 @@ def slice_by_span(
         Number of span stations to slice.  Stations are placed
         uniformly between the body's span-axis min and max, with the
         first and last stations strictly inside the body (offset by
-        2% of the span extent) to avoid degenerate slices on the
-        end-cap faces.
+        ``end_margin`` of the span extent, 2 % by default) to avoid
+        degenerate slices on the end-cap faces.
     ni_body :
         Common point count of the resampled cross-section polyline.
         Must be ``>= 8``.  Even values give symmetric LE/TE
@@ -487,10 +488,12 @@ def slice_by_span(
     span_min = float(mesh.bounds[0, span_idx])
     span_max = float(mesh.bounds[1, span_idx])
     span_extent = span_max - span_min
-    # Place stations strictly inside the body (offset by 2% of the span
-    # extent at each end) so the slicer doesn't intersect the end-cap
+    # Place stations strictly inside the body (offset by end_margin of the
+    # span extent at each end) so the slicer doesn't intersect the end-cap
     # triangles at glancing angles.
-    margin = 0.02 * span_extent
+    if not 0.0 < end_margin < 0.5:
+        raise ParameterError(f"slice_by_span: end_margin must be in (0, 0.5), got {end_margin}")
+    margin = end_margin * span_extent
     span_coords = np.linspace(span_min + margin, span_max - margin, n_stations)
 
     # Per-station TE position lookup: linear-interpolate the
@@ -1029,6 +1032,7 @@ def build_cgrid_k0(
     freestream_world: np.ndarray | None = None,
     te_dihedral_deg: float = 30.0,
     wake_growth: float = 1.15,
+    end_margin: float = 0.02,
 ) -> CGridK0Result:
     """Build the C-grid k=0 surface layer from a body STL.
 
@@ -1069,6 +1073,10 @@ def build_cgrid_k0(
         Dihedral threshold for TE detection.  Default ``30°``.
     wake_growth :
         Geometric growth ratio for wake i-spacing.
+    end_margin :
+        Distance of the first and last stations from the body's span
+        ends, as a fraction of the span (default 0.02). The tip-cap path
+        puts them at the tips (``TIP_STATION_MARGIN``, ADR 0059).
 
     Returns
     -------
@@ -1129,6 +1137,7 @@ def build_cgrid_k0(
         ni_body=ni_body,
         span_axis=span_axis,
         te_result=te_result,
+        end_margin=end_margin,
     )
     if len(slices) != n_stations:
         raise MeshInputError(f"build_cgrid_k0: expected {n_stations} slices, got {len(slices)}")

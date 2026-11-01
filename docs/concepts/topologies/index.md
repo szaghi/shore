@@ -14,7 +14,7 @@ section describes the layouts built from them. All of them produce
 | [Cubed sphere](cubed-sphere) | 6: 4 equatorial + 2 caps | `shore mesh` (default, `--topology cubed_sphere`) | closed star-shaped bodies; no singular axis |
 | [O-grid](o-grid) | 1, j-periodic | `shore mesh --topology ogrid` | a single periodic block; leaves the two polar regions uncovered |
 | [C-grid](c-grid) | 3 (sharp TE, default), 4 (blunt TE), 1 (legacy) | `shore mesh --topology cgrid` | wings and foils, with wake branches |
-| [C-grid tip caps](c-grid#tip-caps) | 6 per tip (conformal) or 5 per tip (overset) | `shore mesh --cap-tips`, `shore cap-tip` | closing a finite wing at its tips |
+| [C-grid tip caps](c-grid#tip-caps) | 5 per tip (overset, on the tip face) | `shore mesh --cap-tips`, `shore cap-tip` | closing a finite wing at its tips |
 | [OH hybrid](oh-hybrid) | 12: cubed-sphere wrap + 6 channels | `shore mesh --topology oh` | one grid from the wall to an axis-aligned box |
 | [CH hybrid](ch-hybrid) | 12 (sharp TE) / 14 (blunt TE) | `shore mesh --topology ch` | one grid from a wing's wall to a chord/normal frame |
 | [H-grids](h-grid) | 1 | `shore primitive h-grid-rect` / `h-grid-tube` | straight ducts without a body |

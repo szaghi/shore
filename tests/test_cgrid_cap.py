@@ -1,20 +1,11 @@
-"""Tests for shore.topology.cgrid_cap.build_cap_blocks — pure-numpy cap fill.
+"""Tests for shore.topology.cgrid_cap: the O-H tip cap (ADR 0059).
 
-The cap-fill builder takes a body's j=0 cross-section polyline (the
-airfoil profile after the TE slivers have been absorbed into the wake
-blocks) plus geometric parameters, and returns the cap sub-block node
-arrays at one wing tip.
-
-These tests exercise the builder in isolation — no STL, no SHORE-mesh
-integration, no marching.  They pin down:
-
-- Block shapes and dtypes.
-- Bit-exact node coincidence at SHARED seams between cap sub-blocks.
-- The cap_jlo plane's j_lo face = wing-tip wall (offset by tip_inset
-  along span_dir from the body cross-section).
-- The cap_jlo plane's k_hi face = body cross-section (= wrap envelope's
-  j_lo, before the body is split).
-- Sharp vs blunt switch — sharp omits cap_te; blunt includes it.
+The builder takes a wing's tip-station cross-section (upper TE -> LE ->
+lower TE, blunt or rounded TE) and returns five right-handed blocks: a
+core and the ring ``upper`` / ``le`` / ``lower`` / ``te`` joining it to
+the section's wall, extruded outwards. These tests exercise it in
+isolation: shapes, the wall, the layers, the flare, the SHARED wiring,
+the validation and ``check_cap_blocks`` (ADR 0058).
 """
 
 from __future__ import annotations
@@ -23,12 +14,22 @@ import numpy as np
 import pytest
 
 from shore.exceptions import ParameterError
+from shore.mesh.block import HexBlock
+from shore.mesh.face import FaceBC
+from shore.quality import scaled_jacobian
 from shore.topology.cgrid_cap import (
+    CAP_BLOCKS,
     auto_round_sharp_te,
     build_cap_blocks,
+    check_cap_blocks,
     detect_te_thickness,
     find_symmetric_le_cuts,
+    section_normal,
+    wire_cap_blocks,
 )
+
+DIST = np.array([0.0, 0.01, 0.025, 0.05, 0.1])
+UP = np.array([0.0, 0.0, 1.0])
 
 
 def _naca0012_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
@@ -99,468 +100,214 @@ def _box_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
     return pts3d, le_cut_upper, le_cut_lower
 
 
-# ---------------------------------------------------------------------------
-# Shape & dtype
-# ---------------------------------------------------------------------------
+def _sharp_te_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
+    """Sharp-TE NACA 0012-style cross-section running TE point → suction → LE → pressure → TE point.
+
+    Unlike ``_naca0012_cross_section`` (which truncates at 95% chord),
+    this fixture's i=0 and i=ni-1 *both* sit at the sharp TE point —
+    realistic input for the C-grid body block.  Used to verify the
+    cap-builder's TE-cut singularity-avoidance.
+    """
+    n_half = ni // 2 + 1
+    chord = np.linspace(0.0, 1.0, n_half)
+    yt = 0.6 * (
+        0.2969 * np.sqrt(chord)
+        - 0.1260 * chord
+        - 0.3516 * chord**2
+        + 0.2843 * chord**3
+        - 0.1015 * chord**4
+    )
+    # Force a sharp TE: y(x=1) = 0 by setting the last-point thickness to zero.
+    yt[-1] = 0.0
+    upper = np.column_stack([chord[::-1], +yt[::-1]])
+    lower = np.column_stack([chord[1:], -yt[1:]])
+    pts2d = np.vstack([upper, lower])
+    pts3d = np.column_stack([pts2d, np.zeros(len(pts2d))])
+    le_idx = int(np.argmin(pts3d[:, 0]))
+    le_cut_upper = next(i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05)
+    le_cut_lower = next(i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05)
+    return pts3d, le_cut_upper, le_cut_lower
 
 
-class TestCapShapes:
-    def test_default_returns_five_blocks(self):
-        """5-block H-fill: le + upper + lower + te_upper + te_lower."""
+def _caps(cs=None, le_up=None, le_lo=None, **kw):
+    if cs is None:
         cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        assert set(caps.keys()) == {"le", "upper", "lower", "te_upper", "te_lower"}
+    kw.setdefault("outward", UP)
+    kw.setdefault("k_distances", DIST)
+    kw.setdefault("n_cap_j", 8)
+    return build_cap_blocks(cs, le_cut_upper_idx=le_up, le_cut_lower_idx=le_lo, **kw)
 
-    def test_blunt_returns_six_blocks(self):
-        """When the body has wake_base too: 5 cap + 1 cap_wake_base."""
+
+def _hex(arrays):
+    return [
+        HexBlock(label=n, nodes=arrays[n], periodic_i=False, periodic_j=False) for n in CAP_BLOCKS
+    ]
+
+
+class TestShapes:
+    def test_five_blocks(self):
+        assert tuple(_caps()) == CAP_BLOCKS
+
+    def test_counts(self):
         cs, le_up, le_lo = _naca0012_cross_section(41)
-        wake_base_cs = np.array(
-            [
-                [[0.95, +0.01, 0.0], [0.95, 0.0, 0.0], [0.95, -0.01, 0.0]],
-                [[1.20, +0.01, 0.0], [1.20, 0.0, 0.0], [1.20, -0.01, 0.0]],
-            ]
-        )  # (ni_wake=2, nk_w=3, 3)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=True,
-            wake_base_cross_section=wake_base_cs,
-        )
-        assert set(caps.keys()) == {"le", "upper", "lower", "te_upper", "te_lower", "wake_base"}
+        caps = _caps(cs, le_up, le_lo)
+        n_side, n_nose = le_up + 1, le_lo - le_up + 1
+        assert sorted(caps["core"].shape[:2]) == sorted((n_side, n_nose))
+        for name in ("upper", "lower"):
+            assert n_side in caps[name].shape[:2] and 8 in caps[name].shape[:2]
+        for name in ("le", "te"):
+            assert n_nose in caps[name].shape[:2] and 8 in caps[name].shape[:2]
+        assert {c.shape[2] for c in caps.values()} == {DIST.size}
 
-    def test_block_rank_4_with_k_eq_2(self):
-        """Cap blocks have shape (ni, nj, 2, 3) — 1 cell thick in k."""
+    @pytest.mark.parametrize(
+        "kw",
+        [{}, {"flare_deg": 0.0}, {"flare_deg": 60.0}, {"core_frac": 0.2}, {"core_frac": 0.8},
+         {"j_spacing": "uniform"}, {"j_spacing": "tanh2"}, {"outward": -UP}],
+    )  # fmt: skip
+    def test_right_handed_and_valid(self, kw):
+        for name, x in _caps(**kw).items():
+            assert float(scaled_jacobian(x).min()) > 0.2, name
+
+    def test_box_section(self):
+        """A rectangle: its square nose is the worst case, still valid."""
+        cs, le_up, le_lo = _box_cross_section(41)
+        for name, x in _caps(cs, le_up, le_lo).items():
+            assert float(scaled_jacobian(x).min()) > 0.1, name
+
+
+class TestWall:
+    def test_edge_is_the_section(self):
         cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        for blk in caps.values():
-            assert blk.ndim == 4
-            assert blk.shape[2] == 2  # 1 cell thick in k (spanwise)
-            assert blk.shape[3] == 3
-            assert blk.dtype == np.float64
+        caps = _caps(cs, le_up, le_lo)
+        wall = {p.tobytes() for x in caps.values() for p in x[:, :, 0].reshape(-1, 3)}
+        assert all(p.tobytes() in wall for p in cs)
 
-    def test_upper_lower_have_same_ni_and_nj(self):
-        """SHARED chord-cut between upper/lower needs matching i and j."""
+    def test_wall_in_the_section_plane(self):
+        for x in _caps().values():
+            np.testing.assert_array_equal(x[:, :, 0, 2], 0.0)
+
+    def test_tip_inset_moves_the_wall_outwards(self):
+        for sign in (1.0, -1.0):
+            for x in _caps(outward=sign * UP, tip_inset=0.1).values():
+                np.testing.assert_allclose(x[:, :, 0, 2], sign * 0.1, atol=1e-15)
+
+    def test_wall_area_is_the_section_area(self):
         cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        u = caps["upper"]
-        lo = caps["lower"]
-        assert u.shape[0] == lo.shape[0], "i-extent must match for chord-cut SHARED"
-        assert u.shape[1] == lo.shape[1], "j-extent must match"
-
-    def test_nk_cap_greater_than_two(self):
-        """Cap blocks support multi-cell spanwise resolution."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            nk_cap=8,
-            is_blunt=False,
-        )
-        for blk in caps.values():
-            assert blk.shape[2] == 8
-
-    def test_nk_cap_layers_uniform_spaced_along_span(self):
-        """Interior k-layers are uniformly spaced between outboard and inboard planes.
-
-        k=0 is the **outboard** wing-tip wall (offset by +tip_inset *
-        span_dir from the cross-section); k=nk_cap-1 is the cross-section
-        plane.  So each k-step moves *inboard* (= -span_dir * inset/(nk-1)).
-        """
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        nk_cap = 6
-        inset = 0.1
-        span = np.array([0.0, 0.0, 1.0])
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=span,
-            tip_inset=inset,
-            n_cap_j=10,
-            nk_cap=nk_cap,
-            is_blunt=False,
-        )
-        u = caps["upper"]
-        for k in range(nk_cap - 1):
-            step = u[:, :, k + 1, :] - u[:, :, k, :]
-            expected = -(inset / (nk_cap - 1)) * span
-            np.testing.assert_allclose(step, np.broadcast_to(expected, step.shape), atol=1e-12)
-
-    def test_le_block_wraps_around_le(self):
-        """cap_le's i-axis spans from upper-LE-cut to lower-LE-cut."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        ni_le = le_lo - le_up + 1
-        assert caps["le"].shape[0] == ni_le
+        x, y = cs[:, 0], cs[:, 1]
+        section = 0.5 * abs(float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)))
+        area = 0.0
+        for c in _caps(cs, le_up, le_lo).values():
+            f = c[:, :, 0]
+            a, b, cc, d = f[:-1, :-1], f[1:, :-1], f[1:, 1:], f[:-1, 1:]
+            area += 0.5 * np.linalg.norm(np.cross(cc - a, d - b), axis=-1).sum()
+        assert abs(area - section) < 1e-12 * section
 
 
-# ---------------------------------------------------------------------------
-# Wing-tip wall (k_lo) lies on the cross section, offset by tip_inset
-# ---------------------------------------------------------------------------
-
-
-class TestCapKAxis:
-    def test_klo_is_outboard_wall(self):
-        """cap.k=0 (outboard wall) = cross-section + tip_inset * span_dir.
-
-        With the chimera-overset cap convention, k=0 is the **outboard
-        wing-tip wall** offset *outward* from the body's cross-section
-        plane, and k=nk-1 sits on the cross-section plane (the chimera-
-        overlap face).
-        """
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        span = np.array([0.0, 0.0, 1.0])
-        inset = 0.012345
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=span,
-            tip_inset=inset,
-            n_cap_j=8,
-            is_blunt=False,
-        )
-        u = caps["upper"]
-        # u[0, -1, -1, :] is on the cross-section plane (chimera-overlap).
-        # u[0, -1, 0,  :] is the same node offset outward by +inset * span.
-        offset = u[0, -1, 0, :] - u[0, -1, -1, :]
+class TestLayers:
+    def test_core_lines_along_the_normal(self):
+        core = _caps()["core"]
         np.testing.assert_allclose(
-            offset,
-            inset * span,
-            atol=1e-12,
-            err_msg="k_lo - k_hi should equal +tip_inset * span_dir",
+            core[:, :, :, 2] - core[:, :, :1, 2], np.broadcast_to(DIST, core.shape[:3])
+        )
+        np.testing.assert_array_equal(
+            core[:, :, :, :2], np.broadcast_to(core[:, :, :1, :2], core[..., :2].shape)
         )
 
-    def test_klo_to_khi_uses_span_direction(self):
-        """For every node, k_lo - k_hi equals +tip_inset * span_dir exactly."""
+    @pytest.mark.parametrize("flare", [0.0, 30.0, 45.0])
+    def test_flare_at_the_edge(self, flare):
         cs, le_up, le_lo = _naca0012_cross_section(41)
-        span = np.array([0.6, 0.8, 0.0])
-        span /= np.linalg.norm(span)
-        inset = 0.05
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=span,
-            tip_inset=inset,
-            n_cap_j=8,
-            is_blunt=False,
-        )
-        for blk in caps.values():
-            offset = blk[..., 0, :] - blk[..., -1, :]
-            expected = np.broadcast_to(inset * span, offset.shape)
-            np.testing.assert_allclose(
-                offset,
-                expected,
-                atol=1e-12,
-                err_msg="k_lo - k_hi isn't +inset * span_dir",
-            )
+        edge = {p.tobytes() for p in cs}
+        for x in _caps(cs, le_up, le_lo, flare_deg=flare).values():
+            w, nxt = x[:, :, 0].reshape(-1, 3), x[:, :, 1].reshape(-1, 3)
+            for a, b in zip(w, nxt, strict=True):
+                if a.tobytes() in edge:
+                    d = (b - a) / np.linalg.norm(b - a)
+                    assert abs(np.degrees(np.arccos(d[2])) - flare) < 1e-9
+
+    def test_section_normal_side(self):
+        cs, _, _ = _naca0012_cross_section(41)
+        np.testing.assert_allclose(section_normal(cs, UP), UP, atol=1e-12)
+        np.testing.assert_allclose(section_normal(cs, -UP), -UP, atol=1e-12)
 
 
-# ---------------------------------------------------------------------------
-# k_hi face equals the input cross-section / wrap envelope j_lo
-# ---------------------------------------------------------------------------
+class TestWiring:
+    def _seams(self, blocks):
+        return [(b, f) for b in blocks for f in b.faces() if f.bc is FaceBC.SHARED]
+
+    def test_sixteen_shared_faces(self):
+        blocks = _hex(_caps())
+        wire_cap_blocks(blocks)
+        assert len(self._seams(blocks)) == 16
+        for b in blocks:
+            assert b.face("k_lo").bc is FaceBC.WALL
+            assert b.face("k_hi").bc is FaceBC.FREE
+
+    def test_seams_match_through_axis_maps(self):
+        blocks = _hex(_caps())
+        wire_cap_blocks(blocks)
+        owner = {id(f): b for b in blocks for f in b.faces()}
+        along = {"i": ("j", "k"), "j": ("i", "k"), "k": ("i", "j")}
+        for b, f in self._seams(blocks):
+            partner = owner[id(f.partner)]
+            assert f.partner.partner is f
+            theirs = f.partner.nodes(partner)
+            (a0, flip0), (_, flip1) = f.axis_map.along
+            t = theirs if along[f.partner.name[0]].index(a0) == 0 else theirs.transpose(1, 0, 2)
+            t = t[::-1] if flip0 else t
+            t = t[:, ::-1] if flip1 else t
+            np.testing.assert_array_equal(f.nodes(b), t)
+
+    def test_ring_edges_stay_free(self):
+        blocks = _hex(_caps())
+        wire_cap_blocks(blocks)
+        free = sum(f.bc is FaceBC.FREE for b in blocks for f in b.faces())
+        assert free == 5 + 4  # every k_hi, and the ring's outer side
 
 
-class TestKHiOnCrossSection:
-    def test_upper_khi_jhi_traces_suction_side(self):
-        """cap_upper.k_hi[i, -1, :] == cross_section[upper-LE-cut → upper-TE-cut]."""
+class TestValidation:
+    def test_sharp_te_rejected(self):
+        cs, le_up, le_lo = _sharp_te_cross_section(41)
+        with pytest.raises(ParameterError, match="sharp"):
+            _caps(cs, le_up, le_lo)
+
+    def test_asymmetric_cuts_rejected(self):
         cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        u = caps["upper"]
-        # u's i goes from upper-LE-cut (i=0) to upper-TE-cut (i=ni-1).
-        # j_hi (j=nj-1) is the airfoil suction wall.
-        # k_hi (k=1) is the body plane.
-        # So u[i, -1, 1, :] should equal cs[le_up - i] for i = 0..le_up
-        # (body i goes upper-TE-cut to lower-TE-cut; u i is reversed).
-        for i in range(u.shape[0]):
-            body_i = le_up - i
-            np.testing.assert_allclose(u[i, -1, 1, :], cs[body_i, :], atol=1e-12)
+        with pytest.raises(ParameterError, match="symmetric"):
+            _caps(cs, le_up, le_lo + 1)
 
-    def test_lower_khi_jhi_traces_pressure_side(self):
-        """cap_lower.k_hi[i, -1, :] == cross_section[le_lo → ni-1] forward."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        lo = caps["lower"]
-        # lo's i goes from lower-LE-cut (i=0) to lower-TE-cut (i=ni-1).
-        for i in range(lo.shape[0]):
-            body_i = le_lo + i
-            np.testing.assert_allclose(lo[i, -1, 1, :], cs[body_i, :], atol=1e-12)
+    def test_cuts_must_straddle_the_le(self):
+        cs, _, _ = _naca0012_cross_section(41)
+        with pytest.raises(ParameterError, match="LE cuts"):
+            _caps(cs, 0, cs.shape[0] - 1)
 
-    def test_le_khi_jhi_wraps_le(self):
-        """cap_le.k_hi[i, -1, :] == cross_section[le_up + i] for i = 0..ni_le-1."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        le = caps["le"]
-        for i in range(le.shape[0]):
-            body_i = le_up + i
-            np.testing.assert_allclose(le[i, -1, 1, :], cs[body_i, :], atol=1e-12)
+    @pytest.mark.parametrize(
+        "kw", [{"core_frac": 0.0}, {"core_frac": 1.0}, {"flare_deg": 90.0}, {"flare_deg": -1.0}]
+    )
+    def test_bad_parameters(self, kw):
+        with pytest.raises(ParameterError):
+            _caps(**kw)
+
+    @pytest.mark.parametrize("dist", [[0.0], [0.1, 0.2], [0.0, 0.2, 0.1]])
+    def test_bad_distances(self, dist):
+        with pytest.raises(ParameterError, match="k_distances"):
+            _caps(k_distances=np.array(dist))
 
 
-# ---------------------------------------------------------------------------
-# SHARED-seam coincidence between cap sub-blocks (bit-exact node match)
-# ---------------------------------------------------------------------------
+class TestCheckCapBlocks:
+    def test_valid_cap_passes(self):
+        check_cap_blocks(_hex(_caps()))
 
+    def test_folded_block_refused(self):
+        arrays = _caps()
+        arrays["le"] = arrays["le"][::-1].copy()  # mirrored: every cell negative
+        with pytest.raises(ParameterError, match="tip cap block le"):
+            check_cap_blocks(_hex(arrays))
 
-class TestCapSharedSeams:
-    def test_le_ilo_matches_upper_ilo(self):
-        """cap_le.i_lo (column at upper-LE-cut) == cap_upper.i_lo."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        le = caps["le"]
-        u = caps["upper"]
-        # le.i_lo = le[0, :, :, :], shape (nj, 2, 3).
-        # u.i_lo = u[0, :, :, :], shape (nj, 2, 3).
-        # Both columns should be at the upper-LE-cut chord position with
-        # j running from chord-cut/chord-perp inner (j=0) to airfoil wall (j=-1).
-        np.testing.assert_allclose(le[0, :, :, :], u[0, :, :, :], atol=1e-12)
-
-    def test_le_ihi_matches_lower_ilo(self):
-        """cap_le.i_hi (column at lower-LE-cut) == cap_lower.i_lo."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        le = caps["le"]
-        lo = caps["lower"]
-        np.testing.assert_allclose(le[-1, :, :, :], lo[0, :, :, :], atol=1e-12)
-
-    def test_upper_jlo_matches_lower_jlo(self):
-        """Chord-cut SHARED: cap_upper.j_lo == cap_lower.j_lo (both at chord cut)."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        u = caps["upper"]
-        lo = caps["lower"]
-        # Both blocks have j=0 = chord cut, j=nj-1 = airfoil wall (each on
-        # its own side: upper.j_hi = suction wall, lower.j_hi = pressure
-        # wall).  So the chord-cut SHARED face is upper.j_lo ↔ lower.j_lo,
-        # but with i-reversal: upper.i goes upper-LE-cut → upper-TE-cut,
-        # lower.i goes lower-LE-cut → lower-TE-cut.  At the chord cut,
-        # the i-coordinates are the same (chord positions match), so
-        # the j_lo columns match index-for-index.
-        np.testing.assert_allclose(u[:, 0, :, :], lo[:, 0, :, :], atol=1e-12)
-
-
-# ---------------------------------------------------------------------------
-# j-axis distribution under the cap_j_spacing law
-# ---------------------------------------------------------------------------
-
-
-class TestCapJSpacing:
-    def test_uniform_distribution(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=11,
-            j_spacing="uniform",
-            is_blunt=False,
-        )
-        # Pick a mid-i column of cap_upper; the j coords should be linear.
-        u = caps["upper"]
-        ic = u.shape[0] // 2
-        col = u[ic, :, 1, :]  # k_hi (body plane), j running cut to wall
-        # Distance along the line from j=0 to j=k should be linear in k/n.
-        ds = np.linalg.norm(np.diff(col, axis=0), axis=-1)
-        # All step sizes should be equal under uniform.
-        np.testing.assert_allclose(ds, ds[0], rtol=1e-9)
-
-    def test_tanh_clusters_near_wall(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=20,
-            j_spacing="tanh",
-            j_beta=4.0,
-            is_blunt=False,
-        )
-        u = caps["upper"]
-        ic = u.shape[0] // 2
-        col = u[ic, :, 1, :]
-        ds = np.linalg.norm(np.diff(col, axis=0), axis=-1)
-        # Cluster near the wall (j_hi).  ds[-1] (near wall) << ds[0] (near cut).
-        assert ds[-1] < 0.5 * ds[0]
-
-
-# ---------------------------------------------------------------------------
-# Parameter validation
-# ---------------------------------------------------------------------------
-
-
-class TestCapValidation:
-    def test_le_cut_ordering(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="le_cut_upper_idx"):
-            build_cap_blocks(
-                cross_section=cs,
-                le_cut_upper_idx=le_lo,  # swapped
-                le_cut_lower_idx=le_up,
-                span_dir=np.array([0.0, 0.0, 1.0]),
-                tip_inset=1e-3,
-                n_cap_j=10,
-                is_blunt=False,
-            )
-
-    def test_negative_tip_inset(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="tip_inset"):
-            build_cap_blocks(
-                cross_section=cs,
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=np.array([0.0, 0.0, 1.0]),
-                tip_inset=-0.01,
-                n_cap_j=10,
-                is_blunt=False,
-            )
-
-    def test_n_cap_j_too_small(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="n_cap_j"):
-            build_cap_blocks(
-                cross_section=cs,
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=np.array([0.0, 0.0, 1.0]),
-                tip_inset=1e-3,
-                n_cap_j=1,
-                is_blunt=False,
-            )
-
-    def test_blunt_requires_wake_base(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="wake_base"):
-            build_cap_blocks(
-                cross_section=cs,
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=np.array([0.0, 0.0, 1.0]),
-                tip_inset=1e-3,
-                n_cap_j=10,
-                is_blunt=True,
-                wake_base_cross_section=None,
-            )
-
-    def test_unknown_j_spacing(self):
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="j_spacing"):
-            build_cap_blocks(
-                cross_section=cs,
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=np.array([0.0, 0.0, 1.0]),
-                tip_inset=1e-3,
-                n_cap_j=10,
-                j_spacing="bogus",
-                is_blunt=False,
-            )
-
-    def test_span_dir_not_unit(self):
-        """Non-unit span_dir is rejected — caller must normalise."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="span_dir"):
-            build_cap_blocks(
-                cross_section=cs,
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                span_dir=np.array([0.0, 0.0, 2.0]),  # not unit
-                tip_inset=1e-3,
-                n_cap_j=10,
-                is_blunt=False,
-            )
+    def test_block_without_cells_refused(self):
+        arrays = _caps()
+        arrays["te"] = arrays["te"][:1].copy()
+        with pytest.raises(ParameterError, match="no cells"):
+            check_cap_blocks(_hex(arrays))
 
 
 # ---------------------------------------------------------------------------
@@ -591,119 +338,6 @@ class TestFindSymmetricLeCuts:
         cs, _, _ = _naca0012_cross_section(41)
         with pytest.raises(ParameterError, match="span_axis_world"):
             find_symmetric_le_cuts(cs, le_frac=0.05, span_axis_world=3)
-
-
-# ---------------------------------------------------------------------------
-# TE-cut: avoids the singular axis at sharp TE
-# ---------------------------------------------------------------------------
-
-
-def _sharp_te_cross_section(ni: int = 41) -> tuple[np.ndarray, int, int]:
-    """Sharp-TE NACA 0012-style cross-section running TE point → suction → LE → pressure → TE point.
-
-    Unlike ``_naca0012_cross_section`` (which truncates at 95% chord),
-    this fixture's i=0 and i=ni-1 *both* sit at the sharp TE point —
-    realistic input for the C-grid body block.  Used to verify the
-    cap-builder's TE-cut singularity-avoidance.
-    """
-    n_half = ni // 2 + 1
-    chord = np.linspace(0.0, 1.0, n_half)
-    yt = 0.6 * (
-        0.2969 * np.sqrt(chord)
-        - 0.1260 * chord
-        - 0.3516 * chord**2
-        + 0.2843 * chord**3
-        - 0.1015 * chord**4
-    )
-    # Force a sharp TE: y(x=1) = 0 by setting the last-point thickness to zero.
-    yt[-1] = 0.0
-    upper = np.column_stack([chord[::-1], +yt[::-1]])
-    lower = np.column_stack([chord[1:], -yt[1:]])
-    pts2d = np.vstack([upper, lower])
-    pts3d = np.column_stack([pts2d, np.zeros(len(pts2d))])
-    le_idx = int(np.argmin(pts3d[:, 0]))
-    le_cut_upper = next(i for i in range(le_idx, -1, -1) if pts3d[i, 0] >= 0.05)
-    le_cut_lower = next(i for i in range(le_idx, len(pts3d)) if pts3d[i, 0] >= 0.05)
-    return pts3d, le_cut_upper, le_cut_lower
-
-
-class TestCapTECut:
-    def test_sharp_te_te_columns_collapse(self):
-        """On a truly sharp TE input, the cap_te_*.i_hi columns collapse.
-
-        This is the structural reality of the H-fill on a sharp TE,
-        and is the reason ``CGridTipCap`` rejects sharp inputs unless
-        auto-rounding is enabled.
-        """
-        cs, le_up, le_lo = _sharp_te_cross_section(41)
-        assert np.allclose(cs[0, :], cs[-1, :])
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        # cap_te_upper.i_hi is the TE-base column (= body's i=0 node).
-        # On sharp TE, body's i=0 == ni-1 == sharp point → degenerate.
-        col = caps["te_upper"][-1, :, 0, :]
-        span = float(np.linalg.norm(col.max(axis=0) - col.min(axis=0)))
-        assert span < 1e-6
-
-    def test_blunt_te_columns_non_degenerate(self):
-        """On a blunt TE input, the cap_te_*.i_hi columns are non-degenerate."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)  # already blunt-truncated at 95% chord
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        col = caps["te_upper"][-1, :, 0, :]
-        span = float(np.linalg.norm(col.max(axis=0) - col.min(axis=0)))
-        assert span > 1e-3
-
-    def test_te_cut_inboard_avoids_degeneracy(self):
-        """TE-cut indices inboard of the body endpoints → te_upper.i_lo non-degenerate."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        te_up = 3
-        te_lo = cs.shape[0] - 1 - te_up
-        caps = build_cap_blocks(
-            cross_section=cs,
-            le_cut_upper_idx=le_up,
-            le_cut_lower_idx=le_lo,
-            te_cut_upper_idx=te_up,
-            te_cut_lower_idx=te_lo,
-            span_dir=np.array([0.0, 0.0, 1.0]),
-            tip_inset=1e-3,
-            n_cap_j=10,
-            is_blunt=False,
-        )
-        # cap_upper.i_hi sits at body i = te_up — must be non-degenerate.
-        col = caps["upper"][-1, :, 0, :]
-        span = float(np.linalg.norm(col.max(axis=0) - col.min(axis=0)))
-        assert span > 1e-3
-
-    def test_te_cut_asymmetric_rejected(self):
-        """LE/TE-cuts must be symmetric for the chord-cut SHARED face to be 1:1."""
-        cs, le_up, le_lo = _naca0012_cross_section(41)
-        with pytest.raises(ParameterError, match="symmetric"):
-            build_cap_blocks(
-                cross_section=cs,
-                le_cut_upper_idx=le_up,
-                le_cut_lower_idx=le_lo,
-                te_cut_upper_idx=3,
-                te_cut_lower_idx=cs.shape[0] - 5,  # asymmetric
-                span_dir=np.array([0.0, 0.0, 1.0]),
-                tip_inset=1e-3,
-                n_cap_j=10,
-                is_blunt=False,
-            )
 
 
 # ---------------------------------------------------------------------------

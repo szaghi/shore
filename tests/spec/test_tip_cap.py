@@ -177,7 +177,6 @@ def quad_area(face):
 
 @pytest.mark.parametrize("te", ["sharp", "blunt"])
 class TestConformalCaps:
-    @PENDING
     def test_c1_blocks_valid(self, wings, capped, te):
         blocks = capped[te].mesh.blocks
         for tip in ("jlo", "jhi"):
@@ -192,19 +191,16 @@ class TestConformalCaps:
             (same,) = [c for c in built.mesh.blocks if c.label == b.label]
             assert np.array_equal(b.nodes, same.nodes), b.label
 
-    @PENDING
     def test_c2_seams(self, capped, te):
         for tip in ("jlo", "jhi"):
             assert seams_match(caps(capped[te].mesh.blocks, tip)) == 16
 
-    @PENDING
     def test_c3_bcs(self, capped, te):
         for b in [b for b in capped[te].mesh.blocks if b.label.startswith("cap_")]:
             bcs = {f.name: f.bc.name for f in b.faces()}
             assert bcs.pop("k_lo") == "WALL", b.label
             assert set(bcs.values()) <= {"SHARED", "FREE"}, (b.label, bcs)
 
-    @PENDING
     def test_c4_wall_on_tip(self, capped, te):
         blocks = capped[te].mesh.blocks
         body = next(b for b in blocks if b.label == "body")
@@ -216,7 +212,6 @@ class TestConformalCaps:
             keys = {p.tobytes() for p in pts}
             assert all(p.tobytes() in keys for p in body.nodes[:, j, 0])
 
-    @PENDING
     def test_c5_wall_covers_section(self, capped, te):
         blocks = capped[te].mesh.blocks
         body = next(b for b in blocks if b.label == "body")
@@ -230,7 +225,6 @@ class TestConformalCaps:
             wall = sum(quad_area(b.nodes[:, :, 0]) for b in cap)
             assert abs(wall - section) <= 1e-9 * section
 
-    @PENDING
     def test_c7_flare(self, wings, capped, te):
         extra = {"blocks": 4} if te == "blunt" else {}
         for p, angle in (
@@ -261,7 +255,6 @@ class TestConformalCaps:
 
 
 class TestLayers:
-    @PENDING
     def test_c6_core_layers(self, capped):
         from shore.mesh.spacing import Spacing1D
 
@@ -286,7 +279,6 @@ class TestLayers:
 
 @pytest.mark.parametrize("tip", ["jlo", "jhi"])
 class TestSwept:
-    @PENDING
     def test_c8_swept_tapered_cambered(self, wings, tip):
         p = build(wings / "swept.stl", blocks=4)
         blocks = p.mesh.blocks
@@ -318,7 +310,6 @@ def body_geo(wings):
 
 
 class TestStandalone:
-    @PENDING
     def test_c9_build_tip_cap(self, body_geo):
         from shore.project import Project
 
@@ -336,7 +327,6 @@ class TestStandalone:
             assert np.abs((pts - centre) @ normal).max() < 1e-9
             assert abs(float(centre[2]) - end) < 1e-6 * SPAN
 
-    @PENDING
     def test_c10_cli(self, wings, body_geo, tmp_path):
         from shore.cli import app
         from shore.io.geo import read_geo
@@ -362,7 +352,6 @@ class TestStandalone:
 
 
 class TestProjects:
-    @PENDING
     def test_c11_save_load(self, capped, tmp_path):
         from shore.project import Project
 
@@ -373,7 +362,6 @@ class TestProjects:
         for a, b in zip(p.mesh.blocks, q.mesh.blocks, strict=True):
             assert np.array_equal(a.nodes, b.nodes), a.label
 
-    @PENDING
     def test_c12_te_frac_deprecated(self, wings, capped):
         from shore.project import Project
 
