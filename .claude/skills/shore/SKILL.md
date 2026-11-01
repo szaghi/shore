@@ -196,7 +196,7 @@ shore mesh wing.stl -o run/wing --topology cgrid \
 ```bash
 shore primitive flat-caps   -o bg/cyl --help    # 5-block Chimera-free background
 shore primitive box         -o bg/box --help
-shore primitive h-grid-tube -o bg/tube --help   # internal flow, j-periodic
+shore primitive h-grid-tube -o bg/tube --help   # internal flow, O-H (5 blocks)
 ```
 
 ### D. Full Xall Chimera bundle (the payoff)

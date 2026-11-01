@@ -42,6 +42,52 @@ class Seam(NamedTuple):
     transform: tuple[int, int, int]
 
 
+def wire_by_corners(
+    blocks: list[HexBlock],
+    faces: tuple[str, ...] = ("i_lo", "i_hi", "j_lo", "j_hi", "k_lo", "k_hi"),
+) -> None:
+    """Make the faces two blocks share SHARED, with their axis maps.
+
+    Two of the *faces* are shared when their four corner nodes are the
+    same points, bit for bit (blocks built from shared rows). The axis map
+    follows from where each corner lands on the partner face, as
+    ``premesh`` does for a blocking. Used by the tip caps (ADR 0059) and
+    the H-grid tube (ADR 0060).
+    """
+    from shore.mesh.face import AxisMap
+
+    corners: dict[tuple[int, str], np.ndarray] = {}
+    ids: dict[bytes, int] = {}
+    for b_idx, b in enumerate(blocks):
+        for name in faces:
+            f = b.face(name).nodes(b)  # type: ignore[arg-type]
+            pts = np.array([[f[0, 0], f[0, -1]], [f[-1, 0], f[-1, -1]]])
+            corners[b_idx, name] = np.array(
+                [[ids.setdefault(p.tobytes(), len(ids)) for p in row] for row in pts]
+            )
+    by_key: dict[frozenset[int], list[tuple[int, str]]] = {}
+    for key, c in corners.items():
+        by_key.setdefault(frozenset(c.ravel().tolist()), []).append(key)
+    for owners in by_key.values():
+        if len(owners) != 2:
+            continue
+        (b0, f0), (b1, f1) = owners
+        for (ba, fa), (bb, fb) in (((b0, f0), (b1, f1)), ((b1, f1), (b0, f0))):
+            mine, theirs = corners[ba, fa], corners[bb, fb]
+            pos = {int(theirs[a, b]): (a, b) for a in (0, 1) for b in (0, 1)}
+            pairs = []
+            for end in (mine[1, 0], mine[0, 1]):
+                p0, p1 = pos[int(mine[0, 0])], pos[int(end)]
+                d = 0 if p0[0] != p1[0] else 1
+                pairs.append((FACE_ALONG_AXES[fb][d], bool(p1[d] < p0[d])))  # type: ignore[index]
+            blocks[ba]._set_face_bc(
+                fa,  # type: ignore[arg-type]
+                FaceBC.SHARED,
+                blocks[bb].face(fb),  # type: ignore[arg-type]
+                AxisMap.from_pairs(pairs[0], pairs[1]),
+            )
+
+
 def seams(
     blocks: list[HexBlock],
     tol: float,

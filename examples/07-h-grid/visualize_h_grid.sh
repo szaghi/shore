@@ -7,8 +7,8 @@
 #     examples_out/
 #         h_grid_rect.geo      # 1m-long rectangular duct
 #         h_grid_rect.vtm      # ParaView MultiBlock (1 block)
-#         h_grid_tube.geo      # 0.5m-long circular tube
-#         h_grid_tube.vtm      # ParaView MultiBlock (1 block)
+#         h_grid_tube_*.geo    # 0.5m-long circular tube: 5 blocks (O-H, ADR 0060)
+#         h_grid_tube.vtm      # ParaView MultiBlock (5 blocks)
 #
 # Usage:
 #   ./examples/07-h-grid/visualize_h_grid.sh             # default examples_out/
@@ -65,12 +65,12 @@ info "2. Circular tube (0.5m long, radius 0.05m, streamwise=x)"
     --k-spacing tanh --k-beta 3.0 \
     -o "$OUT_DIR/h_grid_tube"
 
-"$SHORE" export "$OUT_DIR/h_grid_tube.geo" -o "$OUT_DIR/h_grid_tube.vtm" \
+"$SHORE" export "$OUT_DIR"/h_grid_tube_*.geo -o "$OUT_DIR/h_grid_tube.vtm" \
   || info "  (pyvista not installed; skipped h_grid_tube.vtm)"
 
 info "Done — outputs in $OUT_DIR"
 echo
 echo "Inspect with:"
 echo "  $SHORE info $OUT_DIR/h_grid_rect.geo"
-echo "  $SHORE info $OUT_DIR/h_grid_tube.geo"
+echo "  $SHORE info $OUT_DIR/h_grid_tube_core.geo"
 echo "  paraview $OUT_DIR/h_grid_rect.vtm $OUT_DIR/h_grid_tube.vtm"

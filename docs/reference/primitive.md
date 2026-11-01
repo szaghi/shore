@@ -231,12 +231,12 @@ shore primitive h-grid-rect \
 
 ## `shore primitive h-grid-tube`
 
-Circular-bore H-grid: a single hex block with a 2D polar
-cross-section (j-periodic circumferential + radial), default BCs
-streamwise=FREE / k_lo=k_hi=WALL.  Use case: straight cylindrical
-ducts, simple SRM chambers.  See
-[H-grid topology — circular tube](/concepts/topologies/h-grid#circular-tube)
-for the polar singular axis caveat.
+Circular-bore H-grid: five hex blocks in an O-H cross-section, a square
+`core` and four ring blocks `ring_0` .. `ring_3` joining it to the wall
+([ADR 0060](/adr/0060-h-grid-tube-oh)). Faces: streamwise FREE, the
+rings' `k_hi` WALL, the rest SHARED; no singular axis. Use case: straight
+cylindrical ducts, simple SRM chambers. See
+[H-grid topology — circular tube](/concepts/topologies/h-grid#circular-tube).
 
 ### Synopsis
 
@@ -248,25 +248,25 @@ shore primitive h-grid-tube [OPTIONS]
 
 | Option | Default | Description |
 |---|---|---|
-| `-o` / `--output PATH` | `h_grid_tube.geo` | Output `.geo` file |
+| `-o` / `--output PATH` | `h_grid_tube` | Output stem: writes `<stem>_<block>.geo` for the five blocks |
 | `--length FLOAT` | 1.0 | Tube length along the streamwise axis |
 | `--radius FLOAT` | 0.05 | Outer-wall radius |
 | `--n-axial INTEGER` | 40 | Streamwise node count (block `i`) |
-| `--n-circ INTEGER` | 32 | Circumferential node count (block `j`, periodic) |
-| `--n-radial INTEGER` | 8 | Radial node count (block `k`: 0 = centerline, last = wall) |
+| `--n-circ INTEGER` | 32 | Cells round the wall, a multiple of 4 (a quarter per ring block) |
+| `--n-radial INTEGER` | 8 | Ring blocks' node count from the core to the wall (block `k`) |
+| `--core-frac FLOAT` | 0.5 | Radius of the core's corners as a fraction of the tube's |
 | `--streamwise-axis TEXT` | `x` | World axis the tube is aligned with |
-| `--i-spacing` / `--k-spacing` | `uniform` | Streamwise / radial spacing law (`uniform` / `tanh` / `tanh2`) |
+| `--i-spacing` / `--k-spacing` | `uniform` | Streamwise / core-to-wall spacing law (`uniform` / `tanh` / `tanh2`; `tanh` on `k` clusters at the wall) |
 | `--i-beta` / `--k-beta` | 3.0 | Clustering strength |
-| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (single block, j-periodic) |
+| `--adjacency-json PATH` | — | Also write a `.adjacency.json` sidecar (five blocks, 16 SHARED faces) |
 | `--journal PATH` | — | Also write the run as a replayable journal ([`shore run`](run)). |
 
-The circumferential direction (`j`) is uniform by construction —
-clustering on a periodic axis is unsupported.
+Along the wall (`j`) the spacing is uniform in angle.
 
 ### Examples
 
 ```bash
-# 0.5m-long tube, radial clustering toward the centerline:
+# 0.5m-long tube, nodes clustered at the wall:
 shore primitive h-grid-tube \
     --length 0.5 --radius 0.05 \
     --n-axial 60 --n-circ 32 --n-radial 10 \

@@ -78,7 +78,7 @@ these pages by hand. The command-line interface is documented under
 | [`shore.primitive.box`](./shore.primitive.box) | Cartesian box primitive — a single axis-aligned hexahedral block |
 | [`shore.primitive.flat_caps`](./shore.primitive.flat_caps) | Flat-caps cylinder primitive — 5-block conforming alternative to a hollow Chimera background |
 | [`shore.primitive.h_grid_rect`](./shore.primitive.h_grid_rect) | Rectangular-duct H-grid primitive |
-| [`shore.primitive.h_grid_tube`](./shore.primitive.h_grid_tube) | Circular-bore H-grid primitive |
+| [`shore.primitive.h_grid_tube`](./shore.primitive.h_grid_tube) | Circular-bore H-grid primitive  |
 | [`shore.topology`](./shore.topology) | Topology decomposition utilities for multi-block structured grids |
 | [`shore.topology.cgrid_cap`](./shore.topology.cgrid_cap) | Wing-tip caps of the C-grid  |
 | [`shore.topology.ch_channel`](./shore.topology.ch_channel) | Outer-quad helpers for the CH (C-grid + H-channel) topology |

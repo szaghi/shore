@@ -15,7 +15,7 @@ commands and options.
 | [`shore primitive annulus`](primitive#shore-primitive-annulus) | Annular cylinder, one block, optionally a j sector. | |
 | [`shore primitive flat-caps`](primitive#shore-primitive-flat-caps) | 5-block cylinder without a central hole (Chimera background). | |
 | [`shore primitive h-grid-rect`](primitive#shore-primitive-h-grid-rect) | Rectangular-duct H-grid, one block. | |
-| [`shore primitive h-grid-tube`](primitive#shore-primitive-h-grid-tube) | Circular-bore H-grid, one block, j-periodic. | |
+| [`shore primitive h-grid-tube`](primitive#shore-primitive-h-grid-tube) | Circular-bore H-grid, five blocks (O-H cross-section). | |
 | [`shore collar`](collar) | Collar block at the junction of two bodies; half-collar on a symmetry plane; split at sharp corners. | `cad` for CAD bodies |
 | [`shore cap-tip`](cap-tip) | Wing-tip cap blocks from a C-grid body `.geo`. | |
 | [`shore project`](project) | Project a lat-lon sphere grid onto a body: the k=0 layer only, as `.npz`. | `cad` for CAD input |

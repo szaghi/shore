@@ -295,40 +295,12 @@ def _ring(
 def wire_cap_blocks(blocks: list[HexBlock]) -> None:
     """Make the faces two cap blocks share SHARED, with their axis maps.
 
-    Two faces are shared when their four corner nodes are the same points
-    (bit for bit). The axis map follows from where each corner lands on the
-    partner face, as ``premesh`` does for a blocking.
+    The i and j faces only (``shore.mesh.seams.wire_by_corners``): the k
+    faces are the wall and the outer fringe.
     """
-    from shore.mesh.face import FACE_ALONG_AXES, AxisMap, FaceBC
+    from shore.mesh.seams import wire_by_corners
 
-    names = ("i_lo", "i_hi", "j_lo", "j_hi")
-    corners: dict[tuple[int, str], np.ndarray] = {}
-    ids: dict[bytes, int] = {}
-    for b_idx, b in enumerate(blocks):
-        for name in names:
-            f = b.face(name).nodes(b)
-            pts = np.array([[f[0, 0], f[0, -1]], [f[-1, 0], f[-1, -1]]])
-            corners[b_idx, name] = np.array(
-                [[ids.setdefault(p.tobytes(), len(ids)) for p in row] for row in pts]
-            )
-    by_key: dict[frozenset[int], list[tuple[int, str]]] = {}
-    for key, c in corners.items():
-        by_key.setdefault(frozenset(c.ravel().tolist()), []).append(key)
-    for owners in by_key.values():
-        if len(owners) != 2:
-            continue
-        (b0, f0), (b1, f1) = owners
-        for (ba, fa), (bb, fb) in (((b0, f0), (b1, f1)), ((b1, f1), (b0, f0))):
-            mine, theirs = corners[ba, fa], corners[bb, fb]
-            pos = {int(theirs[a, b]): (a, b) for a in (0, 1) for b in (0, 1)}
-            pairs = []
-            for end in (mine[1, 0], mine[0, 1]):
-                p0, p1 = pos[int(mine[0, 0])], pos[int(end)]
-                d = 0 if p0[0] != p1[0] else 1
-                pairs.append((FACE_ALONG_AXES[fb][d], bool(p1[d] < p0[d])))
-            blocks[ba]._set_face_bc(
-                fa, FaceBC.SHARED, blocks[bb].face(fb), AxisMap.from_pairs(pairs[0], pairs[1])
-            )
+    wire_by_corners(blocks, ("i_lo", "i_hi", "j_lo", "j_hi"))
 
 
 def find_symmetric_le_cuts(

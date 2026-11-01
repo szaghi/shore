@@ -79,7 +79,6 @@ def cross(points, axis):
 
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 class TestBlocks:
-    @PENDING
     def test_t1_valid_right_handed(self, axis):
         from shore.quality import scaled_jacobian
 
@@ -88,7 +87,6 @@ class TestBlocks:
         for b in blocks:
             assert float(scaled_jacobian(b.nodes).min()) > 0.5, b.label
 
-    @PENDING
     def test_t2_faces(self, axis):
         blocks = tube(axis).blocks
         walls = [(b.label, f.name) for b in blocks for f in b.faces() if f.bc.name == "WALL"]
@@ -115,7 +113,6 @@ class TestBlocks:
 
 
 class TestCrossSection:
-    @PENDING
     def test_t3_area(self):
         n = 16
         blocks = tube("z", n_circ=n).blocks
@@ -144,14 +141,12 @@ class TestCrossSection:
         steps = np.diff(s)
         assert steps[0] < steps[-1]
 
-    @PENDING
     def test_t6_clustered_at_the_wall(self):
         for b in tube("x", k_law="tanh", k_beta=3.0).blocks[:4]:
             line = b.nodes[0, b.nodes.shape[1] // 2]
             steps = np.linalg.norm(np.diff(line, axis=0), axis=-1)
             assert steps[-1] < steps[0], b.label
 
-    @PENDING
     def test_t7_n_circ_multiple_of_four(self):
         from shore.exceptions import ParameterError
 
@@ -160,7 +155,6 @@ class TestCrossSection:
 
 
 class TestCli:
-    @PENDING
     def test_t8_cli(self, tmp_path):
         from shore.cli import app
         from shore.io.geo import read_geo

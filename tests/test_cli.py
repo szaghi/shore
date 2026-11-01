@@ -1007,7 +1007,9 @@ class TestPrimitiveHGridTube:
             str(out),
         )
         assert r.exit_code == 0, r.output
-        assert (tmp_path / "tube.geo").exists()
+        names = sorted(f.name for f in tmp_path.glob("tube_*.geo"))
+        labels = ("ring_0", "ring_1", "ring_2", "ring_3", "core")
+        assert names == sorted(f"tube_{n}.geo" for n in labels)
 
     def test_block_shape(self, tmp_path):
         out = tmp_path / "tube"
@@ -1027,8 +1029,8 @@ class TestPrimitiveHGridTube:
             "-o",
             str(out),
         )
-        grid = read_geo(tmp_path / "tube.geo")
-        assert grid.shape == (20, 16, 6, 3)
+        assert read_geo(tmp_path / "tube_ring_0.geo").shape == (20, 5, 6, 3)
+        assert read_geo(tmp_path / "tube_core.geo").shape == (20, 5, 5, 3)
 
     def test_adjacency_json_emitted(self, tmp_path):
         import json
@@ -1055,14 +1057,15 @@ class TestPrimitiveHGridTube:
         )
         assert r.exit_code == 0, r.output
         payload = json.loads(adj.read_text())
-        assert len(payload["blocks"]) == 1
-        faces = payload["blocks"][0]["faces"]
-        # i_lo / i_hi = FREE (inflow/outflow); k_lo (centerline) and k_hi
-        # (outer wall) = WALL.
-        assert faces["i_lo"]["bc"] == "FREE"
-        assert faces["i_hi"]["bc"] == "FREE"
-        assert faces["k_lo"]["bc"] == "WALL"
-        assert faces["k_hi"]["bc"] == "WALL"
+        assert len(payload["blocks"]) == 5
+        for blk in payload["blocks"]:
+            # i_lo / i_hi = FREE (inflow/outflow); the rings' k_hi is the wall.
+            faces = blk["faces"]
+            assert faces["i_lo"]["bc"] == "FREE"
+            assert faces["i_hi"]["bc"] == "FREE"
+            wall = blk["label"].startswith("ring_")
+            assert (faces["k_hi"]["bc"] == "WALL") is wall
+            assert faces["k_lo"]["bc"] == "SHARED"
 
     def test_invalid_radius_exits_1(self, tmp_path):
         r = _invoke(

@@ -5,8 +5,9 @@ Builds two H-grid variants for internal-flow / SRM-style cases:
     examples_out/
         h_grid_rect.geo      # 1m-long rectangular duct, 0.1m x 0.2m cross-section
         h_grid_rect.vtm      # ParaView MultiBlock (1 block)
-        h_grid_tube.geo      # 0.5m-long circular tube, radius 0.05m
-        h_grid_tube.vtm      # ParaView MultiBlock (1 block)
+        h_grid_tube_<block>.geo  # 0.5m-long circular tube, radius 0.05m: five
+                                 # blocks (ring_0 .. ring_3, core), ADR 0060
+        h_grid_tube.vtm      # ParaView MultiBlock (5 blocks)
 
 Run from the project root after activating .venv:
 
@@ -60,7 +61,7 @@ def generate_tube(out_path: Path) -> Path:
     """Build the circular-tube H-grid and write .geo + .vtm."""
     from shore.primitive import HGridTubeMesh
 
-    print(f"Building circular-bore H-grid → {out_path}.geo")
+    print(f"Building circular-bore H-grid → {out_path}_<block>.geo")
     ht = HGridTubeMesh.build(
         length=0.5,
         radius=0.05,
@@ -68,16 +69,14 @@ def generate_tube(out_path: Path) -> Path:
         n_circ=32,
         n_radial=10,
         streamwise_axis="x",
-        # Cluster radial nodes near the outer wall via a one-sided
-        # tanh — the polar singular axis at k=0 is naturally clustered
-        # by the geometry (all angular nodes collapse there).
+        # Cluster the ring blocks' nodes at the wall (one-sided tanh).
         k_law="tanh",
         k_beta=3.0,
     )
     ht.write_geo(out_path)
     ht.write_vtk(out_path)
-    print(f"  shape={ht.blocks[0].nodes.shape}")
-    return out_path.with_suffix(".geo")
+    print(f"  blocks={[b.label for b in ht.blocks]}")
+    return out_path.parent / f"{out_path.name}_core.geo"
 
 
 def main() -> None:

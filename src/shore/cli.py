@@ -2452,13 +2452,16 @@ def primitive_h_grid_tube(
     radius: Annotated[float, typer.Option("--radius", help="Outer-wall radius.")] = 0.05,
     n_axial: Annotated[int, typer.Option("--n-axial", help="Streamwise node count.")] = 40,
     n_circ: Annotated[
-        int, typer.Option("--n-circ", help="Circumferential node count (j-axis, periodic).")
+        int,
+        typer.Option(
+            "--n-circ", help="Cells round the wall, a multiple of 4 (a quarter per ring)."
+        ),
     ] = 32,
     n_radial: Annotated[
         int,
         typer.Option(
             "--n-radial",
-            help="Radial node count (k-axis: 0 = centerline, last = wall).",
+            help="Ring blocks' node count from the core to the wall.",
         ),
     ] = 8,
     streamwise_axis: Annotated[
@@ -2475,11 +2478,15 @@ def primitive_h_grid_tube(
         str,
         typer.Option(
             "--k-spacing",
-            help="Radial spacing (centerline → wall).  Use tanh / tanh2 to cluster near the wall.",
+            help="Ring spacing, core -> wall: uniform | tanh (clusters at the wall) | tanh2.",
         ),
     ] = "uniform",
     i_beta: Annotated[float, typer.Option("--i-beta")] = 3.0,
     k_beta: Annotated[float, typer.Option("--k-beta")] = 3.0,
+    core_frac: Annotated[
+        float,
+        typer.Option("--core-frac", help="Radius of the core's corners / the tube's, in (0, 1)."),
+    ] = 0.5,
     adjacency_json: Annotated[
         Path | None,
         typer.Option(
@@ -2492,16 +2499,12 @@ def primitive_h_grid_tube(
     component: _COMPONENT = None,
     no_replay: _NO_REPLAY = False,
 ) -> None:
-    """Build a circular-bore H-grid (single block, j-periodic).
+    """Build a circular-bore H-grid: five blocks, an O-H cross-section (ADR 0060).
 
-    The cross-section is a 2D polar grid: ``j`` circumferential (periodic),
-    ``k`` radial from the centerline (k=0, polar singular axis) to the
-    outer wall (k=n_radial-1).  Default BCs: i-faces FREE, k_lo and k_hi
-    WALL.  Use case: straight cylindrical ducts, simple SRM chambers.
-
-    The k=0 polar axis collapses every angular node to a single point —
-    accept the singularity (Xall handles it) or use ``h-grid-rect`` if
-    you want a non-singular cross-section.
+    A square core and four ring blocks (ring_0 .. ring_3) joining it to the
+    wall, extruded along the stream; no singular axis, every block
+    right-handed.  Faces: inflow / outflow FREE, the rings' k_hi WALL, the
+    rest SHARED.  Use case: straight cylindrical ducts, simple SRM chambers.
     """
     try:
         proj = _open_project(project, component, "main", replay=not no_replay)
@@ -2517,6 +2520,7 @@ def primitive_h_grid_tube(
             k_law=k_law,
             i_beta=i_beta,
             k_beta=k_beta,
+            core_frac=core_frac,
         )
     except Exception as exc:
         _err.print(f"[red]Error:[/red] {_esc(str(exc))}")

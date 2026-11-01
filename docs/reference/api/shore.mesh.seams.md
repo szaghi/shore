@@ -29,6 +29,24 @@ One side of a point-matched seam: `face` of this block over `rng`,
 onto `donor`'s `donor_face` over `donor_rng` (begin = the image of
 `rng`'s begin), with `transform`.
 
+## `wire_by_corners` <Badge type="info" text="function" /> {#wire_by_corners}
+
+```python
+wire_by_corners(
+    blocks: list[HexBlock],
+    faces: tuple[str, ...] = ('i_lo', 'i_hi', 'j_lo', 'j_hi', 'k_lo', 'k_hi'),
+) -> None
+```
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L45">source</a>
+
+Make the faces two blocks share SHARED, with their axis maps.
+
+Two of the *faces* are shared when their four corner nodes are the
+same points, bit for bit (blocks built from shared rows). The axis map
+follows from where each corner lands on the partner face, as
+`premesh` does for a blocking. Used by the tip caps (ADR 0059) and
+the H-grid tube (ADR 0060).
+
 ## `seams` <Badge type="info" text="function" /> {#seams}
 
 ```python
@@ -40,7 +58,7 @@ seams(
     bcs: Collection[FaceBC] = CONNECTED,
 ) -> dict[str, list[Seam]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L45">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L91">source</a>
 
 Per block label, its seams; every connected pair of faces once on each side.
 
@@ -57,7 +75,7 @@ are the face BCs taken as connections.
 ```python
 shared_faces(blocks: list[HexBlock]) -> set[tuple[str, str]]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L103">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L149">source</a>
 
 `(label, face)` of the faces with more than one partner.
 
@@ -73,7 +91,7 @@ transform_vector(
     along: tuple[tuple[str, bool], tuple[str, bool]],
 ) -> tuple[int, int, int]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L124">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L170">source</a>
 
 `Transform` of a face connection from its AxisMap.
 
@@ -85,7 +103,7 @@ is a step out of the donor.
 ```python
 inverse_transform(t: tuple[int, int, int]) -> tuple[int, int, int]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L142">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L188">source</a>
 
 ## `affine` <Badge type="info" text="function" /> {#affine}
 
@@ -97,7 +115,7 @@ affine(
     index: np.ndarray,
 ) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L149">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L195">source</a>
 
 `T (index - origin) + image`.
 
@@ -106,7 +124,7 @@ affine(
 ```python
 point_range(block: HexBlock, face: str) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L159">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L205">source</a>
 
 1-based `[[imin, jmin, kmin], [imax, jmax, kmax]]` of *face*.
 
@@ -115,14 +133,14 @@ point_range(block: HexBlock, face: str) -> np.ndarray
 ```python
 face_size(block: HexBlock, face: str) -> int
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L169">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L215">source</a>
 
 ## `Aliases` <Badge type="tip" text="class" /> {#Aliases}
 
 ```python
 Aliases(blocks: list[HexBlock], tol: float)
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L233">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L279">source</a>
 
 Nodes that are one point across SHARED / DIRICHLET seams (ADR 0040).
 
@@ -138,7 +156,7 @@ as they are.
 ```python
 sync(changed: list[np.ndarray]) -> None
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L292">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/mesh/seams.py#L338">source</a>
 
 Give each group the value of its last member that *changed* marks.
 

@@ -518,8 +518,9 @@ def h_grid(mode: str) -> None:
     pl = plotter(mode)
     duct, tube = _h_grids()
     _add(pl, _grid(duct.blocks[0].nodes), pal, pal.block(0), lw=0.5, smooth=False)
-    nodes = _close_j(tube.blocks[0].nodes) + np.array([0.0, 0.4, 0.1])
-    _add(pl, _grid(nodes), pal, pal.block(1), lw=0.5, smooth=False)
+    for k, blk in enumerate(tube.blocks):  # the O-H section shows on the end faces
+        nodes = blk.nodes + np.array([0.0, 0.4, 0.1])
+        _add(pl, _grid(nodes), pal, pal.block(k + 1), lw=0.5, smooth=False)
     _camera(pl, azim=-145.0, elev=24.0, zoom=1.1)
     shot(pl, "h-grid", mode)
 

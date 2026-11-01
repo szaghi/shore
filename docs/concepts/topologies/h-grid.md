@@ -1,13 +1,13 @@
 # H-grid topology
 
 An H-grid fills the inside of a duct: i runs streamwise from the inlet
-face to the outlet face, j and k span the cross-section, and the
-cross-section faces are the duct walls. SHORE's H-grids are analytic
+face to the outlet face, j and k span the cross-section, and the faces on
+the duct's surface are its walls. SHORE's H-grids are analytic
 primitives without an internal body. A body in a channel is handled the
 overset way: an H-grid for the channel plus a body-fitted grid around the
 body ([Chimera mesh generation](/concepts/chimera)).
 
-<Figure name="h-grid" caption="H-grid duct primitive: a single block with the walls on the cross-section faces." />
+<Figure name="h-grid" caption="H-grid primitives: the rectangular duct, one block, and the circular tube, five blocks in an O-H section." />
 
 ## Variants
 
@@ -16,7 +16,7 @@ body ([Chimera mesh generation](/concepts/chimera)).
 | Variant | CLI | Cross-section | Block layout | Use case |
 |---|---|---|---|---|
 | **Rectangular** | `shore primitive h-grid-rect` | rectangle | 1 hex block, no singular axis | prismatic rectangular ducts; channels |
-| **Circular** | `shore primitive h-grid-tube` | circle | 1 hex block, j-periodic, polar singular axis at the centerline | straight cylindrical ducts; simple SRM chambers |
+| **Circular** | `shore primitive h-grid-tube` | circle | 5 hex blocks, O-H: a square core and four ring blocks, no singular axis | straight cylindrical ducts; simple SRM chambers |
 
 Ducts of varying or non-circular cross-section are not covered by a
 primitive; build them as a [blocking](/concepts/blocking) on the duct
@@ -29,10 +29,10 @@ geometry.
 - World alignment: ``streamwise_axis`` (``"x"``, ``"y"``, or ``"z"``)
   selects which world axis the duct length runs along.  Default ``x``.
 - Default face BCs: streamwise faces (``i_lo``, ``i_hi``) are
-  ``FREE`` (inflow / outflow); cross-section faces are ``WALL``.
-- The ``j_lo`` / ``j_hi`` faces are SHARED by ``periodic_j = True``
-  on the circular tube (closed circumferential direction); on the
-  rectangular duct they are independent ``WALL`` faces.
+  ``FREE`` (inflow / outflow); the faces on the duct's wall are
+  ``WALL``.
+- On the rectangular duct the ``j`` and ``k`` faces are the four walls; on
+  the circular tube the faces between its five blocks are ``SHARED``.
 
 ## Rectangular duct
 
@@ -58,40 +58,38 @@ In `cc.par` the streamwise `FREE` faces take the block's
 
 ## Circular tube
 
-Single hex block of shape ``(n_axial, n_circ, n_radial, 3)`` with a
-**polar 2D cross-section**:
+Five hex blocks in an O-H ("butterfly") cross-section
+([ADR 0060](/adr/0060-h-grid-tube-oh)):
 
-- ``j`` = circumferential angle (``0`` → ``2π``), **periodic** by
-  construction (`block.periodic_j = True`).
-- ``k`` = radial coordinate from the centerline (``k=0``) to the
-  outer wall (``k=n_radial-1``).
-- ``i`` = streamwise.
+- ``core``: a square in the middle, its corners at ``core_frac`` (0.5) of
+  the radius, a Cartesian grid of ``n_circ / 4`` cells a side;
+- ``ring_0`` .. ``ring_3``: each joins one side of the core to a quarter of
+  the wall (``ring_q`` from −45 + 90 q to 45 + 90 q degrees). ``j`` runs
+  along the wall, ``k`` from the core (``k = 0``) to the wall
+  (``k = n_radial - 1``); the lines are straight, and at the core's
+  corners they follow the 45° diagonals.
+- ``i`` = streamwise in every block.
 
-### Polar singular axis
-
-The ``k = 0`` row at the duct centerline is a **polar singular axis**:
-all ``n_circ`` angular nodes collapse to a single point at the
-centerline of the duct.  Formally, the cells at ``k=0`` are degenerate
-(zero volume on the singular axis). The face is tagged `WALL`, as the
-code sets it; a solver without singular-axis handling needs the
-`h-grid-rect` instead.
+Every block is right-handed, whatever ``streamwise_axis``, and there is no
+singular axis: the worst cells, at the core's corners, score about 0.71
+(sin 135°). Before ADR 0060 the tube was one block on a polar grid whose
+centreline row collapsed to a point and was marked ``WALL``.
 
 ### Face boundary conditions
 
 | Face | BC | Meaning |
 |---|---|---|
-| `i_lo` | `FREE` | Streamwise inflow |
-| `i_hi` | `FREE` | Streamwise outflow |
-| `j_lo` / `j_hi` | SHARED (periodic) | Circumferential periodicity |
-| `k_lo` | `WALL` | Centerline singular axis (degenerate) |
-| `k_hi` | `WALL` | Outer wall (real wall) |
+| `i_lo` (every block) | `FREE` | Streamwise inflow |
+| `i_hi` (every block) | `FREE` | Streamwise outflow |
+| the rings' `k_hi` | `WALL` | The tube's wall |
+| the rest (16 faces) | `SHARED` | Between the core and the rings, and between neighbouring rings |
 
 ## Parameters
 
 | Command | Sizes | Nodes | Spacing |
 |---|---|---|---|
 | `h-grid-rect` | `--length` (1.0), `--width` (0.1), `--height` (0.1) | `--ni` 40, `--nj` 20, `--nk` 20 | `--i/j/k-spacing` `uniform` / `tanh` / `tanh2`, `--i/j/k-beta` 3.0 |
-| `h-grid-tube` | `--length` (1.0), `--radius` (0.05) | `--n-axial` 40, `--n-circ` 32, `--n-radial` 8 | `--i-spacing`, `--k-spacing` (radial, centreline to wall), betas 3.0 |
+| `h-grid-tube` | `--length` (1.0), `--radius` (0.05), `--core-frac` (0.5) | `--n-axial` 40, `--n-circ` 32 (a multiple of 4), `--n-radial` 8 | `--i-spacing`, `--k-spacing` (core to wall; `tanh` clusters at the wall), betas 3.0 |
 
 Both take `--streamwise-axis` (`x` default). Two-sided `tanh2` on the
 cross-section axes clusters toward the walls. In Python they are

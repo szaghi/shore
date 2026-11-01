@@ -109,9 +109,8 @@ wire_cap_blocks(blocks: list[HexBlock]) -> None
 
 Make the faces two cap blocks share SHARED, with their axis maps.
 
-Two faces are shared when their four corner nodes are the same points
-(bit for bit). The axis map follows from where each corner lands on the
-partner face, as `premesh` does for a blocking.
+The i and j faces only (`shore.mesh.seams.wire_by_corners`): the k
+faces are the wall and the outer fringe.
 
 ## `find_symmetric_le_cuts` <Badge type="info" text="function" /> {#find_symmetric_le_cuts}
 
@@ -122,7 +121,7 @@ find_symmetric_le_cuts(
     span_axis_world: int,
 ) -> tuple[int, int]
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L334">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L306">source</a>
 
 Find the upper / lower LE-cut indices in a body cross-section.
 
@@ -152,7 +151,7 @@ the cap-fill builder for the chord-cut SHARED face.
 ```python
 detect_te_thickness(cross_section: np.ndarray, span_axis_world: int) -> float
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L410">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L382">source</a>
 
 Return the TE thickness of a cross-section polyline.
 
@@ -168,7 +167,7 @@ auto_round_sharp_te(
     span_axis_world: int,
 ) -> np.ndarray
 ```
-<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L425">source</a>
+<a class="api-source" href="https://github.com/szaghi/shore/blob/main/src/shore/topology/cgrid_cap.py#L397">source</a>
 
 Synthesise a blunt cross-section by splitting the sharp TE node.
 

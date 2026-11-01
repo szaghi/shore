@@ -17,7 +17,7 @@ section describes the layouts built from them. All of them produce
 | [C-grid tip caps](c-grid#tip-caps) | 5 per tip (overset, on the tip face) | `shore mesh --cap-tips`, `shore cap-tip` | closing a finite wing at its tips |
 | [OH hybrid](oh-hybrid) | 12: cubed-sphere wrap + 6 channels | `shore mesh --topology oh` | one grid from the wall to an axis-aligned box |
 | [CH hybrid](ch-hybrid) | 12 (sharp TE) / 14 (blunt TE) | `shore mesh --topology ch` | one grid from a wing's wall to a chord/normal frame |
-| [H-grids](h-grid) | 1 | `shore primitive h-grid-rect` / `h-grid-tube` | straight ducts without a body |
+| [H-grids](h-grid) | 1 (rect) / 5 (tube) | `shore primitive h-grid-rect` / `h-grid-tube` | straight ducts without a body |
 | [Primitives](primitives) | 1 or 5 | `shore primitive box` / `annulus` / `flat-caps` | backgrounds and buffers |
 
 The topologies cover bodies of a known shape class. Junctions between
