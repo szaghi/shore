@@ -2,6 +2,11 @@
 title: Changelog
 ---
 
+## [0.7.0] — 2026-11-01
+### Added
+- **primitive**: Give the H-grid tube an O-H cross-section ⚠ BREAKING CHANGE
+
+
 ## [0.6.0] — 2026-11-01
 ### Added
 - **mesh**: Declare symmetry planes of a blocking
